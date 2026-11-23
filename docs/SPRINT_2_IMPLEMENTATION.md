@@ -19,3 +19,6 @@ Non inserire token nel codice o nel repository pubblico. Non utilizzare dati per
 
 ## Iterazione mobile — 23/11/2026
 Schermata Expo collegata alla funzione di invio richieste e al client API, con validazione dei campi immobile, gestione degli errori e blocco invio ripetuto. **La sessione verificata restituisce volutamente null** fino all'integrazione OIDC/PKCE: pertanto la demo non effettua chiamate remote né crea pratiche reali. Aggiunti due test per validazione e mancata sessione, oltre a typecheck/test mobile in CI. Queste modifiche richiedono ancora verifica della pipeline e test sui dispositivi.
+
+## CI Run #64 — correzione TypeScript
+Run 45091423666 fallita al comando `npm run typecheck -w @ape/mobile` perché la cartella mobile non conteneva `tsconfig.json`; `tsc` stampava la guida ed usciva con codice non zero. Aggiunto `apps/mobile/tsconfig.json` basato su `expo/tsconfig.base`. Correzione ancora da confermare tramite nuova CI. La sessione OIDC rimane intenzionalmente non operativa.
