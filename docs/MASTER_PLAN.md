@@ -189,3 +189,6 @@ Adattatore `clamd` INSTREAM con comportamento fail-closed sugli upload, ri-scans
 
 ## 52. Rate limiting condiviso (Claude, 23/11/2026)
 Storage del throttler su PostgreSQL (`RATE_LIMIT_STORE=postgres`): finestra fissa per chiave aggiornata con un unico upsert atomico, blocco dopo il limite, pulizia oraria nel worker; attivo nel compose di staging e nell'E2E dell'API. Test di concorrenza e di condivisione tra due istanze.
+
+## 53. Distribuzione di prova via GitHub Actions (Claude, 23/11/2026)
+Workflow `mobile-release.yml`: build iOS su macOS con firma automatica tramite chiave App Store Connect API e invio a TestFlight; AAB Android firmato con chiave di caricamento e invio al test interno di Google Play. Senza secret compila comunque (verifica). Numeri di build automatici, conformità crittografica dichiarata, firma Android tramite config plugin. Passi una tantum del titolare in `docs/MOBILE_RELEASE.md`.

@@ -171,3 +171,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Iterazione 28 (`feat/clamav`): antivirus ClamAV fail-closed, rescan nel worker, job CI `clamav` con EICAR.
 - Iterazione 29 (`feat/shared-rate-limit`): rate limit condiviso su PostgreSQL; SQL verificato anche via psql locale.
 - Iterazioni 22–29 integrate in `main` (PR #28–#35): container, creazione pratiche web, backup/ripristino, CRUD + indice API, build dispositivi, Keycloak E2E, ClamAV, rate limit condiviso.
+- Iterazione 30 (`ci/mobile-release`): workflow TestFlight/Google Play; plugin firma Android verificato con prebuild; `app.config.js` con numero di build.
