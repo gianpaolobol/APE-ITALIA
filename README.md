@@ -10,6 +10,10 @@ Piattaforma Android, iOS e web per richieste di attestati di prestazione energet
 
 Altri documenti: [Sprint](docs/SPRINTS.md) · [Sicurezza](docs/SECURITY.md).
 
+## Handoff per agenti di sviluppo
+
+**[Handoff operativo Claude](docs/HANDOFF_CLAUDE.md)** — istruzioni per leggere integralmente il MASTER PLAN, procedere per iterazioni, verificare CI e salvare codice e avanzamenti su questo repository. Il file [CLAUDE.md](CLAUDE.md) indirizza automaticamente Claude Code all'handoff.
+
 ## Monorepo
 
 - `apps/mobile` — Expo / React Native, percorsi privati e professionisti (demo locale)
