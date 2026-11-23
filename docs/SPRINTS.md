@@ -12,7 +12,7 @@
 - [x] PostgreSQL e migrazioni (CI Run #81, nessuna deriva); seed sintetico solo nei test
 - [x] Autorizzazioni per tenant e verifica JWT (test firmati + PostgreSQL); provider OIDC reale ancora da configurare
 - [ ] CRUD immobili e pratiche (create/list fatti; update/dettaglio/cancellazione no)
-- [ ] Upload privato e metadati delle evidenze
+- [x] Upload privato cifrato e metadati delle evidenze (API; scanner, storage cloud e UI mobile da fare)
 - [x] Audit trail delle creazioni e delle modifiche di membership
 - [ ] Test di integrazione e controlli sicurezza
 

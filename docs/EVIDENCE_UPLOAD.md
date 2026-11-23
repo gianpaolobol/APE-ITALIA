@@ -1,0 +1,34 @@
+# Caricamento evidenze — specifica implementata (Sprint 4)
+
+## Endpoint (tutti autenticati; `x-organization-id` obbligatorio)
+| Metodo | Percorso | Ruoli | Note |
+|---|---|---|---|
+| GET | `/v1/notices` | qualsiasi | versioni correnti delle informative |
+| POST | `/v1/cases/:caseId/consents` | owner/admin/member | `{kind:"evidence_processing", version}`; idempotente, auditato |
+| POST | `/v1/cases/:caseId/evidence` | owner/admin/member | multipart: `kind` + `file` |
+| GET | `/v1/cases/:caseId/evidence` | tutti i membri | solo metadati |
+| GET | `/v1/evidence/:id/content` | tutti i membri | download, auditato |
+
+## Controlli all'upload (in ordine)
+1. Token verificato e membership attiva; viewer esclusi.
+2. Storage configurato, altrimenti 503 (fail closed).
+3. `kind` ∈ boiler, heating, envelope, window, floorplan, document.
+4. Pratica dell'organizzazione (altrimenti 404) e in uno stato che accetta evidenze (altrimenti 409).
+5. Consenso del caricatore all'informativa **corrente** per quella pratica (altrimenti 403).
+6. Dimensione ≤ 15 MB (413 da multer, file solo in memoria).
+7. Tipo determinato dal **contenuto** (JPEG, PNG, HEIC, PDF): Content-Type e nome file ignorati (415). PDF solo per planimetrie e documenti.
+8. JPEG: rimozione segmenti APP1 (EXIF/XMP, inclusa posizione GPS) e APP13 (IPTC); struttura non valida ⇒ 422. *PNG/HEIC/PDF non vengono ancora ripuliti dai metadati.*
+9. SHA-256 del contenuto ripulito; duplicato nella stessa pratica ⇒ 409.
+10. Scansione malware tramite porta `MalwareScanner`: **nessuno scanner è ancora configurato** (stato `unscanned`); `infected` ⇒ 422.
+11. Cifratura AES-256-GCM con IV casuale e chiave di archiviazione come AAD; chiave dell'oggetto generata dal server (`org/<org>/case/<case>/<uuid>`); scrittura atomica con permessi 0600; riga DB + audit in transazione, oggetto eliminato se la transazione fallisce.
+
+## Download
+Solo nella stessa organizzazione (404 altrimenti); `infected` ⇒ 410; `unscanned` ⇒ 423 a meno di `EVIDENCE_ALLOW_UNSCANNED=1` (solo sviluppo). Intestazioni `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`. Ogni lettura genera `evidence.read` in audit.
+
+## Da completare prima della produzione
+- Testo dell'informativa (versione `2026-11-23-draft`) da redigere/validare con consulente privacy; il codice gestisce solo versioni e prova del consenso.
+- Scanner antivirus (es. ClamAV in un worker isolato) e quarantena.
+- Storage gestito (bucket privato con cifratura lato server e chiavi in KMS); l'implementazione su disco serve a sviluppo/self-hosting.
+- Rotazione della chiave master, retention e cancellazione su richiesta dell'interessato.
+- Ripulitura metadati per PNG/HEIC/PDF; limiti di frequenza.
+- UI mobile di acquisizione (fotocamera/documenti).

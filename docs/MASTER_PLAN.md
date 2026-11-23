@@ -111,3 +111,6 @@ Flusso mobile completo a livello di codice e test: discovery, PKCE S256 con CSPR
 
 ## 26. Sprint 4 (parziale) — provisioning sicuro organizzazioni/membership (Claude, 23/11/2026)
 PR #8 (impilata su #7). Nessuna creazione pubblica di organizzazioni: bootstrap con CLI operatore (`npm run admin:create-org`) auditata; inviti monouso a 256 bit con solo hash SHA-256 a riposo e scadenza ≤ 7 giorni; gestione membri con gerarchia owner > admin > member > viewer e protezione dell'ultimo owner (lock di riga). Specifica: `docs/PROVISIONING.md`. CI Run #81 verde con 16 test PostgreSQL e controllo di deriva schema/migrazioni. Mancano rate limiting, MFA (dipende dal provider) e UI di gestione.
+
+## 27. Sprint 4 (parziale) — caricamento evidenze protetto e consenso (Claude, 23/11/2026)
+PR #9 (impilata su #8). Upload multipart con verifica del tipo dal contenuto, limite 15 MB, rimozione EXIF/GPS dai JPEG, deduplica SHA-256, cifratura AES-256-GCM a riposo con chiave legata all'oggetto, consenso versionato obbligatorio per pratica, download auditato e bloccato finché il file non è scansionato. Specifica e limiti: `docs/EVIDENCE_UPLOAD.md`. **Informativa privacy in bozza, nessuno scanner antivirus e nessuno storage cloud configurati.**
