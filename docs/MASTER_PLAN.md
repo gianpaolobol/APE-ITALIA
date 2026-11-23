@@ -102,3 +102,6 @@ Il wizard Expo ora utilizza la funzione `submitApeRequest` che valida i dati e p
 
 ## 23. Contratto autenticazione OIDC/PKCE
 Aggiunto `docs/OIDC_INTEGRATION.md`: autorizzazione mobile via browser di sistema, PKCE S256, token verificati, archiviazione sicura, provisioning membership e test negativi obbligatori. Nessun provider è stato ancora scelto o attivato. I dati reali restano vietati fino al completamento dei controlli.
+
+## 24. Sprint 2 integrato; Sprint 3 avviato
+La Run #72 è terminata con successo (PostgreSQL/Prisma, test API, typecheck/test mobile, build web); PR #6 integrata in `main` con commit `b6254bb`. Lo Sprint 3 si concentra sull'autenticazione OIDC/PKCE: creato il validatore della configurazione pubblica con test, ma **nessun login effettivo ancora attivo**. Riferimento `docs/SPRINT_3_AUTH.md`. Non utilizzare dati reali fino al completamento dei gate di sicurezza.
