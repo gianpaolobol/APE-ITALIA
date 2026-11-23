@@ -1,7 +1,7 @@
 name: Validate starter
 on:
   push:
-    branches: [main, feat/sprint-1-persistence]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 jobs:
@@ -41,4 +41,5 @@ jobs:
       - run: npm ls react react-dom next --all || true
       - run: npm run typecheck -w @ape/mobile
       - run: npm run test -w @ape/mobile
+      - run: npm run bundle:check -w @ape/mobile
       - run: npm run build -w @ape/web

@@ -9,3 +9,5 @@ build/
 *.log
 .DS_Store
 coverage/
+.expo-export-check/
+next-env.d.ts

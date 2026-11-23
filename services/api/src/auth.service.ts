@@ -1,27 +1,54 @@
-import { Injectable, UnauthorizedException, ForbiddenException } from '@nestjs/common';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { Inject, Injectable, UnauthorizedException, ForbiddenException, Optional } from '@nestjs/common';
+import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { PrismaService } from './prisma.service';
 import { hasTenantAccess } from './tenant-policy';
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export const AUTH_CONFIG = Symbol('AUTH_CONFIG');
+export type AuthConfig = { issuer: string; audience: string; keys: JWTVerifyGetKey };
+
+/** Reads OIDC settings from the environment; JWKS is created once and cached by jose. */
+export function authConfigFromEnv(env = process.env): AuthConfig | null {
+ const { OIDC_ISSUER: issuer, OIDC_AUDIENCE: audience, OIDC_JWKS_URL: jwksUrl } = env;
+ if (!issuer || !audience || !jwksUrl) return null;
+ const url = new URL(jwksUrl);
+ if (url.protocol !== 'https:') return null;
+ return { issuer, audience, keys: createRemoteJWKSet(url, { cooldownDuration: 30_000, cacheMaxAge: 10 * 60_000 }) };
+}
+
 @Injectable()
 export class AuthService {
- constructor(private readonly db: PrismaService) {}
- async authorize(authorization?: string, organizationId?: string) {
-  const issuer=process.env.OIDC_ISSUER;
-  const audience=process.env.OIDC_AUDIENCE;
-  const jwksUrl=process.env.OIDC_JWKS_URL;
-  if(!issuer || !audience || !jwksUrl) throw new UnauthorizedException('Authentication provider not configured');
-  if(!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Bearer token required');
-  if(!organizationId || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(organizationId)) throw new ForbiddenException('Valid organization required');
+ private readonly config: AuthConfig | null;
+ constructor(@Inject(PrismaService) private readonly db: PrismaService, @Optional() @Inject(AUTH_CONFIG) config?: AuthConfig | null) {
+  this.config = config === undefined ? authConfigFromEnv() : config;
+ }
+
+ /** Verifies signature, issuer, audience, expiry and algorithm; returns the token subject. */
+ async verify(authorization?: string): Promise<{ subject: string }> {
+  if (!this.config) throw new UnauthorizedException('Authentication provider not configured');
+  if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Bearer token required');
   try {
-   const jwks=createRemoteJWKSet(new URL(jwksUrl));
-   const {payload}=await jwtVerify(authorization.slice(7),jwks,{issuer,audience,algorithms:['RS256']});
-   if(!payload.sub) throw new UnauthorizedException('Missing subject');
-   const membership=await this.db.membership.findUnique({where:{organizationId_userSubject:{organizationId,userSubject:payload.sub}}});
-   if(!membership || !hasTenantAccess(membership,organizationId,payload.sub)) throw new ForbiddenException('Organization access denied');
-   return {organizationId,actorId:payload.sub,role:membership.role};
-  } catch(e) {
-   if(e instanceof ForbiddenException || e instanceof UnauthorizedException) throw e;
+   const { payload } = await jwtVerify(authorization.slice(7), this.config.keys, {
+    issuer: this.config.issuer,
+    audience: this.config.audience,
+    algorithms: ['RS256', 'ES256'],
+    requiredClaims: ['sub', 'exp'],
+    clockTolerance: 30,
+   });
+   if (typeof payload.sub !== 'string' || !payload.sub) throw new UnauthorizedException('Missing subject');
+   return { subject: payload.sub };
+  } catch (e) {
+   if (e instanceof UnauthorizedException) throw e;
    throw new UnauthorizedException('Invalid access token');
   }
+ }
+
+ /** Tenant authorization: membership is always read from PostgreSQL, never trusted from the client. */
+ async authorize(authorization?: string, organizationId?: string) {
+  const { subject } = await this.verify(authorization);
+  if (!organizationId || !UUID.test(organizationId)) throw new ForbiddenException('Valid organization required');
+  const membership = await this.db.membership.findUnique({ where: { organizationId_userSubject: { organizationId, userSubject: subject } } });
+  if (!membership || !hasTenantAccess(membership, organizationId, subject)) throw new ForbiddenException('Organization access denied');
+  return { organizationId, actorId: subject, role: membership.role };
  }
 }

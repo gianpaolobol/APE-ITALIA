@@ -105,3 +105,6 @@ Aggiunto `docs/OIDC_INTEGRATION.md`: autorizzazione mobile via browser di sistem
 
 ## 24. Sprint 2 integrato; Sprint 3 avviato
 La Run #72 è terminata con successo (PostgreSQL/Prisma, test API, typecheck/test mobile, build web); PR #6 integrata in `main` con commit `b6254bb`. Lo Sprint 3 si concentra sull'autenticazione OIDC/PKCE: creato il validatore della configurazione pubblica con test, ma **nessun login effettivo ancora attivo**. Riferimento `docs/SPRINT_3_AUTH.md`. Non utilizzare dati reali fino al completamento dei gate di sicurezza.
+
+## 25. Sprint 3 — Authorization Code + PKCE implementato nel codice (Claude, 23/11/2026)
+Flusso mobile completo a livello di codice e test: discovery, PKCE S256 con CSPRNG e SHA-256, browser di sistema, callback con verifica state/iss, scambio codice, validazione ID token con nonce, sessione con solo refresh token in secure storage, refresh, scadenza, revoca e logout. API: verifica JWT con JWKS in cache e `GET /v1/me`; test con token RS256 firmati e JWKS fixture; test HTTP reale del modulo Nest; test integrazione PostgreSQL di firma + membership (eseguiti in CI). **Nessun provider OIDC reale configurato e nessun test su dispositivo**: il login resta inattivo nelle build finché non si completano i passi in `docs/SPRINT_3_AUTH.md` §Blocchi. Registro operativo: `docs/CLAUDE_PROGRESS.md`.

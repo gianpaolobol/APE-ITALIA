@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, Param, Post, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Inject, Get, Headers, Param, Post, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { AuthService } from './auth.service';
 import { canWrite } from './tenant-policy';
@@ -20,7 +20,7 @@ function validated<T extends object>(cls: new()=>T, body: unknown): T {
 }
 @Controller('v1')
 export class CasesController {
- constructor(private readonly db:PrismaService,private readonly auth:AuthService){}
+ constructor(@Inject(PrismaService) private readonly db:PrismaService,@Inject(AuthService) private readonly auth:AuthService){}
  private session(auth?:string,org?:string){return this.auth.authorize(auth,org);}
  @Get('properties')
  async listProperties(@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
