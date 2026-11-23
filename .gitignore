@@ -11,3 +11,4 @@ build/
 coverage/
 .expo-export-check/
 next-env.d.ts
+*.tsbuildinfo
