@@ -174,3 +174,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Iterazione 30 (`ci/mobile-release`): workflow TestFlight/Google Play; plugin firma Android verificato con prebuild; `app.config.js` con numero di build.
 - Prima esecuzione di "Mobile release" (run 1, avvio manuale su `main` `b2fb688`): **Android** `gradlew bundleRelease` riuscito (AAB 39,6 MB, firmato con chiave di debug perché mancano i secret; artifact `android-aab-1-UNSIGNED-debugkey`); **iOS** prebuild + CocoaPods + `xcodebuild` Release per simulatore riuscito. Firma e caricamento (TestFlight / Play internal) in attesa dei secret del titolare (`docs/MOBILE_RELEASE.md`).
 - Iterazione 31 (`ci/firebase-distribution`): APK + Firebase App Distribution automatica (registrazione app idempotente).
+- Run 2 di "Mobile release" (android, `c8ff8aa`): APK di rilascio 25,3 MB e AAB prodotti; Firebase saltato in attesa di `FIREBASE_SERVICE_ACCOUNT_JSON`.
