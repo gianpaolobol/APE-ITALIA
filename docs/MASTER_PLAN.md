@@ -99,3 +99,6 @@ La PR #4 dello Sprint 1 è stata integrata in main (commit `aa0d6b2`) dopo CI ve
 
 ## 22. Sprint 2 — wizard mobile e limite di autenticazione
 Il wizard Expo ora utilizza la funzione `submitApeRequest` che valida i dati e prepara chiamate API immobili/pratiche. La funzione `getVerifiedSession()` restituisce null fino all'integrazione OIDC PKCE: **nessun invio reale è possibile**. Sono stati aggiunti test e controllo TypeScript mobile in CI. Restano da verificare build e test su iOS/Android, sessione sicura, upload, dati persistenti via app.
+
+## 23. Contratto autenticazione OIDC/PKCE
+Aggiunto `docs/OIDC_INTEGRATION.md`: autorizzazione mobile via browser di sistema, PKCE S256, token verificati, archiviazione sicura, provisioning membership e test negativi obbligatori. Nessun provider è stato ancora scelto o attivato. I dati reali restano vietati fino al completamento dei controlli.
