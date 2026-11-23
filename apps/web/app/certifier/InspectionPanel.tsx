@@ -1,6 +1,6 @@
 import React from 'react';
 import type { InspectionSchema, InspectionView } from '../../lib/api';
-import { scheduleInspection, submitReport } from './actions';
+import { scheduleInspection, submitReport, uploadCertificate } from './actions';
 import { box, btn } from '../ui';
 
 const STATUS_LABEL: Record<string, string> = { verified: 'Verificato', to_verify: 'Da verificare', undeterminable: 'Non determinabile' };
@@ -15,6 +15,7 @@ export function InspectionPanel({ assignmentId, inspection, schema }: { assignme
    <table cellPadding={6} style={{ borderCollapse: 'collapse' }}><thead><tr><th align="left">Voce</th><th align="left">Stato</th><th align="left">Valore</th><th align="left">Fonte</th><th align="left">Note</th></tr></thead>
     <tbody>{inspection.report.findings.map(f => <tr key={f.field}><td>{schema.fields[f.field]?.label ?? f.field}</td><td>{STATUS_LABEL[f.status]}</td><td>{f.value ?? '—'}{(() => { const s = schema.fields[f.field]; return s && s.kind === 'number' && f.value !== undefined ? ' ' + s.unit : ''; })()}</td><td>{SOURCE_LABEL[f.source]}</td><td>{f.note ?? ''}</td></tr>)}</tbody></table>
    {inspection.report.generalNotes ? <p>Note: {inspection.report.generalNotes}</p> : null}
+   <CertificateForm assignmentId={assignmentId} />
    <p>Esporta i dati per il software di calcolo conforme: <a href={`/certifier/${assignmentId}/export?format=json`}>JSON</a> · <a href={`/certifier/${assignmentId}/export?format=csv`}>CSV</a>. L'esportazione non è un APE.</p>
   </section>;
  }
@@ -52,4 +53,17 @@ export function InspectionPanel({ assignmentId, inspection, schema }: { assignme
    </form>
   </section> : null}
  </>;
+}
+
+function CertificateForm({ assignmentId }: { assignmentId: string }) {
+ return <form action={uploadCertificate} encType="multipart/form-data" style={{ borderTop: '1px solid #e5ece8', paddingTop: 12, marginTop: 12 }}>
+  <h3>Carica l'APE firmato e depositato</h3>
+  <p style={{ fontSize: 13 }}>Dopo calcolo, firma e deposito nel sistema regionale, carica il PDF e l'identificativo assegnato. Il documento sarà consegnato al richiedente così com'è.</p>
+  <input type="hidden" name="id" value={assignmentId} />
+  <p><label>PDF <input type="file" name="file" accept="application/pdf" required /></label></p>
+  <p><label>Identificativo regionale <input name="regionalId" required pattern="[A-Za-z0-9/._-]{3,64}" /></label></p>
+  <p><label>Depositato il (Europe/Rome) <input type="datetime-local" name="depositedAt" required /></label> <label>Valido fino al <input type="date" name="validUntil" /></label></p>
+  <p><label><input type="checkbox" name="declaration" required /> Dichiaro che l'APE è stato da me firmato e depositato nel sistema regionale competente.</label></p>
+  <button style={btn} type="submit">Carica APE</button>
+ </form>;
 }

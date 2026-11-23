@@ -31,6 +31,6 @@
 - [x] Matching certificatori (filtri obbligatori + fallback; distanza/costo/qualità non disponibili)
 - [x] Agenda e verbale sopralluogo (API + portale web; annullamento/riassegnazione da fare)
 - [x] Export neutro (JSON/CSV) verso software energetico conforme; adattatore specifico da fare
-- [ ] Gestione deposito e consegna
+- [x] Gestione deposito e consegna (caricamento APE depositato dal certificatore, consegna al cliente; nessuna integrazione regionale)
 
 Regola: non segnare completato ciò che non è stato effettivamente testato. Aggiornare MASTER_PLAN.md a ogni decisione significativa.

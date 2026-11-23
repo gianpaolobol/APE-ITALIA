@@ -86,3 +86,7 @@ CI Run #94 su `c6991a5` (PR #17): **verde**.
 
 ## Iterazione 12 — PR #18 `test/api-e2e` (base: `feat/web-org-portal`)
 Test E2E sul server compilato. Non eseguibile localmente (motore Prisma non scaricabile). CI Run #95 su `7699591`: **verde**; E2E 3/3 (1,3 s), API 150 + 3 E2E, mobile 82, web 19.
+
+## Iterazione 13 — PR #19 `feat/certificate-delivery` (base: `test/api-e2e`)
+Implementato: modello `Certificate`, caricamento APE (certificatore), metadati e download con consegna (cliente), moduli nel portale, limite Server Actions 16 MB. E2E esteso (409 prima del verbale, 415 non-PDF, 409 doppio caricamento, consegna ⇒ `DELIVERED`).
+Test locali: API typecheck OK, 105 + 48 saltati; web typecheck e build OK. Esito E2E: vedi CI.

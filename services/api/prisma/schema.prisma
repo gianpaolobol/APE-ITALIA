@@ -50,6 +50,7 @@ model ApeCase {
  assignments Assignment[]
  extractedFields ExtractedField[]
  inspections Inspection[]
+ certificate Certificate?
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@index([organizationId,status])
@@ -227,4 +228,25 @@ model ExtractedFieldRevision {
  note String?
  at DateTime @default(now())
  @@index([extractedFieldId])
+}
+
+/// The official APE as produced, signed and deposited by the certifier in the regional system.
+/// The platform only stores and delivers it; it never generates certificate content.
+model Certificate {
+ id String @id @default(uuid())
+ caseId String @unique
+ case ApeCase @relation(fields: [caseId], references: [id])
+ organizationId String
+ certifierId String
+ storageKey String @unique
+ sha256 String
+ sizeBytes Int
+ scanStatus String @default("unscanned")
+ regionalId String
+ depositedAt DateTime
+ validUntil DateTime?
+ uploadedAt DateTime @default(now())
+ deliveredAt DateTime?
+ deliveredTo String?
+ @@index([organizationId])
 }

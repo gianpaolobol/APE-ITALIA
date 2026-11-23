@@ -10,6 +10,7 @@ import { EVIDENCE_STORAGE, EvidenceController, MALWARE_SCANNER } from './evidenc
 import { storageFromEnv } from './evidence/storage';
 import { CertifierController } from './certifiers/certifier.controller';
 import { ExtractionController } from './extraction/extraction.controller';
+import { CertificateController } from './certificates/certificate.controller';
 import { EXTRACTION_PROVIDER } from './extraction/provider';
 import { notConfiguredScanner } from './evidence/file-policy';
 
@@ -18,7 +19,7 @@ class HealthController { @Get('health') health() { return { status: 'ok', servic
 
 /** Default: 120 requests/minute per client IP (in-memory, per instance; use a shared store when scaling out). */
 @Module({ imports: [ThrottlerModule.forRoot({ throttlers: [{ name: 'default', ttl: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120) }] })],
- controllers: [HealthController, MeController, MembersController, CasesController, EvidenceController, CertifierController, ExtractionController],
+ controllers: [HealthController, MeController, MembersController, CasesController, EvidenceController, CertifierController, ExtractionController, CertificateController],
  providers: [
   PrismaService,
   AuthService,

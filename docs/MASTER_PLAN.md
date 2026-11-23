@@ -141,3 +141,6 @@ PR #17 (impilata su #16). Area `/org` per privati, professionisti e agenzie: por
 
 ## 36. Test end-to-end API in CI (Claude, 23/11/2026)
 PR #18 (impilata su #17). `services/api/e2e/full-flow.e2e.spec.ts` avvia `dist/main.js` con configurazione reale contro PostgreSQL e un JWKS remoto HTTPS (CA autofirmata) e percorre l'intero flusso su HTTP. Superato in CI Run #95. Restano da fare E2E del portale web (browser) e test su dispositivi.
+
+## 37. Caricamento e consegna dell'APE depositato (Claude, 23/11/2026)
+PR #19 (impilata su #18). Il certificatore carica il PDF dell'APE firmato e depositato con l'identificativo regionale e la data di deposito (dichiarazione obbligatoria); la pratica passa a `DEPOSITED`; il primo download del cliente la porta a `DELIVERED`. Nessuna generazione o deposito automatico. Coperto dal test E2E. Dettagli in `docs/CERTIFIER_WORKFLOW.md`.

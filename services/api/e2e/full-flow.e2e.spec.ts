@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { SignJWT, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
 import { createOrganizationWithOwner, registerVerifiedCertifier } from '../src/admin/provisioning';
-import { jpegWithExif } from '../src/evidence/fixtures';
+import { jpegWithExif, pdfBytes } from '../src/evidence/fixtures';
 
 const enabled = process.env.RUN_E2E === '1';
 describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP', () => {
@@ -65,7 +65,7 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   if (!enabled) return;
   const fields = await db.extractedField.findMany({ where: { organizationId: org }, select: { id: true } });
   await db.extractedFieldRevision.deleteMany({ where: { extractedFieldId: { in: fields.map(f => f.id) } } });
-  for (const t of ['extractedField', 'inspection', 'auditEvent', 'assignment', 'evidence', 'consent', 'apeCase', 'property', 'invitation', 'membership'] as const) {
+  for (const t of ['certificate', 'extractedField', 'inspection', 'auditEvent', 'assignment', 'evidence', 'consent', 'apeCase', 'property', 'invitation', 'membership'] as const) {
    await (db[t] as unknown as { deleteMany(a: unknown): Promise<unknown> }).deleteMany({ where: { organizationId: org } });
   }
   await db.organization.deleteMany({ where: { id: org } });
@@ -110,6 +110,16 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   const view = await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }));
   expect(view).toMatchObject({ caseStatus: 'INSPECTION_SCHEDULED', inspection: { certifierName: 'E2E Cert' } });
 
+  const certForm = () => {
+   const f = new FormData();
+   f.append('regionalId', 'SYNTH-ER-0001');
+   f.append('depositedAt', new Date(Date.now() - 60_000).toISOString());
+   f.append('declaration', 'true');
+   f.append('file', new Blob([new Uint8Array(pdfBytes())], { type: 'application/pdf' }), 'ape.pdf');
+   return f;
+  };
+  expect((await call(certSub, `/v1/certifier/assignments/${offer.id}/certificate`, { method: 'POST', body: certForm() })).status).toBe(409); // before the report
+
   const report = { performedAt: new Date().toISOString(), attendees: 'Proprietario (sintetico)', declaration: true, findings: [
    { field: 'heating.generator.nominal_power_kw', status: 'verified', value: 24, source: 'photo', evidenceId: files[0].id, note: 'Targhetta confrontata sul posto' },
    { field: 'envelope.wall.insulation', status: 'undeterminable', source: 'inspection', note: 'Nessun saggio' },
@@ -122,11 +132,24 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   const csv = await call(certSub, `/v1/certifier/assignments/${offer.id}/export?format=csv`);
   expect(csv.headers.get('content-type')).toContain('text/csv');
 
+  // Certificate signed and deposited by the certifier, then delivered to the customer.
+  const jpegAsCert = certForm(); jpegAsCert.set('file', new Blob([new Uint8Array(jpegWithExif())], { type: 'application/pdf' }), 'fake.pdf');
+  expect((await call(certSub, `/v1/certifier/assignments/${offer.id}/certificate`, { method: 'POST', body: jpegAsCert })).status).toBe(415);
+  const uploaded = await json(await call(certSub, `/v1/certifier/assignments/${offer.id}/certificate`, { method: 'POST', body: certForm() }));
+  expect(uploaded.regionalId).toBe('SYNTH-ER-0001');
+  expect((await call(certSub, `/v1/certifier/assignments/${offer.id}/certificate`, { method: 'POST', body: certForm() })).status).toBe(409);
+  const meta = await json(await call(customer, `/v1/cases/${apeCase.id}/certificate`, { org: true }));
+  expect(meta.certificate).toMatchObject({ regionalId: 'SYNTH-ER-0001', deliveredAt: null });
+  const pdf = await call(customer, `/v1/cases/${apeCase.id}/certificate/content`, { org: true });
+  expect(pdf.status).toBe(200);
+  expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+  expect((await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }))).caseStatus).toBe('DELIVERED');
+
   // AI extraction stays disabled in this build.
   expect((await call(certSub, `/v1/certifier/assignments/${offer.id}/evidence/${files[0].id}/extract`, { method: 'POST' })).status).toBe(503);
 
   const actions = (await db.auditEvent.findMany({ where: { organizationId: org }, select: { action: true } })).map(a => a.action);
-  for (const a of ['property.create', 'case.create', 'consent.accept', 'evidence.upload', 'case.submit', 'assignment.offer', 'assignment.accept', 'evidence.read', 'inspection.schedule', 'inspection.report', 'case.export']) expect(actions).toContain(a);
+  for (const a of ['property.create', 'case.create', 'consent.accept', 'evidence.upload', 'case.submit', 'assignment.offer', 'assignment.accept', 'evidence.read', 'inspection.schedule', 'inspection.report', 'case.export', 'certificate.upload', 'certificate.deliver']) expect(actions).toContain(a);
  }, 60_000);
 
  it('keeps other tenants out over HTTP', async () => {

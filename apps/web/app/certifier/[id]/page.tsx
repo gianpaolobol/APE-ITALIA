@@ -14,9 +14,11 @@ const LABELS: Record<string, string> = { boiler: 'Caldaia e targhetta', heating:
 
 const EXTRACT_MSG: Record<string, string> = { ok: 'Estrazione completata: verifica i valori proposti.', 'ai-off': 'Estrazione automatica non attiva: nessun fornitore AI è autorizzato in questo ambiente.', unscanned: 'Il file non è ancora stato controllato dall\'antivirus: non può essere inviato al servizio di estrazione.', done: 'File già elaborato con questo modello.', error: 'Estrazione non riuscita.' };
 
-export default async function AssignmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ extract?: string }> }) {
+const CERT_MSG: Record<string, string> = { ok: 'APE caricato: la pratica risulta depositata.', missing: 'Seleziona il PDF.', invalid: 'Dati mancanti o non validi (identificativo, data, dichiarazione).', conflict: 'APE già caricato o verbale non ancora inviato.', 'too-large': 'Il PDF supera 15 MB.', 'not-pdf': 'Il file non è un PDF.', error: 'Caricamento non riuscito.' };
+
+export default async function AssignmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ extract?: string; cert?: string }> }) {
  const { id } = await params;
- const { extract } = await searchParams;
+ const { extract, cert } = await searchParams;
  if (!UUID.test(id)) notFound();
  const cfg = config();
  if (!cfg) return <Notice>Portale non configurato.</Notice>;
@@ -42,6 +44,7 @@ export default async function AssignmentPage({ params, searchParams }: { params:
   <p>Regione {assignment.property.region}{assignment.property.floorAreaM2 ? ` · superficie dichiarata ${assignment.property.floorAreaM2} m² (da verificare)` : ''} · stato pratica {assignment.caseStatus}</p>
   <Notice>Le evidenze del richiedente non sostituiscono il sopralluogo: dati di involucro e impianto vanno verificati sul posto prima del calcolo, della firma e del deposito.</Notice>
   {extract && EXTRACT_MSG[extract] ? <Notice>{EXTRACT_MSG[extract]}</Notice> : null}
+  {cert && CERT_MSG[cert] ? <Notice>{CERT_MSG[cert]}</Notice> : null}
   <h2>Evidenze ({evidence.length})</h2>
   {evidence.length === 0 ? <p>Nessun file caricato.</p> : <ul style={{ listStyle: 'none', padding: 0 }}>{evidence.map(e => <li key={e.id} style={box}>
    <strong>{LABELS[e.kind] ?? e.kind}</strong> · {e.mimeType} · {(e.sizeBytes / 1024).toFixed(0)} KB · scansione: {e.scanStatus}

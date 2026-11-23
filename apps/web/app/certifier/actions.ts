@@ -85,3 +85,22 @@ export async function reviewExtracted(form: FormData) {
  await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/extracted-fields/${fieldId}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
  revalidatePath(`/certifier/${id}`);
 }
+
+export async function uploadCertificate(form: FormData) {
+ const id = String(form.get('id') ?? '');
+ if (!UUID.test(id)) throw new Error('Invalid assignment');
+ const file = form.get('file');
+ if (!(file instanceof File) || file.size === 0) redirect(`/certifier/${id}?cert=missing`);
+ const { cfg, s } = await context();
+ const out = new FormData();
+ out.set('regionalId', String(form.get('regionalId') ?? ''));
+ out.set('depositedAt', romeLocalToIso(String(form.get('depositedAt') ?? '')));
+ const valid = String(form.get('validUntil') ?? '');
+ if (valid) out.set('validUntil', new Date(valid + 'T00:00:00Z').toISOString());
+ out.set('declaration', form.get('declaration') === 'on' ? 'true' : 'false');
+ out.set('file', file as File, 'ape.pdf');
+ let msg = 'ok';
+ try { await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/certificate`, { method: 'POST', body: out }); }
+ catch (e) { msg = e instanceof ApiFailure ? ({ 400: 'invalid', 409: 'conflict', 413: 'too-large', 415: 'not-pdf' } as Record<number, string>)[e.status] ?? 'error' : 'error'; }
+ redirect(`/certifier/${id}?cert=${msg}`);
+}

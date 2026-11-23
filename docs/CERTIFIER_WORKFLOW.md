@@ -36,3 +36,9 @@ Tutti gli eventi (`assignment.offer|decline|expire|accept|no_candidate`) sono re
 - Portale web: programmazione (ora di Roma) e modulo del verbale; visualizzazione in sola lettura dopo l'invio.
 
 Resta da implementare: annullamento/riassegnazione dopo l'accettazione, controllo qualità, collegamento al software di calcolo, firma e deposito.
+
+## Deposito e consegna dell'APE (iterazione 13)
+- `POST /v1/certifier/assignments/:id/certificate` (multipart): PDF (verificato dal contenuto, ≤ 15 MB, scansione antivirus tramite porta), `regionalId` assegnato dal sistema regionale, `depositedAt` (passata), `validUntil` facoltativa, dichiarazione obbligatoria di firma e deposito. Solo con verbale inviato (`INSPECTION_DONE`), una sola volta; pratica ⇒ `DEPOSITED`; file cifrato come le evidenze; audit `certificate.upload`.
+- Cliente: `GET /v1/cases/:id/certificate` (metadati e impronta SHA-256), `GET /v1/cases/:id/certificate/content` (download; il primo segna la consegna, pratica ⇒ `DELIVERED`, audit `certificate.deliver`, poi `certificate.read`).
+- La piattaforma **non genera né modifica** l'APE e non effettua depositi: registra quanto dichiarato dal certificatore. Nessuna integrazione con portali regionali.
+- Portale: modulo di caricamento per il certificatore; sezione APE con download nell'area organizzazioni.
