@@ -173,3 +173,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Iterazioni 22–29 integrate in `main` (PR #28–#35): container, creazione pratiche web, backup/ripristino, CRUD + indice API, build dispositivi, Keycloak E2E, ClamAV, rate limit condiviso.
 - Iterazione 30 (`ci/mobile-release`): workflow TestFlight/Google Play; plugin firma Android verificato con prebuild; `app.config.js` con numero di build.
 - Prima esecuzione di "Mobile release" (run 1, avvio manuale su `main` `b2fb688`): **Android** `gradlew bundleRelease` riuscito (AAB 39,6 MB, firmato con chiave di debug perché mancano i secret; artifact `android-aab-1-UNSIGNED-debugkey`); **iOS** prebuild + CocoaPods + `xcodebuild` Release per simulatore riuscito. Firma e caricamento (TestFlight / Play internal) in attesa dei secret del titolare (`docs/MOBILE_RELEASE.md`).
+- Iterazione 31 (`ci/firebase-distribution`): APK + Firebase App Distribution automatica (registrazione app idempotente).

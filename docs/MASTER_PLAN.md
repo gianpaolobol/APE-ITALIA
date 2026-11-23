@@ -192,3 +192,6 @@ Storage del throttler su PostgreSQL (`RATE_LIMIT_STORE=postgres`): finestra fiss
 
 ## 53. Distribuzione di prova via GitHub Actions (Claude, 23/11/2026)
 Workflow `mobile-release.yml`: build iOS su macOS con firma automatica tramite chiave App Store Connect API e invio a TestFlight; AAB Android firmato con chiave di caricamento e invio al test interno di Google Play. Senza secret compila comunque (verifica). Numeri di build automatici, conformità crittografica dichiarata, firma Android tramite config plugin. Passi una tantum del titolare in `docs/MOBILE_RELEASE.md`.
+
+## 54. Android di prova con Firebase App Distribution (Claude, 23/11/2026)
+Scelta del titolare. Il workflow costruisce anche l'APK e, con il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, registra l'app nel progetto Firebase (idempotente) e la distribuisce ai tester indicati in `FIREBASE_TESTERS`. Le API Google non sono raggiungibili dall'ambiente di Claude: tutte le operazioni Firebase avvengono nei runner GitHub.

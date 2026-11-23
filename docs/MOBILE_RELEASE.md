@@ -1,4 +1,19 @@
-# Distribuzione di prova: TestFlight e Google Play (test interno) con GitHub Actions
+# Distribuzione di prova: TestFlight, Firebase App Distribution e Google Play con GitHub Actions
+
+## Android con Firebase App Distribution (scelta attuale per le prove)
+Il workflow compila un APK di rilascio e, se trova il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, **registra da solo l'app Android** (`it.apeitalia.app`) nel progetto Firebase della chiave (solo la prima volta) e la **distribuisce ai tester**. Nessun caricamento manuale.
+
+Passi una tantum del titolare (fattibili anche da browser del telefono, in modalità desktop):
+1. **console.firebase.google.com** → apri o crea il progetto (es. "APE Italia") → menu **Release & Monitor → App Distribution → Inizia**.
+2. **Impostazioni progetto → Account di servizio → Genera nuova chiave privata** (scarica un JSON).
+3. **console.cloud.google.com → IAM e amministrazione → IAM** (stesso progetto) → modifica l'account `firebase-adminsdk-…` → aggiungi i ruoli **Amministratore Firebase** e **Amministratore Firebase App Distribution**.
+4. **GitHub → Settings → Secrets and variables → Actions**:
+   - *Secrets* → `FIREBASE_SERVICE_ACCOUNT_JSON` = intero contenuto del JSON;
+   - *Variables* → `FIREBASE_TESTERS` = email dei tester separate da virgola (es. la tua).
+5. **Actions → Mobile release → Run workflow → android**. Arriva un'email di invito: dal telefono Android si installa l'app *Firebase App Tester* e poi APE Italia.
+
+Senza chiave di caricamento l'APK è firmato con la chiave di debug del progetto, sempre la stessa: va bene per i tester (gli aggiornamenti si installano sopra), non per Google Play.
+
 
 Workflow: `.github/workflows/mobile-release.yml` — **Actions → "Mobile release (TestFlight / Google Play internal)" → Run workflow** (scegli `both`, `android` o `ios`), oppure push di un tag `mobile-vX.Y.Z`.
 Il numero di build è il numero dell'esecuzione (`github.run_number`), quindi sempre crescente. Senza secret il workflow compila comunque le app (verifica), senza firmarle né caricarle.
