@@ -13,3 +13,6 @@
 - [x] Secrets scan and dependency audit — `scripts/check-secrets.mjs` + `npm audit --audit-level=critical` in CI; rischio residuo in SECURITY.md
 - [ ] PR review and MASTER_PLAN updated — *MASTER_PLAN aggiornato; review umana mancante*
 No checkboxes may be checked without evidence from executed tests.
+
+## End-to-end API (PR #18)
+- [x] Processo API compilato + PostgreSQL + JWKS remoto HTTPS: percorso completo cliente → certificatore → verbale → esportazione, audit; chiave sconosciuta 401, altro tenant 403, AI disattivata 503 — CI Run #95

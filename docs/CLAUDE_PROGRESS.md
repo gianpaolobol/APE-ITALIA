@@ -82,3 +82,7 @@ CI Run #92 su `2ee6414` (PR #16): **verde**.
 ## Iterazione 11 — PR #17 `feat/web-org-portal` (base: `feat/calculation-export`)
 Implementato: area web organizzazioni (portafoglio, dettaglio pratica, membri/inviti) sopra le API esistenti.
 Test locali: web typecheck e `next build` OK; smoke `next start` senza configurazione: `/` 200 con i due accessi, `/org` e `/org/members` 200 "Portale non configurato", `/certifier` 200, `/auth/login` 503. (Un primo tentativo aveva interrogato un processo `next-server` rimasto da un test precedente e restituito 404: processo terminato e test ripetuto.) Nessun test end-to-end con provider reale.
+CI Run #94 su `c6991a5` (PR #17): **verde**.
+
+## Iterazione 12 — PR #18 `test/api-e2e` (base: `feat/web-org-portal`)
+Test E2E sul server compilato. Non eseguibile localmente (motore Prisma non scaricabile). CI Run #95 su `7699591`: **verde**; E2E 3/3 (1,3 s), API 150 + 3 E2E, mobile 82, web 19.

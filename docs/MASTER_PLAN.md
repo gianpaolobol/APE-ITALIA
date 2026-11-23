@@ -138,3 +138,6 @@ PR #16 (impilata su #15). Documento JSON versionato `ape-italia/case-export` v1.
 
 ## 35. Portale web organizzazioni (Claude, 23/11/2026)
 PR #17 (impilata su #16). Area `/org` per privati, professionisti e agenzie: portafoglio pratiche con stato, dettaglio pratica con sopralluogo ed evidenze, gestione membri e inviti per owner/admin (codice monouso mostrato una volta). Le pratiche si creano ancora solo da app mobile. Dettagli in `docs/WEB_PORTAL.md`.
+
+## 36. Test end-to-end API in CI (Claude, 23/11/2026)
+PR #18 (impilata su #17). `services/api/e2e/full-flow.e2e.spec.ts` avvia `dist/main.js` con configurazione reale contro PostgreSQL e un JWKS remoto HTTPS (CA autofirmata) e percorre l'intero flusso su HTTP. Superato in CI Run #95. Restano da fare E2E del portale web (browser) e test su dispositivi.
