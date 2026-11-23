@@ -38,3 +38,6 @@ Corretto il controllo di nullabilità della membership nell'autenticazione e agg
 
 ## Iterazione 23/11/2026 — test database reali
 Aggiunti tre test d'integrazione PostgreSQL con due organizzazioni sintetiche: visibilità isolata degli immobili, divieto di usare un immobile di un'altra organizzazione, creazione pratica con audit. La CI è configurata con `RUN_DB_INTEGRATION=1` dopo `prisma migrate deploy`. Corretto il formato dell'enum Prisma nello schema. Questi test **non verificano il provider OIDC** (la sessione è simulata); occorrono inoltre test di autenticazione reali. Il connettore non restituisce workflow associati ai commit verificati, quindi nessun esito verde è attestato. L'ambiente container di questa sessione non riesce a raggiungere GitHub via DNS; non è stata eseguita una build locale del repository.
+
+## Iterazione CI — 23/11/2026
+Corrette le dichiarazioni Prisma generator/datasource in blocchi multilinea. Aggiunto trigger `workflow_dispatch` per avvio manuale di GitHub Actions e controllo `prisma migrate status` dopo `migrate deploy`. Il test PostgreSQL non inizializza PrismaClient quando non è abilitato. **Queste correzioni sono commit, non attestazioni di esecuzione:** nessuna CI verde o build verificata in questa sessione. Non unire la PR finché GitHub Actions non riporta esito positivo e non sono verificati i controlli di sicurezza.
