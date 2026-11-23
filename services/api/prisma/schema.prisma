@@ -23,6 +23,7 @@ model Organization {
  properties Property[]
  cases ApeCase[]
  memberships Membership[]
+ invitations Invitation[]
  createdAt DateTime @default(now())
 }
 model Property {
@@ -78,4 +79,20 @@ model Membership {
  createdAt DateTime @default(now())
  @@unique([organizationId,userSubject])
  @@index([userSubject])
+}
+
+/// One-time invitation: only the SHA-256 hash of the code is stored; the code is shown once to the issuer.
+model Invitation {
+ id String @id @default(uuid())
+ organizationId String
+ organization Organization @relation(fields: [organizationId], references: [id])
+ codeHash String @unique
+ role String
+ createdBy String
+ expiresAt DateTime
+ acceptedBy String?
+ acceptedAt DateTime?
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ @@index([organizationId])
 }

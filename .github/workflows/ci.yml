@@ -34,7 +34,12 @@ jobs:
       - run: npm run db:generate -w @ape/api
       - run: npm exec --workspace @ape/api -- prisma migrate deploy
       - run: npm exec --workspace @ape/api -- prisma migrate status
+      - name: Detect drift between schema.prisma and SQL migrations
+        run: |
+          PGPASSWORD=ci_only_password psql -h localhost -U ape -d ape_italia -c 'CREATE DATABASE ape_shadow'
+          npm exec --workspace @ape/api -- prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url postgresql://ape:ci_only_password@localhost:5432/ape_shadow --exit-code
       - run: npm run typecheck -w @ape/api
+      - run: npm run build -w @ape/api
       - run: npm run test -w @ape/api
         env:
           RUN_DB_INTEGRATION: '1'
