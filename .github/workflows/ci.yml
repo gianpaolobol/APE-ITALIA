@@ -3,6 +3,7 @@ on:
   push:
     branches: [main, feat/sprint-1-persistence]
   pull_request:
+  workflow_dispatch:
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -32,6 +33,7 @@ jobs:
       - run: npm exec --workspace @ape/api -- prisma validate
       - run: npm run db:generate -w @ape/api
       - run: npm exec --workspace @ape/api -- prisma migrate deploy
+      - run: npm exec --workspace @ape/api -- prisma migrate status
       - run: npm run typecheck -w @ape/api
       - run: npm run test -w @ape/api
         env:
