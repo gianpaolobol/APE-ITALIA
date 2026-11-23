@@ -16,3 +16,6 @@ Branch: `feat/sprint-2-mobile-api`.
 
 ## Gate
 Non inserire token nel codice o nel repository pubblico. Non utilizzare dati personali reali fino alla validazione privacy e sicurezza. La nuova API client non va considerata collegata all'interfaccia finché non viene effettivamente usata dalle schermate.
+
+## Iterazione mobile — 23/11/2026
+Schermata Expo collegata alla funzione di invio richieste e al client API, con validazione dei campi immobile, gestione degli errori e blocco invio ripetuto. **La sessione verificata restituisce volutamente null** fino all'integrazione OIDC/PKCE: pertanto la demo non effettua chiamate remote né crea pratiche reali. Aggiunti due test per validazione e mancata sessione, oltre a typecheck/test mobile in CI. Queste modifiche richiedono ancora verifica della pipeline e test sui dispositivi.
