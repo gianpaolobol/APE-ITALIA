@@ -22,3 +22,6 @@ Schermata Expo collegata alla funzione di invio richieste e al client API, con v
 
 ## CI Run #64 — correzione TypeScript
 Run 45091423666 fallita al comando `npm run typecheck -w @ape/mobile` perché la cartella mobile non conteneva `tsconfig.json`; `tsc` stampava la guida ed usciva con codice non zero. Aggiunto `apps/mobile/tsconfig.json` basato su `expo/tsconfig.base`. Correzione ancora da confermare tramite nuova CI. La sessione OIDC rimane intenzionalmente non operativa.
+
+## Iterazione trasporto API — 23/11/2026
+Aggiunti quattro test unitari del client mobile per rifiuto HTTP non cifrato, intestazioni bearer/organizzazione, gestione 401 e invio del payload immobile. Si usano fetch mock e credenziali sintetiche, nessun servizio remoto. Il commit `d9b46fb` è in attesa di esito CI; la Run #66 del commit precedente era ancora in corso all'ultima lettura. Nessun login reale attivato.
