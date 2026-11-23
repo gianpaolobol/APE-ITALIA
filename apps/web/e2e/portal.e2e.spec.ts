@@ -19,7 +19,9 @@ const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
 
 describe.skipIf(!enabled)('web portal in a real browser', () => {
  const dir = enabled ? mkdtempSync(join(tmpdir(), 'ape-web-e2e-')) : '';
- const ASSIGNMENT = randomUUID(), CASE = randomUUID();
+ const ASSIGNMENT = randomUUID(), CASE = randomUUID(), ORG_A = randomUUID(), ORG_B = randomUUID(), PROP = randomUUID();
+ const invitations: { id: string; role: string; createdBy: string; expiresAt: string; createdAt: string }[] = [];
+ const orgHeaders: string[] = [];
  const ACCESS_TOKEN = 'synthetic-access-' + randomBytes(12).toString('hex');
  const state = { accepted: false, tokenRequests: 0, pkceFailures: 0, apiAuthFailures: 0 };
  let idp: Server, api: Server, next: ChildProcess, browser: Browser, key: CryptoKey, issuer = '', apiBase = '', web = '';
@@ -73,6 +75,22 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
    if (path === `/v1/certifier/assignments/${ASSIGNMENT}/evidence`) return send(200, []);
    if (path === `/v1/certifier/assignments/${ASSIGNMENT}/inspection`) return send(200, { inspection: null });
    if (path === `/v1/certifier/assignments/${ASSIGNMENT}/extracted-fields`) return send(200, []);
+   if (path === '/v1/me') return send(200, { subject: 'synthetic-certifier', memberships: [{ organizationId: ORG_A, organizationName: 'Studio Alfa', role: 'owner' }, { organizationId: ORG_B, organizationName: 'Agenzia Beta', role: 'viewer' }] });
+   if (path.startsWith('/v1/') && !path.startsWith('/v1/certifier') && path !== '/v1/me') {
+    const org = String(req.headers['x-organization-id'] ?? '');
+    orgHeaders.push(org);
+    if (org !== ORG_A && org !== ORG_B) return send(403, {});
+    if (path === '/v1/properties') return send(200, [{ id: PROP, address: 'Via Portafoglio 3', city: 'Bologna', region: 'Emilia-Romagna', floorAreaM2: 90 }]);
+    if (path === '/v1/cases') return send(200, [{ id: CASE, propertyId: PROP, status: 'INSPECTION_SCHEDULED', createdAt: new Date().toISOString() }]);
+    if (path === '/v1/members') return send(200, [{ id: randomUUID(), userSubject: 'synthetic-certifier', role: 'owner', active: true, createdAt: new Date().toISOString() }]);
+    if (path === '/v1/invitations' && req.method === 'POST') {
+     const body = JSON.parse(await readBody(req));
+     const inv = { id: randomUUID(), role: body.role, createdBy: 'synthetic-certifier', expiresAt: new Date(Date.now() + body.ttlHours * 3600_000).toISOString(), createdAt: new Date().toISOString() };
+     invitations.push(inv);
+     return send(201, { ...inv, code: 'SYNTHETICINVITECODE' + 'x'.repeat(24) });
+    }
+    if (path === '/v1/invitations') return send(200, invitations);
+   }
    if (path === '/v1/certifier/inspection-schema') return send(200, { fields: { 'windows.glazing': { label: 'Vetro serramenti', kind: 'enum', values: ['singolo', 'doppio'] } }, statuses: ['verified', 'to_verify', 'undeterminable'], sources: ['inspection'] });
    send(404, {});
   });
@@ -102,8 +120,8 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
   await page.goto(web + '/');
   await page.getByText('Accedi come certificatore').click();
   await page.waitForURL(web + '/certifier');
-  await expect(page.getByText('Offerte (1)').isVisible()).resolves.toBe(true);
-  await expect(page.getByText('Comune Test (Emilia-Romagna)').isVisible()).resolves.toBe(true);
+  await page.getByText('Offerte (1)').waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByText('Comune Test (Emilia-Romagna)').waitFor({ state: 'visible', timeout: 15_000 });
   expect(await page.content()).not.toContain('Via Sintetica 9'); // address hidden before acceptance
 
   // Tokens: one PKCE-verified exchange, session cookie HttpOnly, nothing readable by page scripts.
@@ -118,8 +136,8 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
 
   await page.getByRole('button', { name: 'Accetta' }).click(); // Server Action
   await page.waitForURL(web + `/certifier/${ASSIGNMENT}`);
-  await expect(page.getByText('Via Sintetica 9, Comune Test').isVisible()).resolves.toBe(true);
-  await expect(page.getByText('Sopralluogo').first().isVisible()).resolves.toBe(true);
+  await page.getByText('Via Sintetica 9, Comune Test').first().waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByText('Sopralluogo').first().waitFor({ state: 'visible', timeout: 15_000 });
   expect(state.accepted).toBe(true);
 
   await page.goto(web + '/certifier');
@@ -141,6 +159,38 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
   expect(state.tokenRequests).toBe(before);
   await ctx.close();
  });
+
+ it('organization area: choose organization, portfolio, one-time invitation code', async () => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const page = await ctx.newPage();
+  await page.goto(web + '/auth/login?returnTo=/org');
+  await page.waitForURL(web + '/org');
+  await page.getByText("Scegli l'organizzazione").waitFor({ state: 'visible', timeout: 15_000 });
+  await page.locator('form', { hasText: 'Studio Alfa' }).getByRole('button', { name: 'Apri' }).click();
+  await page.waitForURL(web + '/org');
+  await page.getByText('Via Portafoglio 3, Bologna').waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByText('Sopralluogo programmato').first().waitFor({ state: 'visible', timeout: 15_000 });
+  const orgCookie = (await ctx.cookies()).find(c => c.name === '__Host-ape_org');
+  expect(orgCookie).toMatchObject({ value: ORG_A, httpOnly: true, secure: true });
+  expect(orgHeaders.every(h => h === ORG_A)).toBe(true);
+
+  await page.getByRole('link', { name: 'Membri e inviti' }).click();
+  await page.waitForURL(web + '/org/members');
+  await page.locator('select[name=role]').last().selectOption('member');
+  await page.getByRole('button', { name: 'Crea invito' }).click();
+  await page.getByText('mostrato').waitFor({ state: 'visible', timeout: 15_000 });
+  await page.locator('code', { hasText: 'SYNTHETICINVITECODE' }).waitFor({ state: 'visible', timeout: 15_000 });
+  expect(invitations).toHaveLength(1);
+  await page.reload();
+  expect(await page.content()).not.toContain('SYNTHETICINVITECODE'); // shown once, never persisted by the portal
+  await page.getByText('Inviti in attesa (1)').waitFor({ state: 'visible', timeout: 15_000 });
+
+  // A forged preference for an organization the user does not belong to is ignored.
+  await ctx.addCookies([{ name: '__Host-ape_org', value: randomUUID(), domain: 'localhost', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+  await page.goto(web + '/org');
+  await page.getByText("Scegli l'organizzazione").waitFor({ state: 'visible', timeout: 15_000 });
+  await ctx.close();
+ }, 60_000);
 
  it('serves security headers on pages', async () => {
   const res = await fetch(web + '/');
