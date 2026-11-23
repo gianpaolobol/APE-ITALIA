@@ -1,0 +1,32 @@
+name: TestFlight internal testers
+
+# Makes the latest uploaded iOS build installable via TestFlight for the account holder
+# (internal group "Interni"). Runs automatically after "Mobile release"; can also be started by hand.
+on:
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Mobile release (TestFlight / Firebase App Distribution / Google Play)"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+jobs:
+  testers:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      HAS_ASC: ${{ (secrets.ASC_KEY_P8 != '' || secrets.ASC_KEY_P8_BASE64 != '') && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure TestFlight
+        if: env.HAS_ASC == 'true'
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          pip install --quiet 'pyjwt[crypto]==2.10.1'
+          python3 scripts/release/testflight_internal.py
