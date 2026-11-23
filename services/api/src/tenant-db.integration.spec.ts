@@ -6,7 +6,7 @@ import type { AuthService } from './auth.service';
 
 const enabled = process.env.RUN_DB_INTEGRATION === '1';
 describe.skipIf(!enabled)('PostgreSQL tenant isolation integration',()=>{
- const db = new PrismaClient();
+ const db = enabled ? new PrismaClient() : (null as unknown as PrismaClient);
  const a=randomUUID(), b=randomUUID(), propertyA=randomUUID(), propertyB=randomUUID();
  const subject='integration-test-subject';
  const auth={authorize:async (_token?:string,organizationId?:string)=>{
