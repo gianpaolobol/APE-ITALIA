@@ -38,4 +38,5 @@ jobs:
       - run: npm run test -w @ape/api
         env:
           RUN_DB_INTEGRATION: '1'
+      - run: npm ls react react-dom next --all || true
       - run: npm run build -w @ape/web
