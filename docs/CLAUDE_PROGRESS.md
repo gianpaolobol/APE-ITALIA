@@ -158,3 +158,6 @@ CI Run #107 su `789e14e` (PR #24): **verde**.
 
 ## Iterazione 19 — PR #25 `test/web-org-e2e` (base: `feat/worker`)
 E2E browser esteso all'area organizzazioni (4/4 test, eseguito 3 volte consecutive senza errori). Sincronizzazione corretta con `waitFor` al posto di `isVisible`.
+
+## Iterazione 20 — PR #26 `feat/mobile-certificate-download` (base: `test/web-org-e2e`)
+Download APE su dispositivo (`expo-file-system` `File.downloadFileAsync` con intestazioni, `expo-sharing`). Test locali: mobile typecheck, 87 test, bundle Android/iOS. Evitato il conflitto Metro `.native.ts`.

@@ -1,5 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { ActivityIndicator, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { ActivityIndicator, Alert, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { downloadCertificate } from '../certificate-download';
+import { nativeDownload, nativeShare } from '../certificate-download-native';
 import type { ApeApi } from '../api';
 import { PROGRESS, loadCaseSummaries, type CaseSummary } from '../cases';
 import { EvidenceRequestPanel } from './EvidenceRequestPanel';
@@ -29,7 +31,13 @@ export function CaseList({ api }: { api: ApeApi | null }) {
    {c.openEvidenceRequests > 0 ? (open === c.id
     ? <EvidenceRequestPanel api={api} caseId={c.id} onDone={() => { setOpen(null); load(); }} />
     : <TouchableOpacity accessibilityRole="button" onPress={() => setOpen(c.id)}><Text style={st.link}>Il certificatore ha richiesto integrazioni: carica i documenti</Text></TouchableOpacity>) : null}
-   {c.certificate ? <Text style={st.small}>APE n. {c.certificate.regionalId}, depositato il {fmt(c.certificate.depositedAt)}. Scaricalo dal portale web nell'area della tua organizzazione.</Text> : null}
+   {c.certificate ? <>
+    <Text style={st.small}>APE n. {c.certificate.regionalId}, depositato il {fmt(c.certificate.depositedAt)}.</Text>
+    <TouchableOpacity accessibilityRole="button" onPress={async () => {
+     try { await downloadCertificate(api.currentSession, c.id, { download: nativeDownload, share: nativeShare }); load(); }
+     catch { Alert.alert('Download non riuscito', 'Riprova o scarica l\'APE dal portale web.'); }
+    }}><Text style={st.link}>Scarica l'APE (PDF)</Text></TouchableOpacity>
+   </> : null}
   </View>)}
   <TouchableOpacity accessibilityRole="button" onPress={load}><Text style={st.link}>Aggiorna</Text></TouchableOpacity>
  </View>;

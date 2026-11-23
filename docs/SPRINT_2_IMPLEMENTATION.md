@@ -38,3 +38,6 @@ Aggiunti due test con fetch simulato: creazione immobile seguita dalla creazione
 
 ## Iterazione Claude 23/11 — "Le mie pratiche" nell'app
 Scheda "Le mie pratiche" (dopo l'accesso): per ogni pratica indirizzo, stato in italiano, barra di avanzamento (bozza → consegna), data e certificatore del sopralluogo, estremi dell'APE depositato. Dati da un'unica chiamata `GET /v1/case-summaries` (nessun N+1). Il download dell'APE avviene dal portale web; il download sul dispositivo richiede `expo-file-system`/condivisione e test su dispositivo, non ancora fatti.
+
+## Iterazione Claude 23/11 — download dell'APE nell'app
+Nella scheda pratiche, "Scarica l'APE (PDF)": scaricamento con le stesse intestazioni della sessione verificata nella cache privata dell'app (`expo-file-system`, non la galleria condivisa) e apertura del foglio di condivisione/anteprima (`expo-sharing`). Il primo download segna la consegna. Logica testata (3 test); adattatori nativi verificati solo da typecheck e bundle. Nota tecnica: i file con suffisso `.native.ts` vengono preferiti da Metro rispetto a `.ts` omonimi, perciò l'adattatore si chiama `certificate-download-native.ts`.

@@ -159,3 +159,6 @@ PR #23 (impilata su #22). E2E in Chrome reale del login BFF con provider OIDC fi
 
 ## 42. Worker per attività periodiche (Claude, 23/11/2026)
 PR #24 (impilata su #23). Processo `dist/worker.js` con pianificazione senza sovrapposizioni per scadenza offerte e conservazione (simulazione salvo `RETENTION_APPLY=1`), lock consultivi PostgreSQL per istanze multiple, log senza dati personali. Sostituisce l'esecuzione manuale dei comandi CLI; una coda dedicata resta un'evoluzione possibile.
+
+## 43. Download dell'APE nell'app (Claude, 23/11/2026)
+PR #26 (impilata su #25). Il cliente scarica l'APE consegnato nella cache privata dell'app e lo apre con il foglio di sistema. Non verificato su dispositivo.

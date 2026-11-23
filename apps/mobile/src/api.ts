@@ -10,6 +10,8 @@ export class ApiError extends Error { constructor(public status: number, message
 const UPLOAD_ERRORS:Record<number,string>={401:'Sessione non valida',403:'Accesso negato o consenso mancante',404:'Pratica non trovata',409:'File già caricato o pratica chiusa',413:'File troppo grande',415:'Formato non accettato',422:'File non valido',503:'Archivio documenti non disponibile'};
 export class ApeApi {
  constructor(private readonly session: ApiSession) {}
+ /** Exposed for native download adapters that need the same verified session. */
+ get currentSession(): ApiSession { return this.session; }
  private async request<T>(path: string, method: 'GET'|'POST'='GET', body?: unknown): Promise<T> {
   const {apiBaseUrl,accessToken,organizationId}=this.session;
   if (!/^https:\/\//.test(apiBaseUrl)) throw new Error('HTTPS API required');
