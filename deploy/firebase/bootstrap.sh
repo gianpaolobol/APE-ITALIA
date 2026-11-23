@@ -59,7 +59,7 @@ log "tester group 'interni' ready"
 
 SA_NAME=github-app-distribution
 SA="$SA_NAME@$PROJECT.iam.gserviceaccount.com"
-gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 || gcloud iam service-accounts create "$SA_NAME" --display-name="GitHub Actions - App Distribution" --quiet
+gcloud iam service-accounts describe "$SA" --project "$PROJECT" >/dev/null 2>&1 || gcloud iam service-accounts create "$SA_NAME" --project "$PROJECT" --display-name="GitHub Actions - App Distribution" --quiet
 for i in $(seq 1 10); do gcloud iam service-accounts describe "$SA" >/dev/null 2>&1 && break; sleep 3; done
 gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$SA" --role=roles/firebaseappdistro.admin --condition=None --quiet >/dev/null
 
@@ -70,8 +70,17 @@ gcloud iam workload-identity-pools providers describe ape-italia --location=glob
     --display-name="APE Italia repository" --issuer-uri="https://token.actions.githubusercontent.com" \
     --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" \
     --attribute-condition="assertion.repository=='$REPO'" --quiet
-gcloud iam service-accounts add-iam-policy-binding "$SA" --role=roles/iam.workloadIdentityUser \
-  --member="principalSet://iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/github/attribute.repository/$REPO" --quiet >/dev/null
+# A freshly created service account can take a minute or two before its IAM policy is writable.
+ok=
+for i in $(seq 1 24); do
+  if gcloud iam service-accounts add-iam-policy-binding "$SA" --project "$PROJECT" --role=roles/iam.workloadIdentityUser \
+      --member="principalSet://iam.googleapis.com/projects/$NUM/locations/global/workloadIdentityPools/github/attribute.repository/$REPO" --quiet >/dev/null 2>"$RUNNER_TEMP/sa-bind.err"; then
+    ok=1; break
+  fi
+  log "service account IAM not ready yet (attempt $i), retrying in 10s"; sleep 10
+done
+[ -n "$ok" ] || { cat "$RUNNER_TEMP/sa-bind.err" >&2; exit 1; }
+log "keyless access bound to $REPO"
 
 jq -n --arg project "$PROJECT" --arg number "$NUM" --arg app "$APP_ID" --arg sa "$SA" \
   --arg provider "projects/$NUM/locations/global/workloadIdentityPools/github/providers/ape-italia" \
