@@ -86,3 +86,5 @@ Un secondo agente ha ricontrollato le fonti. **Confermati:** gratuità delle con
 3. *Precisioni:* "0 € online" ha un'eccezione (5 € per i documenti nati cartacei); la gratuità della planimetria via Sister è dedotta e non scritta; il servizio gratuito vale solo per chi risulta intestatario in catasto (non per un erede senza voltura).
 
 **Decisione adottata nell'app:** prezzo unico regionale 14,90 € IVA inclusa per visura + planimetria, rimborsato per intero se la planimetria non è reperibile; opzione gratuita "La scarico io" per gli intestatari con SPID/CIE.
+
+**Aggiornamento (23/11/2026, decisione del titolare):** niente API a credito prepagato per ora: il fornitore API richiede di caricare credito in anticipo. Il recupero di visura e planimetria lo fa il certificatore incaricato (con la delega e il documento raccolti dall'app, o via Sister con l'incarico) e costa al cliente **29 €**, che remunerano il suo tempo. Resta l'opzione gratuita con SPID/CIE per gli intestatari. L'integrazione API (Openapi, 6,90 € + IVA a richiesta) si valuterà quando i volumi giustificano il credito anticipato.

@@ -14,8 +14,8 @@ describe('regional price list', () => {
  });
 });
 describe('cadastral retrieval', () => {
- it('adds 14,90 € only when the platform retrieves the plan', () => {
-  expect(quote({ propertyType: 'appartamento', floorArea: 90, hasPlan: 'no' })!.total).toBe(233.9);
+ it('adds 29 € only when the platform retrieves the plan', () => {
+  expect(quote({ propertyType: 'appartamento', floorArea: 90, hasPlan: 'no' })!.total).toBe(248);
   expect(quote({ propertyType: 'appartamento', floorArea: 90, hasPlan: 'spid' })!.total).toBe(219);
  });
 });

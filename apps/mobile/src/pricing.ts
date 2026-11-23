@@ -18,7 +18,7 @@ export const PRICE_LIST = {
  houseExtraPer100m2: 50,
  urgent: 49,
  /** Visura + planimetria retrieved by the certifier when the owner has no floor plan (see docs/research/VISURA_CATASTALE_ER.md). */
- cadastralRetrieval: 14.9,
+ cadastralRetrieval: 29,
  /** Platform fee on the taxable amount; the 15 € regional SACE fee always goes to the certifier. */
  platformShare: 0.15,
  regionalFee: 15,
@@ -41,7 +41,7 @@ export function quote(a: Answers): Quote | null {
  const items: Quote['items'] = [{ label: `${tier.label} · sopralluogo, APE e deposito SACE`, amount: tier.price }];
  const area = typeof a.floorArea === 'number' ? a.floorArea : 0;
  if (tier.id === 'house' && area > 250) items.push({ label: 'Superficie oltre 250 m²', amount: Math.ceil((area - 250) / 100) * PRICE_LIST.houseExtraPer100m2 });
- if (a.hasPlan === 'no') items.push({ label: 'Recupero visura e planimetria catastale', amount: PRICE_LIST.cadastralRetrieval });
+ if (a.hasPlan === 'no') items.push({ label: 'Visura e planimetria recuperate dal certificatore', amount: PRICE_LIST.cadastralRetrieval });
  if (a.urgency === 'urgente') items.push({ label: 'Consegna urgente (48 ore dal sopralluogo)', amount: PRICE_LIST.urgent });
  const total = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
  const taxable = (total - PRICE_LIST.regionalFee) / 1.22;
