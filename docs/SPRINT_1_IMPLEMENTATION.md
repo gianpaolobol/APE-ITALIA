@@ -29,3 +29,6 @@ Branch: `feat/sprint-1-persistence` · PR #4 (draft)
 
 ## Iterazione sicurezza e QA — 23/11/2026
 Aggiunta policy di isolamento tenant e autorizzazione scrittura per ruoli owner/admin/member; viewer in sola lettura. Sei test unitari Vitest definiti per membership, revoca e ruoli; workflow CI configurato per eseguirli. **Non ancora eseguiti con esito verificato**: nessun risultato CI disponibile all'ultimo controllo. La sola policy applicativa non sostituisce test di integrazione su database reale.
+
+## Iterazione migrazioni e CI — 23/11/2026
+Aggiunta migrazione SQL iniziale `20261123010000_init/migration.sql` (redatta manualmente da schema Prisma; **da confrontare con Prisma migrate diff**). La pipeline GitHub Actions avvia PostgreSQL 16, valida schema Prisma, genera client, applica migrazione, esegue typecheck API, test unitari e build web. Alla verifica del commit `3acda4c` non risultavano workflow PR restituiti dal connettore: **nessun test di CI attestato**. Non eseguire merge prima di confermare tutti i gate, verificare compatibilità Prisma e correggere gli eventuali errori.
