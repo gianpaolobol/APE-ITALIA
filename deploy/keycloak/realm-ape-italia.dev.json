@@ -14,7 +14,10 @@
   "revokeRefreshToken": true,
   "refreshTokenMaxReuse": 0,
   "internationalizationEnabled": true,
-  "supportedLocales": ["it", "en"],
+  "supportedLocales": [
+    "it",
+    "en"
+  ],
   "defaultLocale": "it",
   "clients": [
     {
@@ -25,12 +28,37 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["apeitalia://auth/callback"],
+      "redirectUris": [
+        "apeitalia://auth/callback"
+      ],
       "webOrigins": [],
-      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "apeitalia://auth/logout" },
-      "optionalClientScopes": ["offline_access"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "apeitalia://auth/logout"
+      },
+      "optionalClientScopes": [
+        "offline_access"
+      ],
       "protocolMappers": [
-        { "name": "api-audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper", "config": { "included.custom.audience": "ape-italia-api", "access.token.claim": "true", "id.token.claim": "false", "introspection.token.claim": "true" } }
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "ape-italia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "basic",
+        "profile",
+        "email",
+        "roles"
       ]
     },
     {
@@ -41,12 +69,36 @@
       "implicitFlowEnabled": false,
       "directAccessGrantsEnabled": false,
       "serviceAccountsEnabled": false,
-      "redirectUris": ["http://localhost:3300/auth/callback"],
+      "redirectUris": [
+        "http://localhost:3300/auth/callback"
+      ],
       "webOrigins": [],
-      "attributes": { "pkce.code.challenge.method": "S256" },
-      "optionalClientScopes": ["offline_access"],
+      "attributes": {
+        "pkce.code.challenge.method": "S256"
+      },
+      "optionalClientScopes": [
+        "offline_access"
+      ],
       "protocolMappers": [
-        { "name": "api-audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper", "config": { "included.custom.audience": "ape-italia-api", "access.token.claim": "true", "id.token.claim": "false", "introspection.token.claim": "true" } }
+        {
+          "name": "api-audience",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.custom.audience": "ape-italia-api",
+            "access.token.claim": "true",
+            "id.token.claim": "false",
+            "introspection.token.claim": "true"
+          }
+        }
+      ],
+      "defaultClientScopes": [
+        "web-origins",
+        "acr",
+        "basic",
+        "profile",
+        "email",
+        "roles"
       ]
     }
   ]
