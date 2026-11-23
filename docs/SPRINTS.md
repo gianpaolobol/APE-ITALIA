@@ -17,10 +17,10 @@
 - [ ] Test di integrazione e controlli sicurezza
 
 ## Sprint 2: interfacce
-- [ ] Richiesta privati in 5 step
+- [x] Richiesta privati in 5 step (bozza, evidenze, invio; non testata su dispositivo)
 - [x] Portafoglio professionisti (web: pratiche, stati, membri, inviti; creazione pratiche via web da fare)
 - [x] Dashboard certificatori web (offerte/incarichi/evidenze; sopralluogo e verbale da fare)
-- [ ] Sincronizzazione stati
+- [x] Sincronizzazione stati (app: scheda pratiche; web: area organizzazioni; aggiornamento manuale, nessuna notifica push)
 
 ## Sprint 3: AI documentale
 - [ ] OCR targhette e documenti

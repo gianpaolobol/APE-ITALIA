@@ -144,3 +144,6 @@ PR #18 (impilata su #17). `services/api/e2e/full-flow.e2e.spec.ts` avvia `dist/m
 
 ## 37. Caricamento e consegna dell'APE depositato (Claude, 23/11/2026)
 PR #19 (impilata su #18). Il certificatore carica il PDF dell'APE firmato e depositato con l'identificativo regionale e la data di deposito (dichiarazione obbligatoria); la pratica passa a `DEPOSITED`; il primo download del cliente la porta a `DELIVERED`. Nessuna generazione o deposito automatico. Coperto dal test E2E. Dettagli in `docs/CERTIFIER_WORKFLOW.md`.
+
+## 38. Stato pratiche nell'app mobile (Claude, 23/11/2026)
+PR #20 (impilata su #19). Nuova scheda "Le mie pratiche" con stato e avanzamento, sopralluogo ed estremi dell'APE; endpoint aggregato `GET /v1/case-summaries` (verificato nell'E2E). Download dell'APE sul dispositivo non ancora implementato.

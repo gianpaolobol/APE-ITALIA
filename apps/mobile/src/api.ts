@@ -2,6 +2,7 @@ export type PropertyInput = { address: string; city: string; region: string; flo
 export type PropertyRecord = PropertyInput & { id: string; organizationId: string; createdAt: string };
 export type CaseRecord = { id: string; propertyId: string; organizationId: string; status: string; createdAt: string };
 import type { EvidenceKind, EvidenceRecord, PickedFile } from './evidence';
+import type { CaseSummaryRecord } from './cases';
 export type ApiSession = { apiBaseUrl: string; accessToken: string; organizationId: string };
 export type MembershipInfo = { organizationId: string; organizationName: string; role: string };
 export type MeResponse = { subject: string; memberships: MembershipInfo[] };
@@ -30,6 +31,7 @@ export class ApeApi {
  listCases(){return this.request<CaseRecord[]>('cases');}
  createCase(propertyId:string){return this.request<CaseRecord>('cases','POST',{propertyId});}
  submitCase(caseId:string){return this.request<CaseRecord>('cases/'+encodeURIComponent(caseId)+'/submit','POST',{});}
+ caseSummaries(){return this.request<CaseSummaryRecord[]>('case-summaries');}
  getNotices(){return this.request<{evidence_processing:string}>('notices');}
  giveConsent(caseId:string,version:string){return this.request<{id:string}>('cases/'+encodeURIComponent(caseId)+'/consents','POST',{kind:'evidence_processing',version});}
  listEvidence(caseId:string){return this.request<EvidenceRecord[]>('cases/'+encodeURIComponent(caseId)+'/evidence');}

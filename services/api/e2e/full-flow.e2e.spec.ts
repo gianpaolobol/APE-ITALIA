@@ -145,6 +145,9 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
   expect((await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }))).caseStatus).toBe('DELIVERED');
 
+  const summaries = await json(await call(customer, '/v1/case-summaries', { org: true }));
+  expect(summaries[0]).toMatchObject({ id: apeCase.id, status: 'DELIVERED', property: { city: 'Comune E2E' }, inspection: { status: 'DONE', certifierName: 'E2E Cert' }, certificate: { regionalId: 'SYNTH-ER-0001' } });
+
   // AI extraction stays disabled in this build.
   expect((await call(certSub, `/v1/certifier/assignments/${offer.id}/evidence/${files[0].id}/extract`, { method: 'POST' })).status).toBe(503);
 

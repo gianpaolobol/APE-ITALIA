@@ -83,4 +83,22 @@ export class CasesController {
   const insp=await this.db.inspection.findFirst({where:{caseId:id,organizationId:s.organizationId,status:{not:'CANCELLED'}},include:{assignment:{include:{certifier:{select:{displayName:true}}}}},orderBy:{createdAt:'desc'}});
   return {caseStatus:c.status,inspection:insp?{status:insp.status,scheduledAt:insp.scheduledAt,performedAt:insp.performedAt,certifierName:insp.assignment.certifier.displayName}:null};
  }
+ /** One query for the customer's case list: property, live status, inspection date and certificate presence. */
+ @Get('case-summaries')
+ async caseSummaries(@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  const rows=await this.db.apeCase.findMany({
+   where:{organizationId:s.organizationId},orderBy:{createdAt:'desc'},take:100,
+   include:{
+    property:{select:{address:true,city:true,region:true}},
+    inspections:{where:{status:{not:'CANCELLED'}},orderBy:{createdAt:'desc'},take:1,include:{assignment:{include:{certifier:{select:{displayName:true}}}}}},
+    certificate:{select:{regionalId:true,depositedAt:true,deliveredAt:true}},
+   },
+  });
+  return rows.map(c=>({
+   id:c.id,status:c.status,createdAt:c.createdAt,property:c.property,
+   inspection:c.inspections[0]?{status:c.inspections[0].status,scheduledAt:c.inspections[0].scheduledAt,performedAt:c.inspections[0].performedAt,certifierName:c.inspections[0].assignment.certifier.displayName}:null,
+   certificate:c.certificate,
+  }));
+ }
 }

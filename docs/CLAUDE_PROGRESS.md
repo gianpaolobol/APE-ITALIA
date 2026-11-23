@@ -91,3 +91,7 @@ Test E2E sul server compilato. Non eseguibile localmente (motore Prisma non scar
 Implementato: modello `Certificate`, caricamento APE (certificatore), metadati e download con consegna (cliente), moduli nel portale, limite Server Actions 16 MB. E2E esteso (409 prima del verbale, 415 non-PDF, 409 doppio caricamento, consegna ⇒ `DELIVERED`).
 Test locali: API typecheck OK, 105 + 48 saltati; web typecheck e build OK. Esito E2E: vedi CI.
 CI Run #97 su `6e9a453` (PR #19): **verde**; E2E 3/3 inclusa consegna APE.
+
+## Iterazione 14 — PR #20 `feat/mobile-case-status` (base: `feat/certificate-delivery`)
+Implementato: `GET /v1/case-summaries`, scheda "Le mie pratiche" nell'app con avanzamento. E2E esteso.
+Test locali: API typecheck OK; mobile typecheck, 84 test, bundle Android/iOS OK.

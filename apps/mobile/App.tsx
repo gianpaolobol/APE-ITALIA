@@ -8,6 +8,7 @@ import { AuthError } from './src/auth/oidc';
 import { ApeApi, ApiError, type ApiSession, type MembershipInfo } from './src/api';
 import { STEP_EVIDENCE, type EvidenceRecord } from './src/evidence';
 import { EvidenceStep } from './src/ui/EvidenceStep';
+import { CaseList } from './src/ui/CaseList';
 
 type Role = 'privato' | 'professionista';
 export default function App() {
@@ -29,6 +30,7 @@ export default function App() {
  const [consentVersion,setConsentVersion]=useState<string|undefined>();
  const [consented,setConsented]=useState(false);
  const [evidence,setEvidence]=useState<EvidenceRecord[]>([]);
+ const [view,setView]=useState<'new'|'cases'>('new');
  const input={address:address.trim(),city:city.trim(),region:region.trim(),...(area.trim()?{floorAreaM2:Number(area.replace(',','.'))}:{})};
 
  /** Builds a fresh API client from the current verified session (tokens are refreshed transparently). */
@@ -114,6 +116,8 @@ export default function App() {
   {!oidcClient?<Text style={s.body}>Accesso non configurato in questa build (modalità dimostrativa senza invio dati).</Text>:
    <View style={s.row}><TouchableOpacity accessibilityRole="button" disabled={authBusy} onPress={signedIn?logout:login} style={[s.tab,s.active]}><Text style={s.white}>{authBusy?'Attendere':signedIn?'Esci':'Accedi'}</Text></TouchableOpacity></View>}
   {signedIn&&memberships.length>1&&!caseId?<View style={s.row}>{memberships.map(m=><TouchableOpacity key={m.organizationId} accessibilityRole="button" onPress={()=>setOrgId(m.organizationId)} style={[s.tab,orgId===m.organizationId&&s.active]}><Text style={orgId===m.organizationId?s.white:s.dark}>{m.organizationName}</Text></TouchableOpacity>)}</View>:null}
+  {signedIn?<View style={s.row}>{([['new','Nuova richiesta'],['cases','Le mie pratiche']] as const).map(([k,l])=><TouchableOpacity key={k} accessibilityRole="button" onPress={()=>{setView(k);if(k==='cases')freshApi().catch(()=>setApi(null));}} style={[s.tab,view===k&&s.active]}><Text style={view===k?s.white:s.dark}>{l}</Text></TouchableOpacity>)}</View>:null}
+  {view==='cases'&&signedIn?<CaseList api={api}/>:<>
   <View style={s.row}>{(['privato','professionista'] as Role[]).map(r=><TouchableOpacity key={r} accessibilityRole="button" onPress={()=>setRole(r)} style={[s.tab,role===r&&s.active]}><Text style={role===r?s.white:s.dark}>{r==='privato'?'Privati':'Professionisti'}</Text></TouchableOpacity>)}</View>
   <Text style={s.heading}>{STEP_LABELS[current]} · {step+1}/{REQUEST_STEPS.length}</Text>
   {step===0?<>
@@ -129,6 +133,7 @@ export default function App() {
    <TouchableOpacity accessibilityRole="button" disabled={busy||submitted} onPress={step===REQUEST_STEPS.length-1?submit:advance} style={[s.tab,s.active]}><Text style={s.white}>{busy?'Attendere':step===REQUEST_STEPS.length-1?(submitted?'Inviata':'Invia richiesta'):step===0&&signedIn&&!caseId?'Crea bozza':'Avanti'}</Text></TouchableOpacity>
   </View>
   {result?<Text style={s.body}>{result}</Text>:null}
+  </>}
   <Text style={s.foot}>Le credenziali di sessione sono custodite nell'archivio sicuro del dispositivo. Le foto vengono inviate cifrate in transito e conservate cifrate.</Text>
  </ScrollView></SafeAreaView>;
 }

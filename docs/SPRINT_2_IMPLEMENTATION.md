@@ -35,3 +35,6 @@ Aggiunti due test con fetch simulato: creazione immobile seguita dalla creazione
 - Passo 5: "Invia richiesta" porta la pratica da `DRAFT` a `SUBMITTED` (`POST /v1/cases/:id/submit`, auditato).
 - Permessi fotocamera/galleria dichiarati in `app.json` (plugin `expo-image-picker`), EXIF non richiesto al picker.
 - **Non verificato su dispositivo**: solo typecheck, 82 test unitari e bundle Hermes Android/iOS.
+
+## Iterazione Claude 23/11 — "Le mie pratiche" nell'app
+Scheda "Le mie pratiche" (dopo l'accesso): per ogni pratica indirizzo, stato in italiano, barra di avanzamento (bozza → consegna), data e certificatore del sopralluogo, estremi dell'APE depositato. Dati da un'unica chiamata `GET /v1/case-summaries` (nessun N+1). Il download dell'APE avviene dal portale web; il download sul dispositivo richiede `expo-file-system`/condivisione e test su dispositivo, non ancora fatti.
