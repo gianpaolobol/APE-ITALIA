@@ -34,4 +34,6 @@ jobs:
       - run: npm exec --workspace @ape/api -- prisma migrate deploy
       - run: npm run typecheck -w @ape/api
       - run: npm run test -w @ape/api
+        env:
+          RUN_DB_INTEGRATION: '1'
       - run: npm run build -w @ape/web
