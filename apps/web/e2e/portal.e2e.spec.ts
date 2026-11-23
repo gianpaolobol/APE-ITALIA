@@ -160,8 +160,10 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
   await page.getByRole('button', { name: 'Esci' }).click();
   await page.waitForURL(web + '/');
   expect((await ctx.cookies()).find(c => c.name === '__Host-ape_session')).toBeUndefined();
-  await page.goto(web + '/certifier');
-  await page.waitForURL(u => u.toString().startsWith(issuer) || u.toString().startsWith(web + '/certifier'));
+  // Without a session the protected page redirects to login (checked without following redirects).
+  const after = await ctx.request.get(web + '/certifier', { maxRedirects: 0 });
+  expect([303, 307]).toContain(after.status());
+  expect(after.headers()['location']).toContain('/auth/login');
   await ctx.close();
  }, 60_000);
 
