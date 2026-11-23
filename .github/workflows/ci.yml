@@ -6,15 +6,32 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ape
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: ape_italia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ape -d ape_italia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ape:ci_only_password@localhost:5432/ape_italia?schema=public
+      NEXT_TELEMETRY_DISABLED: '1'
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
       - run: npm install --no-audit --no-fund
+      - run: npm exec --workspace @ape/api -- prisma validate
       - run: npm run db:generate -w @ape/api
+      - run: npm exec --workspace @ape/api -- prisma migrate deploy
       - run: npm run typecheck -w @ape/api
       - run: npm run test -w @ape/api
       - run: npm run build -w @ape/web
-        env:
-          NEXT_TELEMETRY_DISABLED: '1'
