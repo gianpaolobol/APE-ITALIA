@@ -27,4 +27,6 @@ Node.js 22+ e npm: `npm install`; `npm run mobile`, `npm run web` o `npm run api
 
 ## Diritti
 
+> **Copyright © 2026 Gian Paolo Franceschini** — Tutti i diritti riservati esclusivamente sui contributi originali di sua legittima titolarità, fatti salvi i diritti di terzi, le licenze applicabili e le concessioni preesistenti. Vedi [RIGHTS_NOTICE.md](RIGHTS_NOTICE.md) e [NOTICE](NOTICE).
+
 Repository pubblico, codice proprietario. Consultare [NOTICE](NOTICE). Nessuna licenza open source concessa. Non caricare dati personali, segreti o immagini di immobili reali.
