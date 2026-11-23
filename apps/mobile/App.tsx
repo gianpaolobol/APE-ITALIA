@@ -9,9 +9,11 @@ import { ResultScreen } from './src/ui/ResultScreen';
 import { ProScreen } from './src/ui/ProScreen';
 import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
+import { RemoteCertifier } from './src/ui/RemoteCertifier';
+import { logout } from './src/server';
 import { deleteMedia, deletePhotoFile, loadState, newDraft, persistPhoto, saveState, type AppState, type Draft } from './src/survey/drafts';
 
-type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string };
+type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
 export default function App() {
  const [state, setState] = useState<AppState | null>(null);
@@ -67,7 +69,9 @@ export default function App() {
   screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
    onDelete={() => { deleteMedia(d.id); update(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== d.id) })); setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
-  screen = <ProScreen state={state} onBack={() => setRoute({ name: 'home' })} onSaved={pro => update(s => ({ ...s, pro }))} onInbox={() => setRoute({ name: 'inbox' })} />;
+  screen = <ProScreen state={state} onBack={() => setRoute({ name: 'home' })} onSaved={pro => update(s => ({ ...s, pro }))} onInbox={() => setRoute({ name: 'inbox' })} onRemote={me => setRoute({ name: 'remote', me })} />;
+ } else if (route.name === 'remote') {
+  screen = <RemoteCertifier me={route.me} onBack={() => setRoute({ name: 'pro' })} onLogout={() => { logout().finally(() => setRoute({ name: 'home' })); }} />;
  } else if (route.name === 'inbox' && state.pro) {
   screen = <InboxScreen state={state} onBack={() => setRoute({ name: 'pro' })} onOpen={d => setRoute({ name: 'job', id: d.id })} />;
  } else if (route.name === 'job' && state.pro && draft(route.id)) {

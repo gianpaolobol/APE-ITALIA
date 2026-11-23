@@ -10,6 +10,7 @@ export const MATCHING_ACTOR = 'system:matching';
  */
 export async function offerNext(tx: Tx, caseId: string, now = new Date()): Promise<string | null> {
  const apeCase = await tx.apeCase.findUniqueOrThrow({ where: { id: caseId }, include: { property: { select: { region: true } } } });
+ const province = (apeCase.survey as { answers?: { province?: unknown } } | null)?.answers?.province;
  const [members, previous, certifiers] = await Promise.all([
   tx.membership.findMany({ where: { organizationId: apeCase.organizationId }, select: { userSubject: true } }),
   tx.assignment.findMany({ where: { caseId }, select: { certifierId: true } }),
@@ -21,7 +22,9 @@ export async function offerNext(tx: Tx, caseId: string, now = new Date()): Promi
   _count: { _all: true },
  });
  const loadBy = new Map(load.map(l => [l.certifierId, l._count._all]));
- const candidates: Candidate[] = certifiers.map(c => ({ ...c, activeAssignments: loadBy.get(c.id) ?? 0 }));
+ // Province filter: certifiers who declared provinces only receive requests from those provinces.
+ const inArea = certifiers.filter(c => typeof province !== 'string' || !c.provinces?.length || c.provinces.includes(province));
+ const candidates: Candidate[] = inArea.map(c => ({ ...c, activeAssignments: loadBy.get(c.id) ?? 0 }));
  const [best] = rankCandidates(candidates, {
   region: apeCase.property.region,
   requesterSubjects: new Set(members.map(m => m.userSubject)),

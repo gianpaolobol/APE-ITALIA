@@ -15,10 +15,17 @@ import { APE_CODE, VERBALE_CHECKS, canDeliver, dossier, fmtWhen, newCallUrl, ver
 import { pickDocument } from '../pickers';
 import { persistPhoto, type Draft } from '../survey/drafts';
 import type { ProRegistration } from '../pro/registration';
+import { KIND_LABELS } from '../evidence';
 
-type Props = { draft: Draft; pro: ProRegistration; onBack: () => void; onUpdate: (fn: (d: Draft) => Draft) => void };
+/** Actions on a job: local (demo on this phone) or remote (server). Each returns when persisted. */
+export type JobOps = {
+ accept(): Promise<void>; decline(): Promise<void>; call(at: string): Promise<void>; visit(at: string): Promise<void>;
+ verbale(v: Verbale): Promise<void>; deliver(code: string, cls: string, pdf: { uri: string; name: string; mimeType: string }): Promise<void>;
+ videoUri?(uri: string): Promise<string>;
+};
+type Props = { draft: Draft; pro: ProRegistration; onBack: () => void; onUpdate: (fn: (d: Draft) => Draft) => void; ops?: JobOps; remote?: boolean };
 
-export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
+export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote }: Props) {
  const insets = useSafeAreaInsets();
  const a = draft.answers;
  const job = draft.job;
@@ -37,8 +44,26 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
  const [player, setPlayer] = useState<PhotoRef | null>(null);
  const setJob = (fn: (j: Job) => Job) => onUpdate(d => ({ ...d, job: fn(d.job ?? { status: 'nuova', certifier: { name: `${pro.firstName} ${pro.lastName}`, sace: pro.saceNumber } }) }));
 
- const accept = () => setJob(j => ({ ...j, status: 'accettata', acceptedAt: new Date().toISOString(), certifier: { name: `${pro.firstName} ${pro.lastName}`, sace: pro.saceNumber } }));
- const decline = () => Alert.alert('Rifiutare l’incarico?', 'La richiesta verrà proposta a un altro certificatore della zona.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Rifiuta', style: 'destructive', onPress: () => { setJob(j => ({ ...j, status: 'rifiutata' })); onBack(); } }]);
+ const localOps: JobOps = {
+  accept: async () => setJob(j => ({ ...j, status: 'accettata', acceptedAt: new Date().toISOString(), certifier: { name: `${pro.firstName} ${pro.lastName}`, sace: pro.saceNumber } })),
+  decline: async () => setJob(j => ({ ...j, status: 'rifiutata' })),
+  call: async at => setJob(j => ({ ...j, call: { at, url: j.call?.url ?? newCallUrl() } })),
+  visit: async at => setJob(j => ({ ...j, visit: { at } })),
+  verbale: async v => setJob(j => ({ ...j, verbale: v })),
+  deliver: async (code, cls, pdf) => { const ref = persistPhoto(draft.id, pdf); setJob(j => ({ ...j, status: 'consegnata', ape: { code, energyClass: cls, pdf: ref, deliveredAt: new Date().toISOString() } })); },
+ };
+ const ops = remoteOps ?? localOps;
+ const [busy, setBusy] = useState(false);
+ const run = async (f: () => Promise<void>, ok?: string) => {
+  if (busy) return;
+  setBusy(true);
+  try { await f(); if (ok) Alert.alert(ok); }
+  catch (e) { Alert.alert('Operazione non riuscita', e instanceof Error ? e.message : 'Riprova.'); }
+  finally { setBusy(false); }
+ };
+ const accept = () => run(ops.accept);
+ const decline = () => Alert.alert('Rifiutare l’incarico?', 'La richiesta verrà proposta a un altro certificatore della zona.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Rifiuta', style: 'destructive', onPress: () => run(async () => { await ops.decline(); onBack(); }) }]);
+ const caption = (qid: string) => findQuestion(qid)?.label ?? KIND_LABELS[qid.replace('kind:', '') as keyof typeof KIND_LABELS] ?? '';
  const invite = (kind: 'call' | 'visit', at: string, url?: string) => {
   const name = String(a.fullName ?? '').split(' ')[0];
   const msg = kind === 'call'
@@ -76,7 +101,7 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
      <Text style={[F.small, { marginTop: S.m }]}>Indirizzo e contatti del cliente sono visibili dopo l’accettazione.</Text>
      <View style={{ flexDirection: 'row', gap: 10, marginTop: S.m }}>
       <Button title="Rifiuta" kind="danger" onPress={decline} style={{ flex: 1 }} />
-      <Button title="Accetta incarico" icon="checkmark" onPress={accept} style={{ flex: 2 }} />
+      <Button title="Accetta incarico" icon="checkmark" busy={busy} onPress={accept} style={{ flex: 2 }} />
      </View>
     </>) : null}
 
@@ -106,13 +131,13 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
       {images.map(m => (
        <Pressable key={m.p.uri} onPress={() => setViewer(m.p)} style={st.cell}>
         <Image source={{ uri: m.p.uri }} style={st.img} />
-        <Text style={st.cap} numberOfLines={1}>{findQuestion(m.qid)?.label ?? ''}</Text>
+        <Text style={st.cap} numberOfLines={1}>{caption(m.qid)}</Text>
        </Pressable>
       ))}
       {pdfs.map(m => (
        <Pressable key={m.p.uri} onPress={() => Sharing.shareAsync(m.p.uri).catch(() => undefined)} style={st.cell}>
         <View style={[st.img, { alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="document-text" size={30} color={C.brand} /></View>
-        <Text style={st.cap} numberOfLines={1}>{findQuestion(m.qid)?.label ?? 'PDF'}</Text>
+        <Text style={st.cap} numberOfLines={1}>{caption(m.qid) || 'PDF'}</Text>
        </Pressable>
       ))}
      </View>
@@ -131,7 +156,7 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
      <SectionTitle>1 · Videochiamata di pre-sopralluogo</SectionTitle>
      <Card>
       <Text style={[F.small, { marginBottom: 10 }]}>Facoltativa: serve a vedere casa e impianti con il cliente e a preparare la visita. Non sostituisce il sopralluogo obbligatorio.</Text>
-      <SlotPicker label="Quando" value={job?.call?.at} onChange={at => setJob(j => ({ ...j, call: { at, url: j.call?.url ?? newCallUrl() } }))} />
+      <SlotPicker label="Quando" value={job?.call?.at} onChange={at => run(() => ops.call(at))} />
       {job?.call ? (<>
        <Pill text={fmtWhen(job.call.at)} icon="videocam-outline" />
        <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>
@@ -143,7 +168,7 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
 
      <SectionTitle>2 · Sopralluogo in presenza</SectionTitle>
      <Card>
-      <SlotPicker label="Data e ora" value={job?.visit?.at} onChange={at => setJob(j => ({ ...j, visit: { at } }))} />
+      <SlotPicker label="Data e ora" value={job?.visit?.at} onChange={at => run(() => ops.visit(at))} />
       {job?.visit ? (<>
        <Pill text={fmtWhen(job.visit.at)} icon="calendar-outline" />
        <Button title="Invia conferma al cliente" kind="secondary" icon="share-outline" onPress={() => invite('visit', job.visit!.at)} style={{ marginTop: 12 }} />
@@ -152,14 +177,10 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
 
      <SectionTitle>3 · Verbale di sopralluogo</SectionTitle>
      <VerbaleForm value={job?.verbale} defaultOwner={String(a.fullName ?? '')} defaultDate={job?.visit?.at}
-      onSave={v => setJob(j => ({ ...j, verbale: v }))} />
+      onSave={v => run(() => ops.verbale(v), remote ? 'Verbale inviato' : undefined)} />
 
      <SectionTitle>4 · Consegna dell’APE</SectionTitle>
-     <DeliveryForm job={job} onDeliver={(code, cls, pdf) => {
-      const ref = pdf ? persistPhoto(draft.id, pdf) : undefined;
-      setJob(j => ({ ...j, status: 'consegnata', ape: { code, energyClass: cls, ...(ref ? { pdf: ref } : {}), deliveredAt: new Date().toISOString() } }));
-      Alert.alert('APE consegnato', 'Il cliente vede l’attestato nella sua richiesta.');
-     }} />
+     <DeliveryForm job={job} onDeliver={(code, cls, pdf) => run(() => ops.deliver(code, cls, pdf!), 'APE consegnato: il cliente lo trova nella sua richiesta.')} />
     </>) : null}
    </ScrollView>
    </KeyboardAvoidingView>
@@ -171,13 +192,20 @@ export function JobScreen({ draft, pro, onBack, onUpdate }: Props) {
     </Pressable>
    </Modal>
    <Modal visible={!!player} animationType="slide" onRequestClose={() => setPlayer(null)}>
-    {player ? <Player uri={player.uri} onClose={() => setPlayer(null)} /> : null}
+    {player ? <Player uri={player.uri} resolve={ops.videoUri} onClose={() => setPlayer(null)} /> : null}
    </Modal>
   </View>
  );
 }
 
-function Player({ uri, onClose }: { uri: string; onClose: () => void }) {
+function Player({ uri, resolve, onClose }: { uri: string; resolve?: (u: string) => Promise<string>; onClose: () => void }) {
+ const [src, setSrc] = useState<string | null>(resolve ? null : uri);
+ React.useEffect(() => { if (resolve) resolve(uri).then(setSrc).catch(() => { Alert.alert('Video non disponibile'); onClose(); }); }, [uri]); // eslint-disable-line react-hooks/exhaustive-deps
+ if (!src) return <View style={{ flex: 1, backgroundColor: '#000', alignItems: 'center', justifyContent: 'center' }}><Text style={{ color: C.white }}>Scarico il video…</Text></View>;
+ return <PlayerView uri={src} onClose={onClose} />;
+}
+
+function PlayerView({ uri, onClose }: { uri: string; onClose: () => void }) {
  const insets = useSafeAreaInsets();
  const p = useVideoPlayer(uri, pl => { pl.muted = true; pl.play(); });
  return (

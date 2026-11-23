@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { deleteAccount, getSession, logout, serverEnabled } from '../server';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +21,12 @@ const STEPS_HOW = [
 export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: AppState; onNew: () => void; onOpen: (d: Draft) => void; onDelete: (d: Draft) => void; onPro: () => void }) {
  const insets = useSafeAreaInsets();
  const minPrice = Math.min(...PRICE_LIST.tiers.map(t => t.price));
+ const [email, setEmail] = useState<string | null>(null);
+ useEffect(() => { if (serverEnabled()) getSession().then(s => setEmail(s?.email ?? null)); }, [state]);
+ const removeAccount = () => Alert.alert('Eliminare l’account?', 'Verranno cancellati accesso, dati di contatto e richieste non ancora inviate. Le pratiche già seguite da un certificatore restano solo per gli obblighi di legge, senza collegamento al tuo account.', [
+  { text: 'Annulla', style: 'cancel' },
+  { text: 'Elimina', style: 'destructive', onPress: () => deleteAccount().then(() => { setEmail(null); Alert.alert('Account eliminato'); }).catch(() => Alert.alert('Errore', 'Riprova tra poco.')) },
+ ]);
  return (
   <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}>
    <LinearGradient colors={[C.brandDeep, C.brand, '#14806A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[st.hero, { paddingTop: insets.top + 18 }]}>
@@ -62,6 +69,16 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
      </View>
      <Ionicons name="chevron-forward" size={20} color={C.muted} />
     </Card>
+    {email ? (<>
+     <SectionTitle>Il tuo account</SectionTitle>
+     <Card>
+      <Text style={F.h3}>{email}</Text>
+      <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
+       <Button title="Esci" kind="secondary" icon="log-out-outline" onPress={() => logout().then(() => setEmail(null))} style={{ flex: 1 }} />
+       <Button title="Elimina account" kind="danger" icon="trash-outline" onPress={removeAccount} style={{ flex: 1 }} />
+      </View>
+     </Card>
+    </>) : null}
     <Text style={[F.small, { textAlign: 'center', marginTop: S.l }]}>La stima dell’app non sostituisce l’APE: l’attestato è redatto e firmato solo da un certificatore accreditato dopo il sopralluogo.</Text>
    </View>
   </ScrollView>

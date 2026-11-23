@@ -1,4 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { LoginSheet } from './LoginSheet';
+import { getSession } from '../server';
+import { downloadCertificate, fetchRemoteJob } from '../remote-status';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { fmtWhen } from '../job';
@@ -23,6 +26,19 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
  const ready = readyToSend(draft.answers, draft.photos);
  const q = quote(draft.answers);
  const [sending, setSending] = useState<string | null>(null);
+ const [login, setLogin] = useState(false);
+ const [remoteNote, setRemoteNote] = useState<string | null>(null);
+ // Live status from the server for requests already sent.
+ useEffect(() => {
+  if (!draft.remoteCaseId || !serverConfigured()) return;
+  let alive = true;
+  fetchRemoteJob(draft.remoteCaseId).then(r => {
+   if (!alive) return;
+   if (r.job) onUpdate(d => ({ ...d, job: r.job }));
+   setRemoteNote(r.job ? null : r.caseStatus === 'SUBMITTED' || r.caseStatus === 'ASSIGNED' ? 'Stiamo cercando il certificatore della tua zona: riceverai una notifica appena accetta.' : null);
+  }).catch(() => undefined);
+  return () => { alive = false; };
+ }, [draft.remoteCaseId]); // eslint-disable-line react-hooks/exhaustive-deps
  const a = draft.answers;
  const where = [a.street, a.municipality, PROVINCES.find(p => p.value === a.province)?.label].filter(Boolean).join(', ');
 
@@ -33,7 +49,8 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
    Alert.alert('Richiesta pronta', 'In questa versione di prova l’invio ai certificatori non è ancora attivo: la richiesta resta salvata sul telefono, completa di foto e stima, e potrai inviarla appena il servizio sarà online.');
    return;
   }
-  setSending('Accesso in corso…');
+  if (!(await getSession())) { setLogin(true); return; }
+  setSending('Preparo l’invio…');
   try {
    const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCaseId: draft.remoteCaseId, uploaded: draft.uploaded }, label => setSending(label),
     cp => onUpdate(d => ({ ...d, ...cp })));
@@ -55,6 +72,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
    </View>
    <ScrollView contentContainerStyle={{ padding: S.m, paddingBottom: 180 }}>
     {where ? <Text style={[F.small, { marginBottom: 6 }]}>{where}</Text> : null}
+    {remoteNote ? <Card style={{ marginBottom: S.m, flexDirection: 'row', alignItems: 'center' }}><Ionicons name="search-outline" size={20} color={C.brand} /><Text style={[F.small, { flex: 1, marginLeft: 10 }]}>{remoteNote}</Text></Card> : null}
     {draft.job && draft.job.status !== 'rifiutata' && draft.job.status !== 'nuova' ? (
      <Card style={{ marginBottom: S.m, borderWidth: 1.5, borderColor: C.brand }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -78,7 +96,8 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
        <View style={[st.step, { borderBottomWidth: 0 }]}>
         <ClassBadge value={draft.job.ape.energyClass as never} size={36} />
         <View style={{ flex: 1, marginLeft: 10 }}><Text style={F.h3}>APE pronto · classe {draft.job.ape.energyClass}</Text><Text style={F.small}>Codice {draft.job.ape.code}</Text></View>
-        {draft.job.ape.pdf ? <Pressable onPress={() => Sharing.shareAsync(draft.job!.ape!.pdf!.uri).catch(() => undefined)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable> : null}
+        {draft.job.ape.pdf ? <Pressable onPress={() => Sharing.shareAsync(draft.job!.ape!.pdf!.uri).catch(() => undefined)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable>
+         : draft.remoteCaseId ? <Pressable onPress={() => downloadCertificate(draft.remoteCaseId!).then(uri => Sharing.shareAsync(uri)).catch(() => Alert.alert('Download non riuscito', 'Riprova tra poco.'))} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Scarica</Text></Pressable> : null}
        </View>
       ) : null}
      </Card>
@@ -167,6 +186,8 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
 
     {draft.status !== 'bozza' ? <View style={{ marginTop: S.m }}><Pill tone={draft.status === 'inviata' ? 'brand' : 'warn'} icon="paper-plane" text={draft.status === 'inviata' ? 'Inviata ai certificatori' : 'Pronta: verrà inviata quando il servizio sarà online'} /></View> : null}
    </ScrollView>
+   <LoginSheet visible={login} initialEmail={typeof a.email === 'string' ? a.email : undefined} title="Accedi per inviare la richiesta"
+    onClose={() => setLogin(false)} onDone={() => { setLogin(false); setTimeout(send, 300); }} />
    <View style={[st.bottom, { paddingBottom: insets.bottom + 10 }]}>
     {!ready ? <Text style={st.hint}>Completa i punti obbligatori per inviare la richiesta</Text> : null}
     <Button title={sending ?? (draft.status === 'inviata' ? 'Richiesta già inviata' : 'Invia ai certificatori')} icon="paper-plane" busy={!!sending}

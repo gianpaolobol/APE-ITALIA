@@ -23,3 +23,18 @@ describe('certifier job', () => {
   expect(rows.find(r => r.value === 'Sì' && r.label.startsWith('Accetto'))).toBeUndefined();
  });
 });
+
+import { reportFromVerbale } from './job';
+describe('server report from verbale', () => {
+ it('maps survey answers to vocabulary findings, verified only for ticked checks', () => {
+  const r = reportFromVerbale({ heatGenerator: 'caldaia_condensazione', generatorYear: 2015, glazing: 'doppio', floorArea: 80, pv: false, wallInsulated: false },
+   { date: '01/12/2026', start: '09:30', end: '10:15', attendees: 'Certificatore e proprietario', checks: ['generatore', 'misure'], notes: '', ownerName: 'Mario Rossi', ownerConfirmed: true, declaration: true, savedAt: '' });
+  const by = Object.fromEntries(r.findings.map(f => [f.field, f]));
+  expect(by['heating.generator.type']).toMatchObject({ value: 'caldaia_condensazione', status: 'verified' });
+  expect(by['windows.glazing']).toMatchObject({ value: 'doppio', status: 'to_verify' });
+  expect(by['geometry.heated_area_m2'].status).toBe('verified');
+  expect(by['renewables.pv_kwp'].value).toBe(0);
+  expect(new Date(r.performedAt).getFullYear()).toBe(2026);
+  expect(r.declaration).toBe(true);
+ });
+});

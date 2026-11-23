@@ -9,9 +9,19 @@ import { EVIDENCE_PUBLIC_FIELDS, evidenceFile } from '../evidence/read';
 import type { ObjectStorage } from '../evidence/storage';
 import { offerNext } from './assignment.service';
 import { VIDEO_ANALYZER, type VideoAnalyzer } from '../survey/video-analysis';
+import { MAILER, type Mailer } from '../platform-auth/mailer';
+import { notifyCustomer, notifyNewOffer } from '../platform-auth/notify';
 import { buildCaseExport, findingsCsv } from '../export/case-export';
 import type { InspectionReport } from '../inspections/report';
 import { FINDING_FIELDS, FINDING_SOURCES, VERIFICATION_STATUSES, validateReport, validateSchedule } from '../inspections/report';
+
+function jobSummary(survey: unknown) {
+ const o = survey && typeof survey === 'object' ? (survey as { answers?: Record<string, unknown>; estimate?: { energyClass?: unknown } | null; quote?: { certifierPayout?: unknown } | null }) : {};
+ const a = o.answers ?? {};
+ const pick = (k: string) => (typeof a[k] === 'string' || typeof a[k] === 'number' ? a[k] : null);
+ return { propertyType: pick('propertyType'), floorArea: pick('floorArea'), province: pick('province'), urgency: pick('urgency'), hasPlan: pick('hasPlan'),
+  estimatedClass: typeof o.estimate?.energyClass === 'string' ? o.estimate.energyClass : null, payout: typeof o.quote?.certifierPayout === 'number' ? o.quote.certifierPayout : null };
+}
 
 /**
  * Certifier workspace. Access is per accepted assignment: before acceptance a certifier sees only the
@@ -24,6 +34,7 @@ export class CertifierController {
   @Inject(AuthService) private readonly auth: AuthService,
   @Optional() @Inject(EVIDENCE_STORAGE) private readonly storage: ObjectStorage | null = null,
   @Optional() @Inject(VIDEO_ANALYZER) private readonly videoAnalyzer: VideoAnalyzer | null = null,
+  @Optional() @Inject(MAILER) private readonly mailer: Mailer | null = null,
  ) {}
 
  private async certifier(token?: string) {
@@ -65,6 +76,9 @@ export class CertifierController {
    property: a.status === 'ACCEPTED'
     ? { address: a.case.property.address, city: a.case.property.city, region: a.case.property.region, floorAreaM2: a.case.property.floorAreaM2 }
     : { city: a.case.property.city, region: a.case.property.region },
+   // Non-personal job summary (type, size, urgency, indicative class, fee) to decide before accepting.
+   summary: jobSummary(a.case.survey),
+   call: a.status === 'ACCEPTED' && a.callAt && a.callUrl ? { at: a.callAt, url: a.callUrl } : null,
   }));
  }
 
@@ -72,7 +86,7 @@ export class CertifierController {
  async accept(@Param('id', new ParseUUIDPipe()) id: string, @Headers('authorization') token?: string) {
   const c = await this.certifier(token);
   const now = new Date();
-  return this.db.$transaction(async tx => {
+  const out = await this.db.$transaction(async tx => {
    const res = await tx.assignment.updateMany({ where: { id, certifierId: c.id, status: 'OFFERED', expiresAt: { gt: now } }, data: { status: 'ACCEPTED', respondedAt: now } });
    if (res.count !== 1) throw new NotFoundException('Offer not found or expired');
    const a = await tx.assignment.findUniqueOrThrow({ where: { id } });
@@ -80,8 +94,11 @@ export class CertifierController {
    if (moved.count !== 1) throw new ConflictException('Case is no longer awaiting a certifier');
    await tx.assignment.updateMany({ where: { caseId: a.caseId, status: 'OFFERED', id: { not: id } }, data: { status: 'WITHDRAWN', respondedAt: now } });
    await tx.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'assignment.accept', resourceId: id } });
-   return { id, status: 'ACCEPTED', caseId: a.caseId };
+   return { id, status: 'ACCEPTED', caseId: a.caseId, organizationId: a.organizationId };
   });
+  await notifyCustomer(this.db, this.mailer, out.organizationId, 'Il tuo certificatore ha accettato la richiesta',
+   `${c.displayName} (accreditamento SACE n. ${c.registrationId}) seguirà il tuo APE e ti contatterà per fissare l’appuntamento.`).catch(() => undefined);
+  return { id: out.id, status: out.status, caseId: out.caseId };
  }
 
  @Post('assignments/:id/decline')
@@ -89,14 +106,16 @@ export class CertifierController {
   const c = await this.certifier(token);
   const reason = typeof body?.reason === 'string' ? body.reason.slice(0, 500) : null;
   const now = new Date();
-  return this.db.$transaction(async tx => {
+  const out = await this.db.$transaction(async tx => {
    const res = await tx.assignment.updateMany({ where: { id, certifierId: c.id, status: 'OFFERED' }, data: { status: 'DECLINED', respondedAt: now, declineReason: reason } });
    if (res.count !== 1) throw new NotFoundException('Offer not found');
    const a = await tx.assignment.findUniqueOrThrow({ where: { id } });
    await tx.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'assignment.decline', resourceId: id } });
    const nextId = await offerNext(tx, a.caseId, now); // fallback to the next eligible certifier
-   return { id, status: 'DECLINED', reoffered: nextId !== null };
+   return { id, status: 'DECLINED', reoffered: nextId !== null, caseId: a.caseId };
   });
+  if (out.reoffered) await notifyNewOffer(this.db, this.mailer, out.caseId).catch(() => undefined);
+  return { id: out.id, status: out.status, reoffered: out.reoffered };
  }
 
  @Get('assignments/:id/evidence')
@@ -139,6 +158,8 @@ export class CertifierController {
   if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() - 3600_000 || at.getTime() > Date.now() + 90 * 86400_000) throw new BadRequestException('at must be an ISO date within 90 days');
   const url = a.callUrl ?? `https://meet.jit.si/APEItalia-${randomBytes(12).toString('base64url').replace(/[^A-Za-z0-9]/g, '')}`;
   await this.db.assignment.update({ where: { id: a.id }, data: { callAt: at, callUrl: url } });
+  await notifyCustomer(this.db, this.mailer, a.organizationId, 'Videochiamata di pre-sopralluogo fissata',
+   `${c.displayName} ti propone una videochiamata il ${at.toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}.\nCollegamento: ${url}\nIl sopralluogo in presenza resta necessario.`).catch(() => undefined);
   await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'assignment.call', resourceId: a.id } });
   return { at: at.toISOString(), url };
  }
@@ -181,6 +202,10 @@ export class CertifierController {
     if (moved.count !== 1) throw new ConflictException('Case is not in ASSIGNED state');
    }
    await tx.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: existing ? 'inspection.reschedule' : 'inspection.schedule', resourceId: insp.id } });
+   return insp;
+  }).then(async insp => {
+   await notifyCustomer(this.db, this.mailer, a.organizationId, 'Sopralluogo fissato',
+    `${c.displayName} verrà per il sopralluogo il ${when.toLocaleString('it-IT', { timeZone: 'Europe/Rome' })}. Durata prevista 30–45 minuti.`).catch(() => undefined);
    return insp;
   });
  }

@@ -80,3 +80,47 @@ export function dossier(a: Answers): Array<{ title: string; rows: Array<{ label:
 }
 
 export const fmtWhen = (iso: string) => new Date(iso).toLocaleString('it-IT', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+
+/** Server report format (services/api/src/inspections/report.ts). */
+export type ServerFinding = { field: string; status: 'verified' | 'to_verify' | 'undeterminable'; value?: string | number; source: 'inspection' | 'document' | 'photo' };
+export type ServerReport = { performedAt: string; attendees: string; findings: ServerFinding[]; generalNotes?: string; declaration: true };
+
+const MAP_ENUM: Record<string, Record<string, string>> = {
+ heatGenerator: { caldaia_condensazione: 'caldaia_condensazione', caldaia_tradizionale: 'caldaia_tradizionale', pompa_calore: 'pompa_di_calore', teleriscaldamento: 'teleriscaldamento', biomassa: 'biomassa', elettrico: 'stufa_elettrica' },
+ emitters: { radiatori: 'radiatori', pavimento: 'pannelli_radianti', ventilconvettori: 'ventilconvettori' },
+ dhw: { stesso_generatore: 'combinata_riscaldamento', boiler_elettrico: 'boiler_elettrico', pdc_acs: 'pompa_di_calore', boiler_gas: 'altro' },
+ cooling: { nessuno: 'assente', split: 'split', centralizzato: 'centralizzata' },
+ wallType: { mattoni_pieni: 'muratura_piena', laterizio_forato: 'laterizio_forato', cemento: 'cemento_armato', cassa_vuota: 'altro', pietra: 'altro' },
+ glazing: { singolo: 'singolo', doppio: 'doppio', basso_emissivo: 'doppio_basso_emissivo' },
+ frame: { legno: 'legno', pvc: 'pvc', alluminio_tt: 'alluminio_taglio_termico', metallo: 'alluminio' },
+};
+
+/**
+ * Builds the structured inspection report from the verbale. Survey values become findings: "verified" when
+ * the certifier ticked the matching check on site, otherwise "to_verify". Values are the customer's
+ * declarations confirmed (or not) by the certifier: nothing is invented.
+ */
+export function reportFromVerbale(a: Answers, v: Verbale): ServerReport {
+ const st = (check: string): ServerFinding['status'] => (v.checks.includes(check) ? 'verified' : 'to_verify');
+ const f: ServerFinding[] = [];
+ const en = (key: string, field: string, check: string) => { const m = MAP_ENUM[key]?.[String(a[key])]; if (m) f.push({ field, status: st(check), value: m, source: 'inspection' }); };
+ const num = (key: string, field: string, check: string, min: number, max: number, int = false) => { const x = a[key]; if (typeof x === 'number' && x >= min && x <= max && (!int || Number.isInteger(x))) f.push({ field, status: st(check), value: x, source: 'inspection' }); };
+ en('heatGenerator', 'heating.generator.type', 'generatore');
+ num('generatorPowerKw', 'heating.generator.nominal_power_kw', 'generatore', 0.5, 5000);
+ num('generatorYear', 'heating.generator.install_year', 'generatore', 1900, 2100, true);
+ en('emitters', 'heating.emitters.type', 'terminali');
+ en('dhw', 'dhw.generator.type', 'acs');
+ en('cooling', 'cooling.present', 'raffrescamento');
+ en('wallType', 'envelope.wall.type', 'involucro');
+ num('wallThickness', 'envelope.wall.thickness_cm', 'involucro', 5, 200);
+ if (a.wallInsulated !== undefined) f.push({ field: 'envelope.wall.insulation', status: st('involucro'), value: a.wallInsulated === true ? 'cappotto_esterno' : 'assente', source: 'inspection' });
+ en('glazing', 'windows.glazing', 'involucro');
+ en('frame', 'windows.frame', 'involucro');
+ num('floorArea', 'geometry.heated_area_m2', 'misure', 1, 100000);
+ if (a.pv === true) num('pvKw', 'renewables.pv_kwp', 'fer', 0, 10000); else f.push({ field: 'renewables.pv_kwp', status: st('fer'), value: 0, source: 'inspection' });
+ const [d, m, y] = v.date.split(/[/.-]/).map(Number);
+ const [hh, mm] = v.start.replace('.', ':').split(':').map(Number);
+ const performed = new Date(y < 100 ? 2000 + y : y, (m || 1) - 1, d || 1, hh || 0, mm || 0);
+ const notes = [`Orario ${v.start}–${v.end}.`, `Confermato da ${v.ownerName}.`, v.notes ? `Note: ${v.notes}` : ''].filter(Boolean).join(' ').slice(0, 4000);
+ return { performedAt: performed.toISOString(), attendees: v.attendees.slice(0, 300), findings: f.slice(0, 200), generalNotes: notes, declaration: true };
+}

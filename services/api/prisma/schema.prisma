@@ -138,6 +138,8 @@ model Certifier {
  displayName String
  registrationId String
  regions String[]
+ /// Provinces (BO, MO, ...) the certifier serves; empty = whole region.
+ provinces String[] @default([])
  maxActiveAssignments Int @default(5)
  active Boolean @default(true)
  verifiedAt DateTime?
@@ -252,6 +254,8 @@ model Certificate {
  scanStatus String @default("unscanned")
  regionalId String
  depositedAt DateTime
+ /// Official energy class declared by the certifier (as in the deposited APE).
+ energyClass String?
  validUntil DateTime?
  uploadedAt DateTime @default(now())
  deliveredAt DateTime?

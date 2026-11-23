@@ -7,6 +7,8 @@ import { Button, Card, Chips, Field, Help, IconCircle, Label, Pill, ToggleRow, t
 import { PROVINCES } from '../survey/questions';
 import { normalizeSaceNumber, validateRegistration, type FieldErrors, type ProRegistration } from '../pro/registration';
 import type { AppState } from '../survey/drafts';
+import { LoginSheet } from './LoginSheet';
+import { api, serverEnabled } from '../server';
 
 const PROFESSIONS = [
  { value: 'architetto', label: 'Architetto' }, { value: 'ingegnere', label: 'Ingegnere' }, { value: 'geometra', label: 'Geometra' },
@@ -14,23 +16,40 @@ const PROFESSIONS = [
 ];
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
 
-export function ProScreen({ state, onBack, onSaved, onInbox }: { state: AppState; onBack: () => void; onSaved: (pro: NonNullable<AppState['pro']>) => void; onInbox: () => void }) {
+export function ProScreen({ state, onBack, onSaved, onInbox, onRemote }: { state: AppState; onBack: () => void; onSaved: (pro: NonNullable<AppState['pro']>) => void; onInbox: () => void; onRemote: (me: { name: string; sace: string }) => void }) {
  const insets = useSafeAreaInsets();
  const [r, setR] = useState<Partial<ProRegistration>>(state.pro?.data ?? { region: 'Emilia-Romagna', provinces: [], maxMonthlyJobs: 10 });
  const [errors, setErrors] = useState<FieldErrors>({});
  const [busy, setBusy] = useState(false);
+ const [login, setLogin] = useState(false);
+ const afterLogin = async () => {
+  setLogin(false);
+  try {
+   const s = await api<{ certifier: { name: string; registrationId: string } | null }>('/v1/auth/session');
+   if (s.certifier) onRemote({ name: s.certifier.name, sace: s.certifier.registrationId });
+   else Alert.alert('Profilo non ancora attivo', 'Il tuo profilo di certificatore è in verifica oppure l’email non corrisponde alla candidatura. Ti scriviamo appena è attivo.');
+  } catch { Alert.alert('Errore', 'Non riesco a verificare il profilo. Riprova.'); }
+ };
+ const loginCard = serverEnabled() ? (
+  <Card style={{ flexDirection: 'row', alignItems: 'center', marginBottom: S.m }} onPress={() => setLogin(true)}>
+   <IconCircle name="log-in-outline" />
+   <View style={{ flex: 1, marginLeft: 12 }}><Text style={F.h3}>Sei già un partner approvato?</Text><Text style={F.small}>Accedi con l’email della candidatura per vedere gli incarichi</Text></View>
+   <LoginSheet visible={login} title="Accesso certificatori" onClose={() => setLogin(false)} onDone={afterLogin} />
+  </Card>
+ ) : null;
  const set = <K extends keyof ProRegistration>(k: K, v: ProRegistration[K]) => setR(x => ({ ...x, [k]: v }));
  const txt = (k: keyof ProRegistration) => (typeof r[k] === 'string' ? (r[k] as string) : '');
 
  if (state.pro) {
   return (
    <Shell title="Area certificatori" onBack={onBack} top={insets.top}>
+    {loginCard}
     <Card style={{ alignItems: 'center', padding: S.l }}>
      <IconCircle name="hourglass-outline" size={60} bg={C.warnSoft} color="#8A5A00" />
      <Text style={[F.title, { marginTop: S.m, textAlign: 'center' }]}>Candidatura in verifica</Text>
      <Text style={[F.body, { textAlign: 'center', marginTop: 6 }]}>Controlliamo il numero di accreditamento <Text style={{ fontWeight: '800', color: C.ink }}>{state.pro.data.saceNumber}</Text> sull’elenco pubblico dei certificatori dell’Emilia-Romagna. Ti avvisiamo via email a {state.pro.data.email}.</Text>
      <View style={{ marginTop: S.m }}><Pill tone={state.pro.status === 'inviata_al_server' ? 'brand' : 'warn'} text={state.pro.status === 'inviata_al_server' ? 'Ricevuta' : 'Salvata sul telefono (versione di prova)'} /></View>
-     <Button title="Apri le richieste in arrivo" icon="file-tray-full-outline" style={{ marginTop: S.l, alignSelf: 'stretch' }} onPress={onInbox} />
+     {!serverEnabled() ? <Button title="Apri le richieste in arrivo (demo)" icon="file-tray-full-outline" style={{ marginTop: S.l, alignSelf: 'stretch' }} onPress={onInbox} /> : null}
      {state.pro.status !== 'inviata_al_server' ? <Button title="Riprova l’invio" kind="secondary" icon="refresh" style={{ marginTop: S.m, alignSelf: 'stretch' }} busy={busy} onPress={() => send(state.pro!.data)} /> : null}
     </Card>
    </Shell>
@@ -61,6 +80,7 @@ export function ProScreen({ state, onBack, onSaved, onInbox }: { state: AppState
  return (
   <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
    <Shell title="Diventa certificatore partner" onBack={onBack} top={insets.top}>
+    {loginCard}
     <Card style={{ flexDirection: 'row', marginBottom: S.l }}>
      <Ionicons name="shield-checkmark" size={22} color={C.brand} />
      <Text style={[F.small, { flex: 1, marginLeft: 10, color: C.inkSoft }]}>In Emilia-Romagna l’APE può essere rilasciato solo da certificatori accreditati nel sistema regionale SACE. Il numero di accreditamento è obbligatorio e viene verificato prima di attivare il profilo.</Text>

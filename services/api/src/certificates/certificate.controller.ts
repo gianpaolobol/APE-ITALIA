@@ -5,6 +5,8 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
+import { MAILER, type Mailer } from '../platform-auth/mailer';
+import { notifyCustomer } from '../platform-auth/notify';
 import { AuthService } from '../auth.service';
 import { EVIDENCE_STORAGE, MALWARE_SCANNER } from '../evidence/evidence.controller';
 import { evidenceStorageKey, type ObjectStorage } from '../evidence/storage';
@@ -25,12 +27,13 @@ export class CertificateController {
   @Inject(AuthService) private readonly auth: AuthService,
   @Optional() @Inject(EVIDENCE_STORAGE) private readonly storage: ObjectStorage | null = null,
   @Optional() @Inject(MALWARE_SCANNER) private readonly scanner: MalwareScanner = notConfiguredScanner,
+  @Optional() @Inject(MAILER) private readonly mailer: Mailer | null = null,
  ) {}
 
  @Post('certifier/assignments/:id/certificate')
- @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_EVIDENCE_BYTES, files: 1, fields: 6, parts: 7 } }))
+ @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_EVIDENCE_BYTES, files: 1, fields: 7, parts: 8 } }))
  async upload(@Param('id', new ParseUUIDPipe()) id: string, @UploadedFile() file: Blob | undefined,
-  @Body() body: { regionalId?: unknown; depositedAt?: unknown; validUntil?: unknown; declaration?: unknown } | undefined, @Headers('authorization') token?: string) {
+  @Body() body: { regionalId?: unknown; depositedAt?: unknown; validUntil?: unknown; declaration?: unknown; energyClass?: unknown } | undefined, @Headers('authorization') token?: string) {
   const { subject } = await this.auth.verify(token);
   const c = await this.db.certifier.findUnique({ where: { userSubject: subject } });
   if (!c || !c.active || !c.verifiedAt) throw new ForbiddenException('Verified certifier profile required');
@@ -48,6 +51,9 @@ export class CertificateController {
    validUntil = typeof body.validUntil === 'string' ? new Date(body.validUntil) : new Date(NaN);
    if (Number.isNaN(validUntil.getTime()) || validUntil <= depositedAt) throw new BadRequestException('validUntil must be after depositedAt');
   }
+  const CLASSES = ['A4', 'A3', 'A2', 'A1', 'B', 'C', 'D', 'E', 'F', 'G'];
+  const energyClass = typeof body?.energyClass === 'string' && body.energyClass ? body.energyClass : null;
+  if (energyClass !== null && !CLASSES.includes(energyClass)) throw new BadRequestException('energyClass must be A4..G');
   if (!file?.buffer?.length) throw new BadRequestException('PDF file required');
   if (sniffMimeType(file.buffer) !== 'application/pdf') throw new HttpException('The certificate must be a PDF', HttpStatus.UNSUPPORTED_MEDIA_TYPE);
   let scanStatus: Awaited<ReturnType<MalwareScanner['scan']>>;
@@ -65,10 +71,14 @@ export class CertificateController {
     if (moved.count !== 1) throw new ConflictException('Case state changed');
     const cert = await tx.certificate.create({ data: {
      id: certId, caseId: a.caseId, organizationId: a.organizationId, certifierId: c.id, storageKey,
-     sha256: createHash('sha256').update(file.buffer).digest('hex'), sizeBytes: file.buffer.length, scanStatus, regionalId, depositedAt, validUntil,
+     sha256: createHash('sha256').update(file.buffer).digest('hex'), sizeBytes: file.buffer.length, scanStatus, regionalId, depositedAt, validUntil, energyClass,
     } });
     await tx.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'certificate.upload', resourceId: cert.id } });
     return { id: cert.id, regionalId, depositedAt, validUntil, sha256: cert.sha256 };
+   }).then(async r => {
+    await notifyCustomer(this.db, this.mailer, a.organizationId, 'Il tuo APE è pronto',
+     `L’attestato di prestazione energetica è stato depositato sul portale regionale (codice ${regionalId}${energyClass ? `, classe ${energyClass}` : ''}). Puoi scaricarlo dall’app.`).catch(() => undefined);
+    return r;
    });
   } catch (e) {
    await this.storage.delete(storageKey).catch(() => undefined);
@@ -81,7 +91,7 @@ export class CertificateController {
  async metadata(@Param('id', new ParseUUIDPipe()) id: string, @Headers('authorization') token?: string, @Headers('x-organization-id') org?: string) {
   const s = await this.auth.authorize(token, org);
   const cert = await this.db.certificate.findFirst({ where: { caseId: id, organizationId: s.organizationId } });
-  return { certificate: cert ? { regionalId: cert.regionalId, depositedAt: cert.depositedAt, validUntil: cert.validUntil, sha256: cert.sha256, sizeBytes: cert.sizeBytes, deliveredAt: cert.deliveredAt } : null };
+  return { certificate: cert ? { regionalId: cert.regionalId, energyClass: cert.energyClass, depositedAt: cert.depositedAt, validUntil: cert.validUntil, sha256: cert.sha256, sizeBytes: cert.sizeBytes, deliveredAt: cert.deliveredAt } : null };
  }
 
  /** First download by a member of the requesting organization marks the case as DELIVERED. */

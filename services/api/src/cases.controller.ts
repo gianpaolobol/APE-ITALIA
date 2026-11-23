@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, HttpCode, Inject, Get, Headers, Param, ParseUUIDPipe, Patch, Post, ConflictException, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Optional, Delete, HttpCode, Inject, Get, Headers, Param, ParseUUIDPipe, Patch, Post, ConflictException, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
+import { MAILER, type Mailer } from './platform-auth/mailer';
+import { notifyNewOffer } from './platform-auth/notify';
 import { AuthService } from './auth.service';
 import { canWrite } from './tenant-policy';
 import { offerNext } from './certifiers/assignment.service';
@@ -27,7 +29,7 @@ function validated<T extends object>(cls: new()=>T, body: unknown): T {
 }
 @Controller('v1')
 export class CasesController {
- constructor(@Inject(PrismaService) private readonly db:PrismaService,@Inject(AuthService) private readonly auth:AuthService){}
+ constructor(@Inject(PrismaService) private readonly db:PrismaService,@Inject(AuthService) private readonly auth:AuthService,@Optional() @Inject(MAILER) private readonly mailer:Mailer|null=null){}
  private session(auth?:string,org?:string){return this.auth.authorize(auth,org);}
  @Get('properties')
  async listProperties(@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
@@ -68,7 +70,7 @@ export class CasesController {
  async submitCase(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
   const s=await this.session(token,org);
   if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
-  return this.db.$transaction(async tx=>{
+  const out=await this.db.$transaction(async tx=>{
    const res=await tx.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT'},data:{status:'SUBMITTED'}});
    if(res.count!==1){
     const exists=await tx.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true}});
@@ -79,6 +81,8 @@ export class CasesController {
    await offerNext(tx,id); // automatic matching; null leaves the case SUBMITTED for manual follow-up
    return tx.apeCase.findFirstOrThrow({where:{id,organizationId:s.organizationId}});
   });
+  await notifyNewOffer(this.db,this.mailer,id).catch(()=>undefined);
+  return out;
  }
  /** Guided-survey answers, indicative estimate and quote from the mobile app (editable only while DRAFT). */
  @Post('cases/:id/survey')

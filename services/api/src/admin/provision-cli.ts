@@ -39,6 +39,7 @@ async function main() {
    // Without --subject the certifier logs in with the email of the application (email-code login).
    const user = args.subject ? null : (await db.platformUser.findUnique({ where: { email: app.email } })) ?? (await db.platformUser.create({ data: { email: app.email, pushTokens: [] } }));
    const c = await registerVerifiedCertifier(db, { subject: args.subject ?? `usr_${user!.id}`, displayName: `${app.firstName} ${app.lastName}`, registrationId: app.saceNumber, regions: [app.region], operator: args.operator ?? '' });
+   await db.certifier.update({ where: { id: c.id }, data: { provinces: app.provinces } });
    await db.certifierApplication.update({ where: { id: app.id }, data: { status: 'APPROVED', reviewedAt: new Date(), reviewedBy: args.operator ?? '' } });
    console.log(JSON.stringify({ certifierId: c.id }));
   } else if (command === 'export-subject-data') {
