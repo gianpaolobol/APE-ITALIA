@@ -5,15 +5,15 @@
 - [x] Documento guida MASTER_PLAN.md pubblicato
 - [x] NOTICE proprietaria
 - [ ] Scaffolding mobile/web/API completo
-- [ ] CI con typecheck e test
+- [x] CI con typecheck e test
 - [ ] Installazione e build verificata
 
 ## Sprint 1: dati persistenti
-- [ ] PostgreSQL, migrazioni e seed sintetico
-- [ ] Autenticazione e autorizzazioni per tenant
-- [ ] CRUD immobili e pratiche
+- [x] PostgreSQL e migrazioni (CI Run #81, nessuna deriva); seed sintetico solo nei test
+- [x] Autorizzazioni per tenant e verifica JWT (test firmati + PostgreSQL); provider OIDC reale ancora da configurare
+- [ ] CRUD immobili e pratiche (create/list fatti; update/dettaglio/cancellazione no)
 - [ ] Upload privato e metadati delle evidenze
-- [ ] Audit trail
+- [x] Audit trail delle creazioni e delle modifiche di membership
 - [ ] Test di integrazione e controlli sicurezza
 
 ## Sprint 2: interfacce

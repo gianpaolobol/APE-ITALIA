@@ -31,3 +31,9 @@ Blocchi umani: scelta e configurazione provider OIDC, registrazione redirect URI
 - CI Run #79 su `443c685`: **verde**. API 41 test superati (inclusi 8 PostgreSQL), mobile 72, bundle Expo Android (588 moduli) e iOS (592), build web.
 - PR #7 marcata pronta per la review. **Merge in `main` non eseguito**: l'azione di merge è stata negata dai permessi della sessione Claude. Serve merge manuale dell'utente dopo review.
 - Le iterazioni successive sono su branch impilati sopra `feat/sprint-3-auth-foundation` (PR con base quel branch), da riallineare a `main` dopo il merge di #7.
+
+## Iterazione 2 — PR #8 `feat/sprint-4-provisioning` (base: `feat/sprint-3-auth-foundation`)
+Implementato: CLI operatore per bootstrap organizzazione+owner, inviti monouso hashati, gestione membri con gerarchia di ruoli e guardia ultimo owner, controllo deriva schema/migrazioni in CI, build API in CI. Dettagli `docs/PROVISIONING.md`.
+Test locali: API typecheck OK, 48 test superati + 16 saltati (DB); build `tsc -p tsconfig.build.json` OK; migrazione `20261123030000_invitations` applicata via psql.
+CI Run #81 su `9c79388`: **verde**; API 64 test (16 PostgreSQL), mobile 72, "No difference detected" tra schema e migrazioni.
+Aggiornati `QA_CHECKLIST.md` (voci spuntate solo con evidenza CI) e `SPRINTS.md`.
