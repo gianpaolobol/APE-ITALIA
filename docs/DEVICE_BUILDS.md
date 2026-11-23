@@ -1,5 +1,7 @@
 # Build e prove su dispositivi (iPhone / Android)
 
+> **Percorso consigliato ora: GitHub Actions** → `docs/MOBILE_RELEASE.md` (TestFlight e test interno Google Play, senza EAS). La procedura EAS qui sotto resta un'alternativa.
+
 Configurazione pronta nel repository: `apps/mobile/eas.json` (profili `preview` per installazione interna e `production` per gli store), identificativi `it.apeitalia.app` (iOS e Android), schema di redirect `apeitalia://`, permessi minimi (fotocamera; posizione, microfono, overlay e storage esterno bloccati), icona **provvisoria** in `apps/mobile/assets/` da sostituire quando il branding sarà deciso. Verificato con `expo prebuild` (manifest e Info.plist) e bundle Hermes; **nessuna build EAS eseguita** (richiede i tuoi account).
 
 ## Cosa serve (azioni del titolare)
