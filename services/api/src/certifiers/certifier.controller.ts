@@ -155,6 +155,8 @@ export class CertifierController {
    const insp = await tx.inspection.findUnique({ where: { assignmentId: a.id } });
    if (!insp) throw new ConflictException('Schedule the inspection first');
    if (insp.status !== 'SCHEDULED') throw new ConflictException('Report already submitted');
+   const current = await tx.apeCase.findUniqueOrThrow({ where: { id: a.caseId }, select: { status: true } });
+   if (current.status !== 'INSPECTION_SCHEDULED') throw new ConflictException('Case is not awaiting an inspection report (pending evidence request?)');
    const now = new Date();
    const res = validateReport(body, { scheduledAt: insp.scheduledAt, now });
    if (!res.ok) throw new BadRequestException(res.errors);

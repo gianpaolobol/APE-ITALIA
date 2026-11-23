@@ -31,6 +31,8 @@ export class ApeApi {
  listCases(){return this.request<CaseRecord[]>('cases');}
  createCase(propertyId:string){return this.request<CaseRecord>('cases','POST',{propertyId});}
  submitCase(caseId:string){return this.request<CaseRecord>('cases/'+encodeURIComponent(caseId)+'/submit','POST',{});}
+ evidenceRequests(caseId:string){return this.request<{id:string;message:string;kinds:EvidenceKind[];createdAt:string;resolvedAt:string|null}[]>('cases/'+encodeURIComponent(caseId)+'/evidence-requests');}
+ resolveEvidenceRequest(caseId:string,requestId:string){return this.request<{id:string;status:string}>('cases/'+encodeURIComponent(caseId)+'/evidence-requests/'+encodeURIComponent(requestId)+'/resolve','POST',{});}
  caseSummaries(){return this.request<CaseSummaryRecord[]>('case-summaries');}
  getNotices(){return this.request<{evidence_processing:string}>('notices');}
  giveConsent(caseId:string,version:string){return this.request<{id:string}>('cases/'+encodeURIComponent(caseId)+'/consents','POST',{kind:'evidence_processing',version});}

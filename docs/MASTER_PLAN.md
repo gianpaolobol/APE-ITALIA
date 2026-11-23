@@ -147,3 +147,6 @@ PR #19 (impilata su #18). Il certificatore carica il PDF dell'APE firmato e depo
 
 ## 38. Stato pratiche nell'app mobile (Claude, 23/11/2026)
 PR #20 (impilata su #19). Nuova scheda "Le mie pratiche" con stato e avanzamento, sopralluogo ed estremi dell'APE; endpoint aggregato `GET /v1/case-summaries` (verificato nell'E2E). Download dell'APE sul dispositivo non ancora implementato.
+
+## 39. Ciclo di vita: integrazioni, annullamento, rinuncia (Claude, 23/11/2026)
+PR #21 (impilata su #20). Richieste di integrazione del certificatore con sospensione della pratica e ripresa alla conferma del cliente; annullamento del cliente prima del verbale; rinuncia del certificatore con riassegnazione automatica. Interfacce web e mobile. Dettagli in `docs/CERTIFIER_WORKFLOW.md`.

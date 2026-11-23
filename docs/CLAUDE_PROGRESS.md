@@ -96,3 +96,7 @@ CI Run #97 su `6e9a453` (PR #19): **verde**; E2E 3/3 inclusa consegna APE.
 Implementato: `GET /v1/case-summaries`, scheda "Le mie pratiche" nell'app con avanzamento. E2E esteso.
 Test locali: API typecheck OK; mobile typecheck, 84 test, bundle Android/iOS OK.
 CI Run #99 su `9c814ba` (PR #20): **verde**.
+
+## Iterazione 15 — PR #21 `feat/case-lifecycle` (base: `feat/mobile-case-status`)
+Implementato: `EvidenceRequest`, `LifecycleController` (richiesta/risoluzione integrazioni, annullamento, rinuncia con nuova offerta), controllo di stato anticipato nel verbale, contatore richieste aperte in `case-summaries`, interfacce web e mobile.
+Test locali: API typecheck OK, 105 + 51 saltati (3 nuovi test PostgreSQL); web build OK; mobile typecheck, 84 test, bundle OK.

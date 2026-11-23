@@ -104,3 +104,22 @@ export async function uploadCertificate(form: FormData) {
  catch (e) { msg = e instanceof ApiFailure ? ({ 400: 'invalid', 409: 'conflict', 413: 'too-large', 415: 'not-pdf' } as Record<number, string>)[e.status] ?? 'error' : 'error'; }
  redirect(`/certifier/${id}?cert=${msg}`);
 }
+
+export async function requestEvidence(form: FormData) {
+ const id = String(form.get('id') ?? '');
+ if (!UUID.test(id)) throw new Error('Invalid assignment');
+ const { cfg, s } = await context();
+ let msg = 'req-ok';
+ try { await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/evidence-requests`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: String(form.get('message') ?? ''), kinds: form.getAll('kinds').map(String) }) }); }
+ catch (e) { msg = e instanceof ApiFailure && e.status === 409 ? 'req-state' : 'req-invalid'; }
+ redirect(`/certifier/${id}?cert=${msg}`);
+}
+
+export async function withdrawAssignment(form: FormData) {
+ const id = String(form.get('id') ?? '');
+ if (!UUID.test(id)) throw new Error('Invalid assignment');
+ const { cfg, s } = await context();
+ await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/withdraw`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: String(form.get('reason') ?? '') }) });
+ revalidatePath('/certifier');
+ redirect('/certifier');
+}

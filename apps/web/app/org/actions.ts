@@ -54,3 +54,25 @@ export async function updateMember(form: FormData) {
  catch (e) { msg = e instanceof ApiFailure ? (e.status === 409 ? 'last-owner' : e.status === 403 ? 'forbidden' : 'error') : 'error'; }
  redirect('/org/members?result=' + msg);
 }
+
+async function writer(path: string) {
+ const ctx = await orgContext(path);
+ if (!ctx?.membership || !['owner', 'admin', 'member'].includes(ctx.membership.role)) throw new Error('Write access required');
+ return { ...ctx, org: ctx.membership.organizationId };
+}
+
+export async function resolveEvidenceRequest(form: FormData) {
+ const id = String(form.get('caseId') ?? ''), rid = String(form.get('requestId') ?? '');
+ if (!isUuid(id) || !isUuid(rid)) throw new Error('Invalid request');
+ const { cfg, s, org } = await writer(`/org/cases/${id}`);
+ await orgFetch(cfg, s, org, `/v1/cases/${id}/evidence-requests/${rid}/resolve`, { method: 'POST' });
+ revalidatePath(`/org/cases/${id}`);
+}
+
+export async function cancelCase(form: FormData) {
+ const id = String(form.get('caseId') ?? '');
+ if (!isUuid(id)) throw new Error('Invalid case');
+ const { cfg, s, org } = await writer(`/org/cases/${id}`);
+ await orgFetch(cfg, s, org, `/v1/cases/${id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: String(form.get('reason') ?? '') }) });
+ revalidatePath(`/org/cases/${id}`);
+}

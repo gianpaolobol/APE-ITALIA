@@ -13,6 +13,7 @@ export type CaseSummaryRecord = {
  property: { address: string; city: string; region: string };
  inspection: { status: string; scheduledAt: string; performedAt: string | null; certifierName: string } | null;
  certificate: { regionalId: string; depositedAt: string; deliveredAt: string | null } | null;
+ openEvidenceRequests: number;
 };
 export type CaseSummary = CaseSummaryRecord & { label: string; step: number };
 

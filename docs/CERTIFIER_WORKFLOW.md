@@ -42,3 +42,10 @@ Resta da implementare: annullamento/riassegnazione dopo l'accettazione, controll
 - Cliente: `GET /v1/cases/:id/certificate` (metadati e impronta SHA-256), `GET /v1/cases/:id/certificate/content` (download; il primo segna la consegna, pratica ⇒ `DELIVERED`, audit `certificate.deliver`, poi `certificate.read`).
 - La piattaforma **non genera né modifica** l'APE e non effettua depositi: registra quanto dichiarato dal certificatore. Nessuna integrazione con portali regionali.
 - Portale: modulo di caricamento per il certificatore; sezione APE con download nell'area organizzazioni.
+
+## Integrazioni, annullamento e rinuncia (iterazione 15)
+- **Richiesta di integrazioni** — `POST /v1/certifier/assignments/:id/evidence-requests {message, kinds[]}`: solo in `ASSIGNED`/`INSPECTION_SCHEDULED`; pratica ⇒ `AWAITING_EVIDENCE` (verbale bloccato). Il cliente vede le richieste (`GET /v1/cases/:id/evidence-requests`, contatore in `case-summaries`), carica i file e conferma con `POST .../evidence-requests/:rid/resolve` (member+); risolte tutte, la pratica torna allo stato precedente.
+- **Annullamento del cliente** — `POST /v1/cases/:id/cancel {reason}` fino al verbale escluso: pratica `CANCELLED`, offerte e incarico `WITHDRAWN`, sopralluogo `CANCELLED`, richieste chiuse.
+- **Rinuncia del certificatore** — `POST /v1/certifier/assignments/:id/withdraw {reason}` prima del verbale: incarico `WITHDRAWN`, sopralluogo annullato, pratica `SUBMITTED` e nuova offerta automatica (mai allo stesso certificatore).
+- Tutte le transizioni sono aggiornamenti condizionali e auditati (`evidence_request.create|resolve`, `case.cancel`, `assignment.withdraw`).
+- Interfacce: portale certificatore (richiesta e rinuncia), area organizzazioni (conferma integrazioni, annullamento), app (caricamento dei documenti richiesti dalla scheda pratiche).

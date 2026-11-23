@@ -2,12 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Text, TouchableOpacity, View, StyleSheet } from 'react-native';
 import type { ApeApi } from '../api';
 import { PROGRESS, loadCaseSummaries, type CaseSummary } from '../cases';
+import { EvidenceRequestPanel } from './EvidenceRequestPanel';
 
 const fmt = (d: string) => new Date(d).toLocaleString('it-IT', { timeZone: 'Europe/Rome', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 
 export function CaseList({ api }: { api: ApeApi | null }) {
  const [items, setItems] = useState<CaseSummary[] | null>(null);
  const [error, setError] = useState(false);
+ const [open, setOpen] = useState<string | null>(null);
  const load = useCallback(async () => {
   if (!api) return;
   setError(false);
@@ -24,6 +26,9 @@ export function CaseList({ api }: { api: ApeApi | null }) {
    <Text>{c.label}</Text>
    <View style={st.bar}>{PROGRESS.map((_, i) => <View key={i} style={[st.seg, i <= c.step && st.done]} />)}</View>
    {c.inspection ? <Text style={st.small}>{c.inspection.status === 'DONE' && c.inspection.performedAt ? `Sopralluogo eseguito il ${fmt(c.inspection.performedAt)}` : `Sopralluogo: ${fmt(c.inspection.scheduledAt)}`} · {c.inspection.certifierName}</Text> : null}
+   {c.openEvidenceRequests > 0 ? (open === c.id
+    ? <EvidenceRequestPanel api={api} caseId={c.id} onDone={() => { setOpen(null); load(); }} />
+    : <TouchableOpacity accessibilityRole="button" onPress={() => setOpen(c.id)}><Text style={st.link}>Il certificatore ha richiesto integrazioni: carica i documenti</Text></TouchableOpacity>) : null}
    {c.certificate ? <Text style={st.small}>APE n. {c.certificate.regionalId}, depositato il {fmt(c.certificate.depositedAt)}. Scaricalo dal portale web nell'area della tua organizzazione.</Text> : null}
   </View>)}
   <TouchableOpacity accessibilityRole="button" onPress={load}><Text style={st.link}>Aggiorna</Text></TouchableOpacity>

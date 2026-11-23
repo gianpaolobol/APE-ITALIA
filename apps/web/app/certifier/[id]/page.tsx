@@ -4,7 +4,7 @@ import { notFound, redirect } from 'next/navigation';
 import { config, readSession } from '../../../lib/session';
 import { ApiFailure, apiJson, type AssignmentView, type EvidenceView, type ExtractedFieldView, type InspectionSchema, type InspectionView } from '../../../lib/api';
 import { ExtractionPanel } from '../ExtractionPanel';
-import { extractEvidence } from '../actions';
+import { extractEvidence, requestEvidence, withdrawAssignment } from '../actions';
 import { InspectionPanel } from '../InspectionPanel';
 import { Notice, box } from '../../ui';
 
@@ -14,7 +14,7 @@ const LABELS: Record<string, string> = { boiler: 'Caldaia e targhetta', heating:
 
 const EXTRACT_MSG: Record<string, string> = { ok: 'Estrazione completata: verifica i valori proposti.', 'ai-off': 'Estrazione automatica non attiva: nessun fornitore AI è autorizzato in questo ambiente.', unscanned: 'Il file non è ancora stato controllato dall\'antivirus: non può essere inviato al servizio di estrazione.', done: 'File già elaborato con questo modello.', error: 'Estrazione non riuscita.' };
 
-const CERT_MSG: Record<string, string> = { ok: 'APE caricato: la pratica risulta depositata.', missing: 'Seleziona il PDF.', invalid: 'Dati mancanti o non validi (identificativo, data, dichiarazione).', conflict: 'APE già caricato o verbale non ancora inviato.', 'too-large': 'Il PDF supera 15 MB.', 'not-pdf': 'Il file non è un PDF.', error: 'Caricamento non riuscito.' };
+const CERT_MSG: Record<string, string> = { 'req-ok': 'Richiesta di integrazione inviata: la pratica è sospesa finché il richiedente non conferma.', 'req-state': 'Integrazioni richiedibili solo prima del verbale.', 'req-invalid': 'Indica cosa serve (almeno 10 caratteri) e almeno una voce.', ok: 'APE caricato: la pratica risulta depositata.', missing: 'Seleziona il PDF.', invalid: 'Dati mancanti o non validi (identificativo, data, dichiarazione).', conflict: 'APE già caricato o verbale non ancora inviato.', 'too-large': 'Il PDF supera 15 MB.', 'not-pdf': 'Il file non è un PDF.', error: 'Caricamento non riuscito.' };
 
 export default async function AssignmentPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ extract?: string; cert?: string }> }) {
  const { id } = await params;
@@ -51,6 +51,14 @@ export default async function AssignmentPage({ params, searchParams }: { params:
    {' '}<a href={`/certifier/${id}/evidence/${e.id}`}>Scarica</a>
    {' '}<form action={extractEvidence} style={{ display: 'inline' }}><input type="hidden" name="id" value={id} /><input type="hidden" name="evidenceId" value={e.id} /><button type="submit">Proponi valori (AI)</button></form>
   </li>)}</ul>}
+  {['ASSIGNED', 'INSPECTION_SCHEDULED', 'AWAITING_EVIDENCE'].includes(assignment.caseStatus) ? <section style={box}>
+   <h2>Integrazioni e rinuncia</h2>
+   {assignment.caseStatus !== 'AWAITING_EVIDENCE' ? <form action={requestEvidence}><input type="hidden" name="id" value={id} />
+    <p><label>Cosa serve al richiedente<br /><textarea name="message" required minLength={10} maxLength={1000} rows={3} cols={70} /></label></p>
+    <p>{Object.entries(LABELS).map(([k, l]) => <label key={k} style={{ marginRight: 12 }}><input type="checkbox" name="kinds" value={k} /> {l}</label>)}</p>
+    <button type="submit">Richiedi integrazioni</button></form> : <p>In attesa delle integrazioni richieste.</p>}
+   <form action={withdrawAssignment} style={{ marginTop: 12 }}><input type="hidden" name="id" value={id} /><input name="reason" required minLength={3} placeholder="Motivo della rinuncia" size={40} /> <button type="submit">Rinuncia all'incarico</button></form>
+  </section> : null}
   {schema ? <ExtractionPanel assignmentId={id} fields={extracted} schema={schema} /> : null}
   {schema ? <InspectionPanel assignmentId={id} inspection={inspection} schema={schema} /> : null}
  </main>;

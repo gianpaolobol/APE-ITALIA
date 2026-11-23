@@ -13,7 +13,7 @@ describe('case summaries', () => {
   expect(progressStep('UNKNOWN')).toBe(0);
  });
  it('uses a single API call and adds labels', async () => {
-  const f = vi.fn(async () => ({ ok: true, json: async () => [{ id: 'c1', status: 'INSPECTION_SCHEDULED', createdAt: 'x', property: { address: 'Via Uno 1', city: 'Bologna', region: 'Emilia-Romagna' }, inspection: { status: 'SCHEDULED', scheduledAt: 'y', performedAt: null, certifierName: 'Cert' }, certificate: null }] }));
+  const f = vi.fn(async () => ({ ok: true, json: async () => [{ id: 'c1', status: 'INSPECTION_SCHEDULED', createdAt: 'x', property: { address: 'Via Uno 1', city: 'Bologna', region: 'Emilia-Romagna' }, inspection: { status: 'SCHEDULED', scheduledAt: 'y', performedAt: null, certifierName: 'Cert' }, certificate: null, openEvidenceRequests: 0 }] }));
   vi.stubGlobal('fetch', f);
   const s = await loadCaseSummaries(new ApeApi(session));
   expect(f).toHaveBeenCalledTimes(1);

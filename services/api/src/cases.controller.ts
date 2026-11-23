@@ -93,12 +93,14 @@ export class CasesController {
     property:{select:{address:true,city:true,region:true}},
     inspections:{where:{status:{not:'CANCELLED'}},orderBy:{createdAt:'desc'},take:1,include:{assignment:{include:{certifier:{select:{displayName:true}}}}}},
     certificate:{select:{regionalId:true,depositedAt:true,deliveredAt:true}},
+    _count:{select:{evidenceRequests:{where:{resolvedAt:null}}}},
    },
   });
   return rows.map(c=>({
    id:c.id,status:c.status,createdAt:c.createdAt,property:c.property,
    inspection:c.inspections[0]?{status:c.inspections[0].status,scheduledAt:c.inspections[0].scheduledAt,performedAt:c.inspections[0].performedAt,certifierName:c.inspections[0].assignment.certifier.displayName}:null,
    certificate:c.certificate,
+   openEvidenceRequests:c._count.evidenceRequests,
   }));
  }
 }

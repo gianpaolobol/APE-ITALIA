@@ -51,6 +51,7 @@ model ApeCase {
  extractedFields ExtractedField[]
  inspections Inspection[]
  certificate Certificate?
+ evidenceRequests EvidenceRequest[]
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@index([organizationId,status])
@@ -248,5 +249,23 @@ model Certificate {
  uploadedAt DateTime @default(now())
  deliveredAt DateTime?
  deliveredTo String?
+ @@index([organizationId])
+}
+
+/// Request from the certifier for additional documents or photos ("richiesta di integrazione").
+model EvidenceRequest {
+ id String @id @default(uuid())
+ caseId String
+ case ApeCase @relation(fields: [caseId], references: [id])
+ organizationId String
+ assignmentId String
+ message String
+ kinds String[]
+ previousStatus CaseStatus
+ createdBy String
+ createdAt DateTime @default(now())
+ resolvedAt DateTime?
+ resolvedBy String?
+ @@index([caseId])
  @@index([organizationId])
 }
