@@ -210,9 +210,11 @@ jobs:
           set -o pipefail
           xcodebuild -workspace APEItalia.xcworkspace -scheme APEItalia -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/APEItalia.xcarchive" \
-            -allowProvisioningUpdates -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$KEY_ID" -authenticationKeyIssuerID "$ISSUER_ID" \
-            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic archive | tail -60
+            DEVELOPMENT_TEAM="$TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" archive | tail -60
+          # The archive is left unsigned on purpose: automatic signing at archive time needs a development
+          # profile, which Apple only issues when the team has registered devices. The export step below
+          # signs for App Store distribution (cloud-managed certificate, no devices needed).
       - name: Export and upload to TestFlight
         if: env.HAS_ASC == 'true'
         env:
