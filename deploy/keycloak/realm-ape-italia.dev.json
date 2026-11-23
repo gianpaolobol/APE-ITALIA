@@ -1,0 +1,53 @@
+{
+  "realm": "ape-italia",
+  "enabled": true,
+  "displayName": "APE Italia (sviluppo)",
+  "sslRequired": "all",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "resetPasswordAllowed": false,
+  "bruteForceProtected": true,
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 36000,
+  "offlineSessionIdleTimeout": 2592000,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "internationalizationEnabled": true,
+  "supportedLocales": ["it", "en"],
+  "defaultLocale": "it",
+  "clients": [
+    {
+      "clientId": "ape-mobile",
+      "name": "APE Italia app",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["apeitalia://auth/callback"],
+      "webOrigins": [],
+      "attributes": { "pkce.code.challenge.method": "S256", "post.logout.redirect.uris": "apeitalia://auth/logout" },
+      "optionalClientScopes": ["offline_access"],
+      "protocolMappers": [
+        { "name": "api-audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper", "config": { "included.custom.audience": "ape-italia-api", "access.token.claim": "true", "id.token.claim": "false", "introspection.token.claim": "true" } }
+      ]
+    },
+    {
+      "clientId": "ape-web",
+      "name": "APE Italia portale (sviluppo)",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "redirectUris": ["http://localhost:3300/auth/callback"],
+      "webOrigins": [],
+      "attributes": { "pkce.code.challenge.method": "S256" },
+      "optionalClientScopes": ["offline_access"],
+      "protocolMappers": [
+        { "name": "api-audience", "protocol": "openid-connect", "protocolMapper": "oidc-audience-mapper", "config": { "included.custom.audience": "ape-italia-api", "access.token.claim": "true", "id.token.claim": "false", "introspection.token.claim": "true" } }
+      ]
+    }
+  ]
+}

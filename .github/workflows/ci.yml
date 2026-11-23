@@ -107,3 +107,56 @@ jobs:
       - name: Tear down
         if: always()
         run: docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env down -v
+  keycloak-e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ape
+          POSTGRES_PASSWORD: ci_only_password
+          POSTGRES_DB: ape_italia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ape -d ape_italia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://ape:ci_only_password@localhost:5432/ape_italia?schema=public
+      NEXT_TELEMETRY_DISABLED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - run: npm run db:generate -w @ape/api
+      - run: npm exec --workspace @ape/api -- prisma migrate deploy
+      - run: npm run build -w @ape/api
+      - run: npm run build -w @ape/web
+      - name: Start Keycloak over HTTPS with the development realm
+        run: |
+          mkdir -p /tmp/kc
+          openssl req -x509 -newkey rsa:2048 -nodes -keyout /tmp/kc/k.pem -out /tmp/kc/c.pem -subj /CN=localhost -days 1 -addext subjectAltName=DNS:localhost,IP:127.0.0.1
+          chmod 644 /tmp/kc/*.pem
+          echo "KEYCLOAK_ADMIN_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+      - run: |
+          docker run -d --name kc -p 8443:8443 -v /tmp/kc:/certs:ro -v "$PWD/deploy/keycloak:/opt/keycloak/data/import:ro" \
+            -e KC_BOOTSTRAP_ADMIN_USERNAME=admin -e KC_BOOTSTRAP_ADMIN_PASSWORD="$KEYCLOAK_ADMIN_PASSWORD" \
+            quay.io/keycloak/keycloak:26.0 start-dev --import-realm --http-enabled=false \
+            --https-certificate-file=/certs/c.pem --https-certificate-key-file=/certs/k.pem --hostname=https://localhost:8443
+          for i in $(seq 1 90); do curl -fsk https://localhost:8443/realms/ape-italia/.well-known/openid-configuration >/dev/null && break; sleep 2; done
+          curl -fsk https://localhost:8443/realms/ape-italia/.well-known/openid-configuration | head -c 300
+      - name: End-to-end with Keycloak, compiled API, portal and Chrome
+        run: npm run test -w @ape/api -- keycloak
+        env:
+          RUN_KEYCLOAK_E2E: '1'
+          KEYCLOAK_URL: https://localhost:8443
+          KC_CERT_DIR: /tmp/kc
+          NODE_EXTRA_CA_CERTS: /tmp/kc/c.pem
+          CHROME_PATH: /usr/bin/google-chrome
+      - name: Keycloak logs on failure
+        if: failure()
+        run: docker logs kc 2>&1 | tail -80
