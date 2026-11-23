@@ -7,6 +7,11 @@ name: Firebase bootstrap (one-time, interactive)
 # revokes the temporary credentials. See docs/MOBILE_RELEASE.md.
 on:
   workflow_dispatch:
+    inputs:
+      project_id:
+        description: 'Existing Google Cloud/Firebase project id to reuse (empty = reuse ape-italia-* or create one)'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -74,9 +79,11 @@ jobs:
           if ! wait "$GPID"; then grep -v -i 'code' "$RUNNER_TEMP/out.log" | tail -5; gh issue comment "$ISSUE" --repo "$REPO" --body "Accesso Google non riuscito (codice scaduto o già usato?). Rilancia il workflow."; exit 1; fi
           gh issue comment "$ISSUE" --repo "$REPO" --body "Accesso riuscito. Configurazione di Firebase in corso…"
       - name: Configure Firebase and keyless access for this repository
+        env:
+          INPUT_PROJECT_ID: ${{ inputs.project_id }}
         run: |
           set -euo pipefail
-          OUT=$(bash deploy/firebase/bootstrap.sh)
+          OUT=$(PROJECT_ID="$INPUT_PROJECT_ID" bash deploy/firebase/bootstrap.sh)
           echo "$OUT"
           gh issue comment "$ISSUE" --repo "$REPO" --body "$(printf 'Configurazione completata. Identificativi (non segreti):\n\n```json\n%s\n```' "$OUT")"
       - name: Revoke temporary credentials

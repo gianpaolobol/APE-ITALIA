@@ -8,11 +8,20 @@ REPO="${REPO:?}"; PACKAGE="it.apeitalia.app"
 ACCOUNT=$(gcloud config get-value account 2>/dev/null)
 log() { echo "[bootstrap] $*" >&2; }
 
-PROJECT=$(gcloud projects list --filter="projectId:ape-italia*" --format="value(projectId)" --sort-by=createTime | head -1)
+PROJECT="${PROJECT_ID:-}"
+if [ -n "$PROJECT" ]; then
+  [[ "$PROJECT" =~ ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ ]] || { log "invalid project id"; exit 1; }
+  gcloud projects describe "$PROJECT" --format='value(projectId)' >/dev/null || { log "project $PROJECT not accessible with this account"; exit 1; }
+  log "reusing existing project $PROJECT (requested)"
+else
+  PROJECT=$(gcloud projects list --filter="projectId:ape-italia*" --format="value(projectId)" --sort-by=createTime | head -1)
+fi
 if [ -z "$PROJECT" ]; then
   PROJECT="ape-italia-$(openssl rand -hex 3)"
   log "creating project $PROJECT"
-  gcloud projects create "$PROJECT" --name="APE Italia" --quiet
+  gcloud projects create "$PROJECT" --name="APE Italia" --quiet || {
+    log "project creation failed (often: project quota reached). Re-run the workflow with input project_id=<an existing Firebase project id>."
+    exit 1; }
 fi
 gcloud config set project "$PROJECT" --quiet >/dev/null 2>&1
 NUM=$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')
