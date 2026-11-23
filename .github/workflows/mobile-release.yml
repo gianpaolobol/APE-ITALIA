@@ -104,9 +104,11 @@ jobs:
       - name: Distribute APK with Firebase App Distribution (keyless)
         if: env.FB_PROVIDER != ''
         run: |
+          set -o pipefail
           NOTES="APE Italia build ${BUILD_NUMBER} ($(git rev-parse --short HEAD)) — prova interna, dati solo sintetici."
           npx --yes firebase-tools@14 --non-interactive --project "$FB_PROJECT" appdistribution:distribute \
-            apps/mobile/android/app/build/outputs/apk/release/app-release.apk --app "$FB_APP" --groups "$FB_GROUP" --release-notes "$NOTES"
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk --app "$FB_APP" --groups "$FB_GROUP" --release-notes "$NOTES" \
+            2>&1 | grep -v 'app-binary-downloads'   # public repo: do not log the signed 1-hour download link
           echo "FIREBASE_APP_ID=$FB_APP" >> "$GITHUB_ENV"
           echo "HAS_FIREBASE=true" >> "$GITHUB_ENV"
       - name: Distribute APK with Firebase App Distribution (service account key)
@@ -130,7 +132,8 @@ jobs:
           NOTES="APE Italia build ${BUILD_NUMBER} ($(git rev-parse --short HEAD)) — prova interna, dati solo sintetici."
           ARGS=(appdistribution:distribute apps/mobile/android/app/build/outputs/apk/release/app-release.apk --app "$APP_ID" --release-notes "$NOTES")
           if [ -n "${TESTERS:-}" ]; then ARGS+=(--testers "$TESTERS"); fi
-          $FB "${ARGS[@]}"
+          set -o pipefail
+          $FB "${ARGS[@]}" 2>&1 | grep -v 'app-binary-downloads'
           echo "FIREBASE_APP_ID=$APP_ID" >> "$GITHUB_ENV"
       - name: Remove Firebase credentials
         if: always()
