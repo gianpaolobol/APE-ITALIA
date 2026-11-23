@@ -11,7 +11,7 @@ async function main() {
  const usage = [
   'provision-cli create-organization --name <name> --owner-subject <oidc-sub> --operator <operator-id>',
   'provision-cli register-certifier --subject <oidc-sub> --name <display name> --registration-id <regional id> --regions "Emilia-Romagna[,...]" --operator <operator-id> [--max-active <n>]',
-  'provision-cli approve-application --id <application id> --subject <oidc-sub> --operator <operator-id>   (after checking the SACE number on the public list)',
+  'provision-cli approve-application --id <application id> [--subject <oidc-sub>] --operator <operator-id>   (after checking the SACE number on the public list)',
  'provision-cli expire-offers',
   'provision-cli extraction-metrics',
   'provision-cli export-subject-data --subject <oidc-sub>',
@@ -36,7 +36,9 @@ async function main() {
   } else if (command === 'approve-application') {
    const app = await db.certifierApplication.findUniqueOrThrow({ where: { id: args.id ?? '' } });
    if (app.status !== 'PENDING') throw new Error('Application is not pending');
-   const c = await registerVerifiedCertifier(db, { subject: args.subject ?? '', displayName: `${app.firstName} ${app.lastName}`, registrationId: app.saceNumber, regions: [app.region], operator: args.operator ?? '' });
+   // Without --subject the certifier logs in with the email of the application (email-code login).
+   const user = args.subject ? null : (await db.platformUser.findUnique({ where: { email: app.email } })) ?? (await db.platformUser.create({ data: { email: app.email, pushTokens: [] } }));
+   const c = await registerVerifiedCertifier(db, { subject: args.subject ?? `usr_${user!.id}`, displayName: `${app.firstName} ${app.lastName}`, registrationId: app.saceNumber, regions: [app.region], operator: args.operator ?? '' });
    await db.certifierApplication.update({ where: { id: app.id }, data: { status: 'APPROVED', reviewedAt: new Date(), reviewedBy: args.operator ?? '' } });
    console.log(JSON.stringify({ certifierId: c.id }));
   } else if (command === 'export-subject-data') {

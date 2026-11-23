@@ -315,3 +315,36 @@ model CertifierApplication {
  reviewedBy         String?
  reviewNote         String?
 }
+
+/// Customer/certifier account authenticated by a one-time code sent by email (no password).
+model PlatformUser {
+ id        String    @id @default(uuid())
+ email     String?   @unique
+ createdAt DateTime  @default(now())
+ lastLoginAt DateTime?
+ deletedAt DateTime?
+ pushTokens String[]
+ refreshTokens RefreshToken[]
+}
+
+model LoginCode {
+ id         String   @id @default(uuid())
+ email      String
+ codeHash   String
+ expiresAt  DateTime
+ attempts   Int      @default(0)
+ consumedAt DateTime?
+ createdAt  DateTime @default(now())
+ @@index([email, createdAt])
+}
+
+model RefreshToken {
+ id        String   @id @default(uuid())
+ userId    String
+ user      PlatformUser @relation(fields: [userId], references: [id])
+ tokenHash String   @unique
+ expiresAt DateTime
+ revokedAt DateTime?
+ createdAt DateTime @default(now())
+ @@index([userId])
+}

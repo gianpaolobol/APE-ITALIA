@@ -2,11 +2,18 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-53 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+60 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
 | GET | `/health` | pubblico | 200 | predefinito | `HealthController.health` |
+| DELETE | `/v1/auth/account` | utente autenticato | 204 | predefinito | `PlatformAuthController.deleteAccount` |
+| POST | `/v1/auth/email/start` | pubblico | 202 | 3/min | `PlatformAuthController.start` |
+| POST | `/v1/auth/email/verify` | pubblico | 201 | 10/min | `PlatformAuthController.verify` |
+| POST | `/v1/auth/logout` | pubblico | 204 | predefinito | `PlatformAuthController.logout` |
+| POST | `/v1/auth/push-token` | utente autenticato | 204 | predefinito | `PlatformAuthController.pushToken` |
+| POST | `/v1/auth/refresh` | pubblico | 201 | 30/min | `PlatformAuthController.refresh` |
+| GET | `/v1/auth/session` | utente autenticato | 200 | predefinito | `PlatformAuthController.session` |
 | GET | `/v1/case-summaries` | membro dell'organizzazione | 200 | predefinito | `CasesController.caseSummaries` |
 | GET | `/v1/cases` | membro dell'organizzazione | 200 | predefinito | `CasesController.listCases` |
 | POST | `/v1/cases` | membro dell'organizzazione | 201 | predefinito | `CasesController.createCase` |

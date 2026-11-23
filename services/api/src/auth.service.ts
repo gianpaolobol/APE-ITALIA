@@ -2,6 +2,9 @@ import { Inject, Injectable, UnauthorizedException, ForbiddenException, Optional
 import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from 'jose';
 import { PrismaService } from './prisma.service';
 import { hasTenantAccess } from './tenant-policy';
+import { PLATFORM_ISSUER, platformAuthFromEnv, unverifiedIssuer, verifyPlatformToken, type PlatformAuthConfig } from './platform-auth/tokens';
+
+export const PLATFORM_AUTH = Symbol('PLATFORM_AUTH');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const AUTH_CONFIG = Symbol('AUTH_CONFIG');
@@ -19,12 +22,22 @@ export function authConfigFromEnv(env = process.env): AuthConfig | null {
 @Injectable()
 export class AuthService {
  private readonly config: AuthConfig | null;
- constructor(@Inject(PrismaService) private readonly db: PrismaService, @Optional() @Inject(AUTH_CONFIG) config?: AuthConfig | null) {
+ private readonly platform: PlatformAuthConfig | null;
+ constructor(@Inject(PrismaService) private readonly db: PrismaService, @Optional() @Inject(AUTH_CONFIG) config?: AuthConfig | null,
+  @Optional() @Inject(PLATFORM_AUTH) platform?: PlatformAuthConfig | null) {
   this.config = config === undefined ? authConfigFromEnv() : config;
+  this.platform = platform === undefined ? platformAuthFromEnv() : platform;
  }
 
  /** Verifies signature, issuer, audience, expiry and algorithm; returns the token subject. */
  async verify(authorization?: string): Promise<{ subject: string }> {
+  if (this.platform && authorization?.startsWith('Bearer ') && unverifiedIssuer(authorization.slice(7)) === PLATFORM_ISSUER) {
+   const sub = await verifyPlatformToken(this.platform, authorization.slice(7));
+   if (!sub) throw new UnauthorizedException('Invalid access token');
+   const user = await this.db.platformUser.findUnique({ where: { id: sub.slice(4) }, select: { deletedAt: true } });
+   if (!user || user.deletedAt) throw new UnauthorizedException('Account not active');
+   return { subject: sub };
+  }
   if (!this.config) throw new UnauthorizedException('Authentication provider not configured');
   if (!authorization?.startsWith('Bearer ')) throw new UnauthorizedException('Bearer token required');
   try {
