@@ -101,3 +101,7 @@ CI Run #99 su `9c814ba` (PR #20): **verde**.
 Implementato: `EvidenceRequest`, `LifecycleController` (richiesta/risoluzione integrazioni, annullamento, rinuncia con nuova offerta), controllo di stato anticipato nel verbale, contatore richieste aperte in `case-summaries`, interfacce web e mobile.
 Test locali: API typecheck OK, 105 + 51 saltati (3 nuovi test PostgreSQL); web build OK; mobile typecheck, 84 test, bundle OK.
 CI Run #101 su `2580d32` (PR #21): **verde**; API 153 + E2E 3, mobile 84.
+
+## Iterazione 16 — PR #22 `feat/gdpr-retention` (base: `feat/case-lifecycle`)
+Implementato: `exportSubjectData`, `purgeExpiredEvidence` (dry run predefinito), policy da ambiente, comandi CLI.
+Test locali: API typecheck OK, 106 + 54 saltati (1 unitario, 3 PostgreSQL nuovi).

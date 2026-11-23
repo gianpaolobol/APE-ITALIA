@@ -150,3 +150,6 @@ PR #20 (impilata su #19). Nuova scheda "Le mie pratiche" con stato e avanzamento
 
 ## 39. Ciclo di vita: integrazioni, annullamento, rinuncia (Claude, 23/11/2026)
 PR #21 (impilata su #20). Richieste di integrazione del certificatore con sospensione della pratica e ripresa alla conferma del cliente; annullamento del cliente prima del verbale; rinuncia del certificatore con riassegnazione automatica. Interfacce web e mobile. Dettagli in `docs/CERTIFIER_WORKFLOW.md`.
+
+## 40. Diritti degli interessati e conservazione (Claude, 23/11/2026)
+PR #22 (impilata su #21). CLI operatore per esportare i dati collegati a un soggetto (art. 15/20) e per la purga delle evidenze scadute (simulazione predefinita; APE, verbale, consensi e audit conservati). Tempi di conservazione predefiniti da validare legalmente. Dettagli: `docs/PRIVACY_OPERATIONS.md`.

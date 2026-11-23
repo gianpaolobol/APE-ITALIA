@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import { createOrganizationWithOwner, parseArgs, registerVerifiedCertifier } from './provisioning';
 import { expireStaleOffers } from '../certifiers/assignment.service';
 import { extractionMetrics } from '../extraction/metrics';
+import { exportSubjectData, purgeExpiredEvidence, retentionPolicyFromEnv } from '../privacy/privacy';
+import { storageFromEnv } from '../evidence/storage';
 
 /** Operator CLI. Run from a trusted shell: `node dist/admin/provision-cli.js <command> ...` */
 async function main() {
@@ -11,8 +13,10 @@ async function main() {
   'provision-cli register-certifier --subject <oidc-sub> --name <display name> --registration-id <regional id> --regions "Emilia-Romagna[,...]" --operator <operator-id> [--max-active <n>]',
   'provision-cli expire-offers',
   'provision-cli extraction-metrics',
+  'provision-cli export-subject-data --subject <oidc-sub>',
+  'provision-cli purge-expired-evidence [--apply yes]   (dry run unless --apply yes)',
  ].join('\n');
- if (!['create-organization', 'register-certifier', 'expire-offers', 'extraction-metrics'].includes(command)) {
+ if (!['create-organization', 'register-certifier', 'expire-offers', 'extraction-metrics', 'export-subject-data', 'purge-expired-evidence'].includes(command)) {
   console.error('Usage:\n' + usage);
   process.exit(2);
  }
@@ -28,6 +32,10 @@ async function main() {
     ...(args['max-active'] ? { maxActiveAssignments: Number(args['max-active']) } : {}),
    });
    console.log(JSON.stringify({ certifierId: c.id }));
+  } else if (command === 'export-subject-data') {
+   console.log(JSON.stringify(await exportSubjectData(db, args.subject ?? ''), null, 1));
+  } else if (command === 'purge-expired-evidence') {
+   console.log(JSON.stringify(await purgeExpiredEvidence(db, storageFromEnv(), retentionPolicyFromEnv(), { apply: args.apply === 'yes' }), null, 1));
   } else if (command === 'extraction-metrics') {
    console.log(JSON.stringify(await extractionMetrics(db), null, 1));
   } else {
