@@ -9,7 +9,7 @@
 export type AnswerValue = string | number | boolean | string[];
 export type Answers = Record<string, AnswerValue | undefined>;
 
-export type PhotoRef = { uri: string; name: string; mimeType: string; takenAt: string; width?: number; height?: number };
+export type PhotoRef = { uri: string; name: string; mimeType: string; takenAt: string; width?: number; height?: number; durationSec?: number };
 export type Photos = Record<string, PhotoRef[] | undefined>;
 
 export type Option = { value: string; label: string; hint?: string; icon?: string };
@@ -38,7 +38,9 @@ export type PhotoQuestion = Base & {
  allowDocuments?: boolean;
  extract?: ExtractKind;
 };
-export type Question = ChoiceQuestion | MultiQuestion | NumberQuestion | TextQuestion | ToggleQuestion | PhotoQuestion;
+/** Guided walkthrough video; the total duration budget depends on size and type (see survey/video.ts). */
+export type VideoQuestion = Base & { kind: 'video'; guide: string[] };
+export type Question = ChoiceQuestion | MultiQuestion | NumberQuestion | TextQuestion | ToggleQuestion | PhotoQuestion | VideoQuestion;
 
 export type Step = {
  id: string;
@@ -114,6 +116,18 @@ export const STEPS: Step[] = [
   ],
  },
  {
+  id: 'video', title: 'Fai un giro con la videocamera', subtitle: 'Un video ci dice più di cento domande', icon: 'videocam-outline',
+  questions: [
+   { id: 'walkthrough', kind: 'video', label: 'Video dell’immobile', required: true, guide: [
+    'Accendi le luci e apri le tapparelle. Tieni il telefono in orizzontale e cammina piano.',
+    'Parti dall’ingresso e visita tutte le stanze: in ognuna fai un giro lento e inquadra finestre e termosifoni.',
+    'Mostra la caldaia o il generatore, gli split interni e, se puoi, l’unità esterna dal balcone.',
+    'Se è una casa, esci e riprendi le facciate e il tetto da fuori.',
+    'Evita di riprendere persone e documenti personali. L’audio non viene conservato.',
+   ] },
+  ],
+ },
+ {
   id: 'documenti', title: 'Documenti', subtitle: 'Bastano le foto: le leggiamo noi', icon: 'document-text-outline',
   questions: [
    { id: 'cadastralPlan', kind: 'photo', label: 'Planimetria catastale', required: true, allowDocuments: true, max: 4, extract: 'cadastral_plan',
@@ -138,8 +152,8 @@ export const STEPS: Step[] = [
     help: 'Misuralo con un metro sul vano di una finestra o della porta d’ingresso, da intonaco a intonaco.' },
    { id: 'wallInsulated', kind: 'toggle', label: 'C’è un cappotto o isolamento' },
    { id: 'wallInsulationCm', kind: 'number', label: 'Spessore isolamento', unit: 'cm', min: 1, max: 30, placeholder: '8', visible: yes('wallInsulated') },
-   { id: 'wallPhotos', kind: 'photo', label: 'Foto del muro', required: true, max: 3,
-    guide: '1) Il metro appoggiato sul vano finestra aperta, ben leggibile. 2) La facciata esterna.' },
+   { id: 'wallPhotos', kind: 'photo', label: 'Foto dello spessore del muro', required: true, max: 3,
+    guide: 'Il video non basta per lo spessore: appoggia un metro sul vano di una finestra aperta e scatta una foto in cui si leggano bene i centimetri.' },
   ],
  },
  {
@@ -156,8 +170,8 @@ export const STEPS: Step[] = [
     { value: 'legno', label: 'Legno' }, { value: 'pvc', label: 'PVC' }, { value: 'alluminio_tt', label: 'Alluminio a taglio termico' },
     { value: 'metallo', label: 'Alluminio/ferro vecchio' }, { value: 'non_so', label: 'Non lo so' },
    ] },
-   { id: 'windowPhotos', kind: 'photo', label: 'Foto di una finestra', required: true, max: 3,
-    guide: '1) Finestra intera. 2) Primo piano del bordo del vetro: a volte c’è stampata la sigla del vetrocamera.' },
+   { id: 'windowPhotos', kind: 'photo', label: 'Primo piano del vetro', max: 3,
+    guide: 'Le finestre le vediamo nel video: qui basta un primo piano del bordo del vetro, dove a volte è stampata la sigla del vetrocamera.' },
   ],
  },
  {
@@ -268,7 +282,7 @@ export function isVisible(q: Question, a: Answers): boolean {
 }
 
 export function isAnswered(q: Question, a: Answers, p: Photos): boolean {
- if (q.kind === 'photo') return (p[q.id]?.length ?? 0) > 0;
+ if (q.kind === 'photo' || q.kind === 'video') return (p[q.id]?.length ?? 0) > 0;
  const v = a[q.id];
  if (q.kind === 'toggle') return q.required ? v === true : v !== undefined;
  if (q.kind === 'multi') return Array.isArray(v) && v.length > 0;
@@ -298,7 +312,7 @@ export function pruneHidden(a: Answers, p: Photos): { answers: Answers; photos: 
  for (const s of STEPS) for (const q of s.questions) {
   const show = (s.visible ? s.visible(a) : true) && isVisible(q, a);
   if (!show) continue;
-  if (q.kind === 'photo') { if (p[q.id]) photos[q.id] = p[q.id]; }
+  if (q.kind === 'photo' || q.kind === 'video') { if (p[q.id]) photos[q.id] = p[q.id]; }
   else if (a[q.id] !== undefined) answers[q.id] = a[q.id];
  }
  return { answers, photos };

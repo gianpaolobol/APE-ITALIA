@@ -1,9 +1,12 @@
 /** Content sniffing: the declared Content-Type is never trusted. */
 export const MAX_EVIDENCE_BYTES = 15 * 1024 * 1024;
-export const EVIDENCE_KINDS = ['boiler', 'heating', 'envelope', 'window', 'floorplan', 'document'] as const;
+/** Walkthrough videos: up to ~6 minutes at 720p. Kept in memory while processed: size limits concurrency. */
+export const MAX_VIDEO_BYTES = 300 * 1024 * 1024;
+export const MAX_VIDEO_SECONDS = 6 * 60 + 15;
+export const EVIDENCE_KINDS = ['boiler', 'heating', 'envelope', 'window', 'floorplan', 'document', 'video'] as const;
 export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
 
-export type SniffedType = 'image/jpeg' | 'image/png' | 'image/heic' | 'application/pdf';
+export type SniffedType = 'image/jpeg' | 'image/png' | 'image/heic' | 'application/pdf' | 'video/mp4' | 'video/quicktime';
 
 export function sniffMimeType(buf: Buffer): SniffedType | null {
  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
@@ -12,15 +15,21 @@ export function sniffMimeType(buf: Buffer): SniffedType | null {
  if (buf.length >= 12 && buf.subarray(4, 8).toString('latin1') === 'ftyp') {
   const brand = buf.subarray(8, 12).toString('latin1');
   if (['heic', 'heix', 'heim', 'heis', 'mif1', 'msf1'].includes(brand)) return 'image/heic';
+  if (brand === 'qt  ') return 'video/quicktime';
+  if (['isom', 'iso2', 'iso4', 'iso5', 'iso6', 'mp41', 'mp42', 'avc1', 'M4V ', 'dash'].includes(brand)) return 'video/mp4';
  }
  return null;
 }
 
 /** Floor plans and documents may be PDF; photo kinds must be images. */
 export function isAllowedForKind(kind: EvidenceKind, mime: SniffedType): boolean {
+ const isVideo = mime === 'video/mp4' || mime === 'video/quicktime';
+ if (kind === 'video' || isVideo) return kind === 'video' && isVideo;
  if (mime === 'application/pdf') return kind === 'floorplan' || kind === 'document';
  return true;
 }
+
+export const maxBytesFor = (kind: EvidenceKind) => (kind === 'video' ? MAX_VIDEO_BYTES : MAX_EVIDENCE_BYTES);
 
 /**
  * Removes JPEG APP1 (EXIF/XMP, incl. GPS position) and APP13 (IPTC) segments: photos of a home

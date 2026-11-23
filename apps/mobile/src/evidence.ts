@@ -1,6 +1,6 @@
 import type { RequestStep } from './workflow';
 
-export type EvidenceKind = 'boiler' | 'heating' | 'envelope' | 'window' | 'floorplan' | 'document';
+export type EvidenceKind = 'boiler' | 'heating' | 'envelope' | 'window' | 'floorplan' | 'document' | 'video';
 export type PickedFile = { uri: string; name: string; mimeType: string; size?: number };
 export type EvidenceRecord = { id: string; caseId: string; kind: EvidenceKind; mimeType: string; sizeBytes: number; scanStatus: string; createdAt: string };
 
@@ -16,6 +16,7 @@ export const KIND_LABELS: Record<EvidenceKind, string> = {
  window: 'Serramenti',
  floorplan: 'Planimetria',
  document: 'Libretto impianto / altri documenti',
+ video: 'Video dell’immobile',
 };
 /** Kinds that accept PDF (mirrors the server policy; the server remains authoritative). */
 export const PDF_KINDS: EvidenceKind[] = ['floorplan', 'document'];

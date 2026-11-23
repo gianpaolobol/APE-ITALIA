@@ -3,8 +3,9 @@ import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } fr
 import { Ionicons } from '@expo/vector-icons';
 import { C, F, R, S } from './theme';
 import { ChoiceCards, Chips, Field, Help, Label, ToggleRow, tap } from './kit';
-import { questionError, type AnswerValue, type Answers, type NumberQuestion, type PhotoQuestion, type PhotoRef, type Question } from '../survey/questions';
-import { PermissionDeniedError, pickDocument, pickImage, takePhoto } from '../pickers';
+import { questionError, type AnswerValue, type Answers, type NumberQuestion, type PhotoQuestion, type VideoQuestion, type PhotoRef, type Question } from '../survey/questions';
+import { PermissionDeniedError, pickDocument, pickImage, pickVideo, recordVideo, takePhoto } from '../pickers';
+import { VIDEO_MAX_CLIPS, fmtDuration, videoBudgetSeconds } from '../survey/video';
 import { readPhoto } from '../ai';
 
 type Props = {
@@ -12,7 +13,7 @@ type Props = {
  answers: Answers;
  photos: PhotoRef[];
  onAnswer: (id: string, v: AnswerValue | undefined) => void;
- onAddPhoto: (id: string, file: { uri: string; name: string; mimeType: string }) => PhotoRef;
+ onAddPhoto: (id: string, file: { uri: string; name: string; mimeType: string; durationSec?: number }) => PhotoRef;
  onRemovePhoto: (id: string, p: PhotoRef) => void;
  onAutoFill: (fields: Answers, summary: string, source: PhotoRef) => void;
  showErrors: boolean;
@@ -48,6 +49,7 @@ export function QuestionView(p: Props) {
    </Block>;
   }
   case 'photo': return <PhotoQ {...p} q={q} />;
+  case 'video': return <VideoQ {...p} q={q} />;
  }
 }
 
@@ -144,6 +146,57 @@ function PhotoQ(p: Props & { q: PhotoQuestion }) {
  );
 }
 
+function VideoQ({ q, answers, photos, onAddPhoto, onRemovePhoto, showErrors }: Props & { q: VideoQuestion }) {
+ const budget = videoBudgetSeconds(answers);
+ const used = photos.reduce((s, v) => s + (v.durationSec ?? 0), 0);
+ const left = Math.max(0, budget - used);
+ const canAdd = photos.length < VIDEO_MAX_CLIPS && left >= 10;
+ const add = async (source: 'camera' | 'library') => {
+  try {
+   const v = source === 'camera' ? await recordVideo(left) : await pickVideo(left);
+   if (!v) return;
+   if (v.durationSec > left + 2) { Alert.alert('Video troppo lungo', `Hai ancora ${fmtDuration(left)} disponibili. Accorcia il video o registrane uno nuovo.`); return; }
+   if (v.size !== undefined && v.size > 300 * 1024 * 1024) { Alert.alert('File troppo grande', 'Massimo 300 MB: registra a qualità standard (720p).'); return; }
+   onAddPhoto(q.id, v);
+  } catch (e) {
+   if (e instanceof PermissionDeniedError) Alert.alert('Permesso negato', 'Consenti l’accesso alla fotocamera dalle Impostazioni di iOS.');
+   else Alert.alert('Errore', 'Non è stato possibile aggiungere il video.');
+  }
+ };
+ return (
+  <View style={st.block}>
+   <Label required={q.required}>{q.label}</Label>
+   <View style={st.budget}>
+    <Ionicons name="time-outline" size={20} color={C.brandDeep} />
+    <Text style={[F.body, { flex: 1, marginLeft: 8, color: C.brandDeep }]}>Durata massima <Text style={{ fontWeight: '800' }}>{fmtDuration(budget)}</Text> per questo immobile, anche in {VIDEO_MAX_CLIPS} parti (per esempio una per piano).</Text>
+   </View>
+   <View style={st.script}>
+    {q.guide.map((g, i) => (
+     <View key={i} style={{ flexDirection: 'row', marginBottom: 8 }}>
+      <View style={st.num}><Text style={{ color: C.white, fontWeight: '800', fontSize: 12 }}>{i + 1}</Text></View>
+      <Text style={[F.small, { flex: 1, color: C.inkSoft }]}>{g}</Text>
+     </View>
+    ))}
+   </View>
+   {photos.map((v, i) => (
+    <View key={v.uri} style={st.clip}>
+     <Ionicons name="film-outline" size={22} color={C.brand} />
+     <Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink, fontWeight: '600' }]}>Parte {i + 1} · {fmtDuration(v.durationSec ?? 0)}</Text>
+     <Pressable accessibilityLabel="Rimuovi video" hitSlop={10} onPress={() => { tap(); onRemovePhoto(q.id, v); }}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
+    </View>
+   ))}
+   {photos.length ? <Text style={[F.small, { marginBottom: 10 }]}>Tempo ancora disponibile: {fmtDuration(left)}</Text> : null}
+   {canAdd ? (
+    <View style={st.actions}>
+     <Action icon="videocam" label={photos.length ? 'Registra un’altra parte' : 'Registra il video'} primary onPress={() => add('camera')} />
+     <Action icon="images-outline" label="Dalla galleria" onPress={() => add('library')} />
+    </View>
+   ) : <Text style={F.small}>Hai usato tutto il tempo disponibile.</Text>}
+   {showErrors && q.required && photos.length === 0 ? <Text style={st.warn}>Serve il video dell’immobile</Text> : null}
+  </View>
+ );
+}
+
 function Action({ icon, label, onPress, primary }: { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; primary?: boolean }) {
  return (
   <Pressable onPress={() => { tap(); onPress(); }} style={({ pressed }) => [st.action, primary && { backgroundColor: C.brand, borderColor: C.brand }, pressed && { opacity: 0.85 }]}>
@@ -165,4 +218,8 @@ const st = StyleSheet.create({
  action: { flex: 1, minHeight: 50, borderRadius: R.m, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
  actionText: { fontSize: 15, fontWeight: '700', color: C.brand },
  reading: { flexDirection: 'row', alignItems: 'center', marginBottom: 10 },
+ budget: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.brandSoft, borderRadius: R.m, padding: 12, marginBottom: 10 },
+ script: { backgroundColor: C.surface, borderRadius: R.m, padding: 14, borderWidth: 1.5, borderColor: C.line, marginBottom: 12 },
+ num: { width: 22, height: 22, borderRadius: 11, backgroundColor: C.brand, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+ clip: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderRadius: R.m, padding: 14, borderWidth: 1.5, borderColor: C.line, marginBottom: 8 },
 });

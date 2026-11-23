@@ -29,3 +29,29 @@ export async function pickDocument(): Promise<PickedFile | null> {
  const a = r.assets[0];
  return { uri: a.uri, name: a.name, mimeType: a.mimeType ?? 'application/octet-stream', ...(a.size !== undefined ? { size: a.size } : {}) };
 }
+
+export type PickedVideo = PickedFile & { durationSec: number };
+
+const videoOptions = (maxSec: number): ImagePicker.ImagePickerOptions => ({
+ mediaTypes: ['videos'], videoMaxDuration: Math.max(5, Math.round(maxSec)), allowsEditing: false, exif: false,
+ videoQuality: ImagePicker.UIImagePickerControllerQualityType.IFrame1280x720,
+ videoExportPreset: ImagePicker.VideoExportPreset.H264_1280x720,
+});
+
+function fromVideo(a: ImagePicker.ImagePickerAsset): PickedVideo {
+ const mimeType = a.mimeType ?? (a.uri.toLowerCase().endsWith('.mov') ? 'video/quicktime' : 'video/mp4');
+ return { uri: a.uri, name: a.fileName ?? 'video.mp4', mimeType, ...(a.fileSize !== undefined ? { size: a.fileSize } : {}), durationSec: Math.round((a.duration ?? 0) / 1000) };
+}
+
+/** Records a walkthrough; iOS stops the recording automatically at maxSec. */
+export async function recordVideo(maxSec: number): Promise<PickedVideo | null> {
+ const perm = await ImagePicker.requestCameraPermissionsAsync();
+ if (!perm.granted) throw new PermissionDeniedError('Permesso fotocamera negato');
+ const r = await ImagePicker.launchCameraAsync(videoOptions(maxSec));
+ return r.canceled || !r.assets[0] ? null : fromVideo(r.assets[0]);
+}
+
+export async function pickVideo(maxSec: number): Promise<PickedVideo | null> {
+ const r = await ImagePicker.launchImageLibraryAsync(videoOptions(maxSec));
+ return r.canceled || !r.assets[0] ? null : fromVideo(r.assets[0]);
+}

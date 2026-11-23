@@ -14,7 +14,8 @@ RUN npm run db:generate -w @ape/api && npm run build -w @ape/api
 
 FROM node:22-bookworm-slim
 WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+# ffmpeg: walkthrough videos are re-muxed without metadata and audio before storage.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 # Prisma CLI stays in the image so the same image can run `prisma migrate deploy` as a one-shot job.
 COPY --from=build /app/node_modules ./node_modules

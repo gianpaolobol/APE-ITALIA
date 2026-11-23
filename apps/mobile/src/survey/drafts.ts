@@ -53,13 +53,13 @@ export async function saveState(s: AppState): Promise<void> {
 }
 
 /** Copies a picked image/PDF into app storage so it survives cache cleanup. */
-export function persistPhoto(draftId: string, src: { uri: string; name: string; mimeType: string; width?: number; height?: number }): PhotoRef {
+export function persistPhoto(draftId: string, src: { uri: string; name: string; mimeType: string; width?: number; height?: number; durationSec?: number }): PhotoRef {
  const d = new Directory(dir(), 'media', draftId);
  if (!d.exists) d.create({ intermediates: true });
- const ext = src.mimeType === 'application/pdf' ? 'pdf' : src.mimeType === 'image/png' ? 'png' : src.mimeType === 'image/heic' ? 'heic' : 'jpg';
+ const ext = src.mimeType.startsWith('video/') ? (src.mimeType === 'video/quicktime' ? 'mov' : 'mp4') : src.mimeType === 'application/pdf' ? 'pdf' : src.mimeType === 'image/png' ? 'png' : src.mimeType === 'image/heic' ? 'heic' : 'jpg';
  const dest = new File(d, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
  new File(src.uri).copy(dest);
- return { uri: dest.uri, name: src.name, mimeType: src.mimeType, takenAt: new Date().toISOString(), ...(src.width ? { width: src.width } : {}), ...(src.height ? { height: src.height } : {}) };
+ return { uri: dest.uri, name: src.name, mimeType: src.mimeType, takenAt: new Date().toISOString(), ...(src.width ? { width: src.width } : {}), ...(src.height ? { height: src.height } : {}), ...(src.durationSec ? { durationSec: src.durationSec } : {}) };
 }
 
 export function deleteMedia(draftId: string): void {

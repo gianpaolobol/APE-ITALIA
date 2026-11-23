@@ -33,7 +33,7 @@
         {
           "cameraPermission": "APE Italia usa la fotocamera per fotografare caldaia, targhette, serramenti e impianti della pratica.",
           "photosPermission": "APE Italia accede alle foto che scegli per allegarle alla pratica.",
-          "microphonePermission": false
+          "microphonePermission": "La fotocamera di iOS chiede il microfono per registrare il video dell’immobile: l’audio non viene conservato da APE Italia."
         }
       ],
       "expo-secure-store",

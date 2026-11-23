@@ -10,9 +10,10 @@ import { PrismaService } from '../prisma.service';
 import { AuthService } from '../auth.service';
 import { canWrite } from '../tenant-policy';
 import { evidenceStorageKey, type ObjectStorage } from './storage';
-import { EVIDENCE_KINDS, MAX_EVIDENCE_BYTES, isAllowedForKind, notConfiguredScanner, sniffMimeType, stripJpegMetadata, type EvidenceKind, type MalwareScanner } from './file-policy';
+import { EVIDENCE_KINDS, MAX_VIDEO_BYTES, MAX_VIDEO_SECONDS, isAllowedForKind, maxBytesFor, notConfiguredScanner, sniffMimeType, stripJpegMetadata, type EvidenceKind, type MalwareScanner } from './file-policy';
 import { CURRENT_NOTICES, UPLOAD_OPEN_STATUSES, isCurrentNotice } from './consent-policy';
 import { EVIDENCE_PUBLIC_FIELDS, evidenceFile } from './read';
+import { InvalidVideoError, VideoToolMissingError, sanitizeVideo } from './video';
 
 export const EVIDENCE_STORAGE = Symbol('EVIDENCE_STORAGE');
 export const MALWARE_SCANNER = Symbol('MALWARE_SCANNER');
@@ -60,7 +61,7 @@ export class EvidenceController {
  @Post('cases/:caseId/evidence')
  @Throttle({ default: { limit: 30, ttl: 60_000 } })
  // No dest/storage option: multer keeps the file in memory (bounded by fileSize), never on public disk.
- @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_EVIDENCE_BYTES, files: 1, fields: 4, parts: 5 } }))
+ @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_VIDEO_BYTES, files: 1, fields: 4, parts: 5 } }))
  async upload(@Param('caseId', new ParseUUIDPipe()) caseId: string, @UploadedFile() file: UploadedBlob | undefined, @Body() body: { kind?: unknown } | undefined,
   @Headers('authorization') token?: string, @Headers('x-organization-id') org?: string) {
   const s = await this.auth.authorize(token, org);
@@ -73,7 +74,8 @@ export class EvidenceController {
   const consent = await this.db.consent.findUnique({ where: { caseId_subject_kind_version: { caseId, subject: s.actorId, kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing } } });
   if (!consent) throw new ForbiddenException('Consent to the current evidence notice is required');
   if (!file || !Buffer.isBuffer(file.buffer) || file.size === 0) throw new BadRequestException('File required');
-  const mime = sniffMimeType(file.buffer);
+  if (file.buffer.length > maxBytesFor(kind as EvidenceKind)) throw new HttpException('File too large for this evidence kind', HttpStatus.PAYLOAD_TOO_LARGE);
+  let mime = sniffMimeType(file.buffer);
   if (!mime) throw new HttpException('Unsupported file type', HttpStatus.UNSUPPORTED_MEDIA_TYPE);
   if (!isAllowedForKind(kind as EvidenceKind, mime)) throw new HttpException('File type not allowed for this evidence kind', HttpStatus.UNSUPPORTED_MEDIA_TYPE);
   let content = file.buffer;
@@ -81,6 +83,15 @@ export class EvidenceController {
    const stripped = stripJpegMetadata(content);
    if (!stripped) throw new UnprocessableEntityException('Malformed JPEG');
    content = stripped;
+  }
+  if (kind === 'video') {
+   // Re-mux without metadata (GPS, device) and without audio; enforce the maximum duration.
+   try { content = (await sanitizeVideo(content, MAX_VIDEO_SECONDS)).data; mime = 'video/mp4'; }
+   catch (e) {
+    if (e instanceof VideoToolMissingError) throw new ServiceUnavailableException('Video processing not available');
+    if (e instanceof InvalidVideoError) throw new UnprocessableEntityException(e.message);
+    throw e;
+   }
   }
   const sha256 = createHash('sha256').update(content).digest('hex');
   if (await this.db.evidence.findUnique({ where: { caseId_sha256: { caseId, sha256 } } })) throw new ConflictException('Duplicate file for this case');

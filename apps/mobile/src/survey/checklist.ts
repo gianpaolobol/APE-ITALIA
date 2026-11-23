@@ -8,7 +8,7 @@ export function checklist(a: Answers, p: Photos): ChecklistItem[] {
  for (const s of visibleSteps(a)) for (const q of s.questions) {
   if (!isVisible(q, a)) continue;
   if (!q.required && q.kind !== 'photo') continue;
-  items.push({ stepId: s.id, questionId: q.id, label: q.label, kind: q.kind === 'photo' ? 'photo' : 'data', required: !!q.required, done: isAnswered(q, a, p) });
+  items.push({ stepId: s.id, questionId: q.id, label: q.label, kind: q.kind === 'photo' || q.kind === 'video' ? 'photo' : 'data', required: !!q.required, done: isAnswered(q, a, p) });
  }
  return items;
 }
