@@ -20,3 +20,6 @@ npm run admin -w @ape/api -- purge-expired-evidence --apply yes # cancellazione 
 
 ## Non ancora coperto
 Cancellazione completa di un soggetto (art. 17) con gestione dei vincoli di conservazione, rettifica dei dati dell'immobile dopo la bozza, registro dei trattamenti, procedura di data breach, backup/restore testati.
+
+## Worker per le attività periodiche (iterazione 18)
+`npm run worker -w @ape/api` (cioè `node dist/worker.js`): ogni `WORKER_EXPIRE_EVERY_MIN` minuti (15) marca scadute le offerte e ripropone le pratiche; ogni `WORKER_RETENTION_EVERY_MIN` minuti (1440) esegue la conservazione **in simulazione** a meno di `RETENTION_APPLY=1`. Più istanze possono convivere: ogni lavoro prende un lock consultivo PostgreSQL di transazione (`pg_try_advisory_xact_lock`), le altre saltano il giro. I log riportano solo conteggi e nome dell'errore, mai dati.

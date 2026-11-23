@@ -11,7 +11,8 @@
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
     "admin:create-org": "node dist/admin/provision-cli.js create-organization",
-    "admin": "node dist/admin/provision-cli.js"
+    "admin": "node dist/admin/provision-cli.js",
+    "worker": "node dist/worker.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

@@ -151,3 +151,6 @@ CI Run #103 su `a6dcd07` (PR #22): **verde**.
 E2E del portale in Chrome reale. **Bug reale trovato**: cancellazione dei cookie `__Host-` inefficace (login state riutilizzabile, logout senza effetto) — corretto in `lib/session.ts`.
 Test locali: E2E browser 3/3 (prima della correzione 1 fallito, dopo 3/3); web unit 19.
 CI Run #105 su `b692bf1` (PR #23): **verde**; API 157 + E2E API 3, mobile 84, web 19 + E2E browser 3.
+
+## Iterazione 18 — PR #24 `feat/worker` (base: `test/web-browser-e2e`)
+Worker con scheduler senza sovrapposizioni e lock consultivi. Test locali: API 109 + 55 saltati (3 unitari nuovi; 1 PostgreSQL sul lock in CI). Lock verificato anche via psql locale.

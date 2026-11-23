@@ -156,3 +156,6 @@ PR #22 (impilata su #21). CLI operatore per esportare i dati collegati a un sogg
 
 ## 41. Test in browser del portale e correzione logout (Claude, 23/11/2026)
 PR #23 (impilata su #22). E2E in Chrome reale del login BFF con provider OIDC fittizio che verifica PKCE; ha rivelato che i cookie `__Host-` non venivano cancellati (stato di login riutilizzabile, logout inefficace): corretto e coperto dal test, eseguito anche in CI.
+
+## 42. Worker per attività periodiche (Claude, 23/11/2026)
+PR #24 (impilata su #23). Processo `dist/worker.js` con pianificazione senza sovrapposizioni per scadenza offerte e conservazione (simulazione salvo `RETENTION_APPLY=1`), lock consultivi PostgreSQL per istanze multiple, log senza dati personali. Sostituisce l'esecuzione manuale dei comandi CLI; una coda dedicata resta un'evoluzione possibile.
