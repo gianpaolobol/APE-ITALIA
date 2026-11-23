@@ -1,5 +1,45 @@
 # Registro di avanzamento Claude — APE Italia
 
+## Riepilogo consolidato (aggiornato alle 04:50 del 23/11/2026)
+**Stato**: 17 iterazioni, PR #7–#23 aperte e **impilate** (ognuna ha come base la precedente). Tutte con CI verde sull'ultimo commit verificato. **Nessuna è stata integrata in `main`**: il merge è stato negato dai permessi della sessione Claude.
+
+### Come integrare
+1. Rivedere e unire **#7** in `main` (squash o merge).
+2. Per ciascuna successiva (#8, #9, … #23) cambiare la base in `main` (GitHub lo fa da solo se si elimina il branch della PR appena unita), attendere la CI e unire.
+In alternativa si può rivedere il diff complessivo `main...test/web-browser-e2e` e unire le PR in sequenza senza review intermedie.
+**Attenzione**: #12 (portale) ha un difetto sul logout corretto in #23: integrare il portale solo insieme a #23.
+
+### Funzionalità (codice + test; nulla è in produzione)
+| Area | Stato | Prove |
+|---|---|---|
+| Login OIDC + PKCE mobile | completo nel codice | 72→84 test mobile, bundle Hermes; **nessun provider/dispositivo reale** |
+| Login web (BFF) | completo | 19 unit + 3 E2E in Chrome (CI) |
+| JWT API, tenant, ruoli, provisioning, inviti | completo | unit + PostgreSQL + E2E |
+| Upload evidenze (cifratura, EXIF, consenso) | completo; antivirus non configurato | HTTP multer + PostgreSQL + E2E |
+| Matching certificatori, offerte, rinuncia, riassegnazione | completo | PostgreSQL + E2E |
+| Sopralluogo e verbale strutturato | completo | PostgreSQL + E2E |
+| Estrazione AI con revisione | infrastruttura; **fornitore disattivato** | PostgreSQL (test double) |
+| Esportazione per il calcolo | formato neutro JSON/CSV | unit + E2E |
+| Caricamento/consegna APE | completo (nessuna integrazione regionale) | E2E |
+| Integrazioni, annullamento | completo | PostgreSQL |
+| Portale certificatori e organizzazioni | completo | build + E2E browser (certificatori) |
+| App: richiesta, evidenze, pratiche | completo nel codice | test + bundle; **non provata su dispositivo** |
+| Privacy: export soggetto, purga | CLI operatore | PostgreSQL |
+| Hardening (rate limit, helmet, npm ci, secret scan, audit) | completo | CI |
+| Pagamenti, notifiche, preventivi | **non iniziati** (richiedono contratti/compliance e autorizzazione a invii esterni) | — |
+
+### Blocchi che richiedono decisioni o azioni umane
+1. Merge delle PR (permesso negato alla sessione).
+2. Provider OIDC: scelta, tenant, client mobile e web, redirect URI, MFA per certificatori.
+3. Ambiente di deploy: database gestito, storage privato, chiavi in secret manager, dominio HTTPS.
+4. Antivirus per gli upload; fornitore AI (con DPA/DPIA) se desiderato.
+5. Testi legali: informativa (oggi in bozza), tempi di conservazione, contratti con certificatori.
+6. Software di calcolo conforme da integrare; eventuale accesso a portali regionali.
+7. Test su iPhone/Android reali (build EAS o Xcode/Android Studio).
+
+### Prossime azioni suggerite
+Pianificatore per `expire-offers` e `purge-expired-evidence`; download dell'APE nell'app; creazione pratiche dal web per professionisti; notifiche (dopo autorizzazione); aggiornamenti major (Expo 58, Next 16, Prisma 7) in PR dedicate; E2E browser dell'area organizzazioni.
+
 Sessione avviata: 23/11/2026, ~02:55 (Europe/Rome). Ambiente: container cloud Claude con accesso push alla repo `gianpaolobol/APE-ITALIA`. La sessione **non è garantita persistente**: il lavoro procede finché resta attiva; ogni iterazione è salvata su GitHub.
 
 ## Limiti dell'ambiente (valgono per tutte le iterazioni)
@@ -110,3 +150,4 @@ CI Run #103 su `a6dcd07` (PR #22): **verde**.
 ## Iterazione 17 — PR #23 `test/web-browser-e2e` (base: `feat/gdpr-retention`)
 E2E del portale in Chrome reale. **Bug reale trovato**: cancellazione dei cookie `__Host-` inefficace (login state riutilizzabile, logout senza effetto) — corretto in `lib/session.ts`.
 Test locali: E2E browser 3/3 (prima della correzione 1 fallito, dopo 3/3); web unit 19.
+CI Run #105 su `b692bf1` (PR #23): **verde**; API 157 + E2E API 3, mobile 84, web 19 + E2E browser 3.
