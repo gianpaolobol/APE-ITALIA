@@ -278,3 +278,33 @@ model RateLimitBucket {
  blockedUntil DateTime?
  @@index([expiresAt])
 }
+
+enum ApplicationStatus {
+ PENDING
+ APPROVED
+ REJECTED
+}
+
+/// Self-service application of an energy certifier. Activation requires an operator to check the SACE
+/// accreditation number on the public Emilia-Romagna list (registerVerifiedCertifier records who did it).
+model CertifierApplication {
+ id                 String            @id @default(uuid())
+ firstName          String
+ lastName           String
+ email              String            @unique
+ phone              String
+ pec                String?
+ vatNumber          String
+ taxCode            String
+ profession         String
+ professionalOrder  String
+ orderNumber        String
+ region             String
+ saceNumber         String            @unique
+ provinces          String[]
+ status             ApplicationStatus @default(PENDING)
+ createdAt          DateTime          @default(now())
+ reviewedAt         DateTime?
+ reviewedBy         String?
+ reviewNote         String?
+}

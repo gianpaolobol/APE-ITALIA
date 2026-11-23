@@ -2,7 +2,7 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-47 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+49 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
@@ -22,6 +22,7 @@
 | POST | `/v1/cases/:id/evidence-requests/:requestId/resolve` | membro dell'organizzazione | 201 | predefinito | `LifecycleController.resolve` |
 | GET | `/v1/cases/:id/inspection` | membro dell'organizzazione | 200 | predefinito | `CasesController.caseInspection` |
 | POST | `/v1/cases/:id/submit` | membro dell'organizzazione | 201 | predefinito | `CasesController.submitCase` |
+| POST | `/v1/certifier-applications` | pubblico | 201 | 5/min | `ApplicationsController.apply` |
 | GET | `/v1/certifier/assignments` | certificatore verificato | 200 | predefinito | `CertifierController.list` |
 | POST | `/v1/certifier/assignments/:assignmentId/evidence/:evidenceId/extract` | certificatore verificato | 201 | 20/min | `ExtractionController.extract` |
 | GET | `/v1/certifier/assignments/:assignmentId/extracted-fields` | certificatore verificato | 200 | predefinito | `ExtractionController.list` |
@@ -53,3 +54,4 @@
 | DELETE | `/v1/properties/:id` | membro dell'organizzazione | 204 | predefinito | `CasesController.deleteProperty` |
 | GET | `/v1/properties/:id` | membro dell'organizzazione | 200 | predefinito | `CasesController.getProperty` |
 | PATCH | `/v1/properties/:id` | membro dell'organizzazione | 200 | predefinito | `CasesController.updateProperty` |
+| POST | `/v1/survey/read-photo` | pubblico | 200 | 10/min | `SurveyController.read` |

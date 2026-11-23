@@ -24,7 +24,7 @@ export function collectRoutes(module: object): Route[] {
    const headers = Object.entries(args).filter(([k]) => Number(k.split(':')[0]) === RouteParamtypes.HEADERS).map(([, v]) => String(v.data).toLowerCase());
    const path = join(base, String(sub));
    const access = headers.includes('x-organization-id') ? 'membro dell\'organizzazione'
-    : path.startsWith('/v1/certifier') ? 'certificatore verificato'
+    : path.startsWith('/v1/certifier/') ? 'certificatore verificato'
     : headers.includes('authorization') ? 'utente autenticato' : 'pubblico';
    const status = Reflect.getMetadata(HTTP_CODE_METADATA, fn) ?? (method === 'POST' ? 201 : 200);
    const limit = Reflect.getMetadata(THROTTLER_LIMIT + 'default', fn) ?? null;
