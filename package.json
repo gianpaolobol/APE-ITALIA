@@ -1,0 +1,16 @@
+{
+  "name": "ape-italia",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "mobile": "npm run start -w @ape/mobile",
+    "web": "npm run dev -w @ape/web",
+    "api": "npm run start:dev -w @ape/api",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  }
+}
