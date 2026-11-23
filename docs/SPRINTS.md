@@ -24,7 +24,7 @@
 
 ## Sprint 3: AI documentale
 - [ ] OCR targhette e documenti
-- [ ] Provenienza, confidenza e revisione
+- [x] Provenienza, confidenza e revisione (fornitore AI non attivo; test con test double)
 - [ ] Test su dataset autorizzato
 
 ## Sprint 4: workflow APE

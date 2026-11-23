@@ -25,3 +25,4 @@ export type EvidenceView = { id: string; kind: string; mimeType: string; sizeByt
 export type FieldSpec = { label: string; kind: 'enum'; values: string[] } | { label: string; kind: 'number'; unit: string; min: number; max: number; integer?: boolean };
 export type InspectionSchema = { fields: Record<string, FieldSpec>; statuses: string[]; sources: string[] };
 export type InspectionView = { id: string; status: 'SCHEDULED' | 'DONE' | 'CANCELLED'; scheduledAt: string; performedAt: string | null; report: { findings: { field: string; status: string; value?: string | number; source: string; note?: string }[]; attendees: string; generalNotes?: string } | null };
+export type ExtractedFieldView = { id: string; evidenceId: string; field: string; value: string | number; unit: string | null; confidence: number | null; status: 'needs_review' | 'accepted' | 'corrected' | 'rejected'; modelId: string; reviewedBy: string | null };

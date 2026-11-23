@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { createOrganizationWithOwner, parseArgs, registerVerifiedCertifier } from './provisioning';
 import { expireStaleOffers } from '../certifiers/assignment.service';
+import { extractionMetrics } from '../extraction/metrics';
 
 /** Operator CLI. Run from a trusted shell: `node dist/admin/provision-cli.js <command> ...` */
 async function main() {
@@ -9,8 +10,9 @@ async function main() {
   'provision-cli create-organization --name <name> --owner-subject <oidc-sub> --operator <operator-id>',
   'provision-cli register-certifier --subject <oidc-sub> --name <display name> --registration-id <regional id> --regions "Emilia-Romagna[,...]" --operator <operator-id> [--max-active <n>]',
   'provision-cli expire-offers',
+  'provision-cli extraction-metrics',
  ].join('\n');
- if (!['create-organization', 'register-certifier', 'expire-offers'].includes(command)) {
+ if (!['create-organization', 'register-certifier', 'expire-offers', 'extraction-metrics'].includes(command)) {
   console.error('Usage:\n' + usage);
   process.exit(2);
  }
@@ -26,6 +28,8 @@ async function main() {
     ...(args['max-active'] ? { maxActiveAssignments: Number(args['max-active']) } : {}),
    });
    console.log(JSON.stringify({ certifierId: c.id }));
+  } else if (command === 'extraction-metrics') {
+   console.log(JSON.stringify(await extractionMetrics(db), null, 1));
   } else {
    console.log(JSON.stringify({ expired: await db.$transaction(tx => expireStaleOffers(tx)) }));
   }

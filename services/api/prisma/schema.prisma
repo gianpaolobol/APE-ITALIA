@@ -48,6 +48,7 @@ model ApeCase {
  evidence Evidence[]
  consents Consent[]
  assignments Assignment[]
+ extractedFields ExtractedField[]
  inspections Inspection[]
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
@@ -67,6 +68,7 @@ model Evidence {
  uploadedBy String
  scanStatus String @default("unscanned")
  createdAt DateTime @default(now())
+ extractedFields ExtractedField[]
  @@unique([caseId, sha256])
  @@index([caseId])
  @@index([organizationId])
@@ -188,4 +190,41 @@ model Inspection {
  updatedAt DateTime @updatedAt
  @@index([caseId])
  @@index([organizationId])
+}
+
+/// Machine-extracted candidate value. Never authoritative: a certifier must accept, correct or reject it.
+model ExtractedField {
+ id String @id @default(uuid())
+ organizationId String
+ caseId String
+ case ApeCase @relation(fields: [caseId], references: [id])
+ evidenceId String
+ evidence Evidence @relation(fields: [evidenceId], references: [id])
+ field String
+ value Json
+ unit String?
+ confidence Float?
+ status String @default("needs_review")
+ modelId String
+ extractedAt DateTime @default(now())
+ reviewedBy String?
+ reviewedAt DateTime?
+ revisions ExtractedFieldRevision[]
+ @@unique([evidenceId, field, modelId])
+ @@index([caseId])
+ @@index([organizationId])
+}
+
+/// Append-only history of every extraction and human review decision.
+model ExtractedFieldRevision {
+ id String @id @default(uuid())
+ extractedFieldId String
+ extractedField ExtractedField @relation(fields: [extractedFieldId], references: [id])
+ action String
+ previousValue Json?
+ newValue Json?
+ actor String
+ note String?
+ at DateTime @default(now())
+ @@index([extractedFieldId])
 }

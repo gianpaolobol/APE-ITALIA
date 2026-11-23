@@ -67,3 +67,8 @@ CI Run #89 su `69112b9` (PR #13): **verde**; `npm ci`, scansione segreti (117 fi
 ## Iterazione 8 — PR #14 `feat/inspections` (base: `feat/security-hardening`)
 Implementato: modello `Inspection`, validazione verbale con vocabolario controllato, endpoint certificatore (schema, lettura, programmazione, verbale), vista cliente, pannello web di programmazione e verbale, conversione ora di Roma.
 Test locali: API typecheck OK, 97 superati + 37 saltati (DB, inclusi 7 nuovi del sopralluogo); web 19 test, `next build` OK.
+CI Run #90 su `4dc0a0a` (PR #14): **verde**; API 134 test (37 PostgreSQL), mobile 82, web 19.
+
+## Iterazione 9 — PR #15 `feat/ai-extraction-review` (base: `feat/inspections`)
+Implementato: `ExtractedField` + `ExtractedFieldRevision`, porta fornitore disattivata, sanificazione output, estrazione/revisione per certificatore, metriche CLI, pannello web. Refactor `validateFieldValue` condiviso con il verbale.
+Test locali: API typecheck e build OK, 100 superati + 43 saltati (DB, inclusi 6 nuovi); web typecheck e `next build` OK.

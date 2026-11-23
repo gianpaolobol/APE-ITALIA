@@ -26,6 +26,15 @@ export const FINDING_FIELDS: Record<string, FieldSpec> = {
  'renewables.pv_kwp': { label: 'Fotovoltaico', kind: 'number', unit: 'kWp', min: 0, max: 10000 },
 };
 
+/** Validates a value against the controlled vocabulary; returns an error message or null. */
+export function validateFieldValue(field: string, value: unknown): string | null {
+ const spec = Object.hasOwn(FINDING_FIELDS, field) ? FINDING_FIELDS[field] : undefined;
+ if (!spec) return 'unknown field';
+ if (spec.kind === 'enum') return typeof value === 'string' && spec.values.includes(value) ? null : `value must be one of ${spec.values.join(', ')}`;
+ if (typeof value !== 'number' || !Number.isFinite(value) || value < spec.min || value > spec.max || (spec.integer && !Number.isInteger(value))) return `value must be a number between ${spec.min} and ${spec.max} ${spec.unit}`;
+ return null;
+}
+
 export const VERIFICATION_STATUSES = ['verified', 'to_verify', 'undeterminable'] as const;
 export const FINDING_SOURCES = ['inspection', 'document', 'photo'] as const;
 
@@ -67,10 +76,8 @@ export function validateReport(input: unknown, ctx: { scheduledAt: Date; now: Da
    if (f.value !== undefined) { errors.push(`${at}: undeterminable findings must not carry a value`); return; }
    if (typeof f.note !== 'string' || f.note.trim().length < 3) { errors.push(`${at}: explain why the value cannot be determined`); return; }
   } else {
-   if (spec.kind === 'enum' && (typeof f.value !== 'string' || !spec.values.includes(f.value))) { errors.push(`${at}: value must be one of ${spec.values.join(', ')}`); return; }
-   if (spec.kind === 'number') {
-    if (typeof f.value !== 'number' || !Number.isFinite(f.value) || f.value < spec.min || f.value > spec.max || (spec.integer && !Number.isInteger(f.value))) { errors.push(`${at}: value must be a number between ${spec.min} and ${spec.max} ${spec.unit}`); return; }
-   }
+   const valueError = validateFieldValue(f.field as string, f.value);
+   if (valueError) { errors.push(`${at}: ${valueError}`); return; }
   }
   // A value seen only in a photo or a document cannot be marked verified without on-site confirmation.
   if (f.status === 'verified' && f.source !== 'inspection' && (typeof f.note !== 'string' || f.note.trim().length < 3)) { errors.push(`${at}: verified values from photos/documents need a note on how they were confirmed`); return; }

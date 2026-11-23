@@ -2,7 +2,7 @@
 import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { config, readSession } from '../../lib/session';
-import { apiFetch, apiJson, type InspectionSchema } from '../../lib/api';
+import { ApiFailure, apiFetch, apiJson, type InspectionSchema } from '../../lib/api';
 import { romeLocalToIso } from '../../lib/time';
 import { reportFromForm } from '../../lib/report-form';
 
@@ -58,5 +58,30 @@ export async function submitReport(form: FormData) {
  const local = String(form.get('performedAt'));
  payload.performedAt = romeLocalToIso(local);
  await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/inspection/report`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+ revalidatePath(`/certifier/${id}`);
+}
+
+export async function extractEvidence(form: FormData) {
+ const id = String(form.get('id') ?? ''), evidenceId = String(form.get('evidenceId') ?? '');
+ if (!UUID.test(id) || !UUID.test(evidenceId)) throw new Error('Invalid request');
+ const { cfg, s } = await context();
+ let msg = 'ok';
+ try {
+  await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/evidence/${evidenceId}/extract`, { method: 'POST' });
+ } catch (e) {
+  msg = e instanceof ApiFailure ? (e.status === 503 ? 'ai-off' : e.status === 423 ? 'unscanned' : e.status === 409 ? 'done' : 'error') : 'error';
+ }
+ redirect(`/certifier/${id}?extract=${msg}`);
+}
+
+export async function reviewExtracted(form: FormData) {
+ const id = String(form.get('id') ?? ''), fieldId = String(form.get('fieldId') ?? '');
+ if (!UUID.test(id) || !UUID.test(fieldId)) throw new Error('Invalid request');
+ const action = String(form.get('action') ?? '');
+ const raw = String(form.get('value') ?? '').trim();
+ const body: Record<string, unknown> = { action, note: String(form.get('note') ?? '') };
+ if (action === 'correct') body.value = form.get('numeric') === '1' ? Number(raw.replace(',', '.')) : raw;
+ const { cfg, s } = await context();
+ await apiFetch(cfg, s, `/v1/certifier/assignments/${id}/extracted-fields/${fieldId}/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
  revalidatePath(`/certifier/${id}`);
 }

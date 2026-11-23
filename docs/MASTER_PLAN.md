@@ -129,3 +129,6 @@ PR #13 (impilata su #12). Rate limiting, header helmet e CORS disattivato sull'A
 
 ## 32. Sopralluogo e verbale strutturato (Claude, 23/11/2026)
 PR #14 (impilata su #13). Programmazione/riprogrammazione del sopralluogo da parte del certificatore con incarico accettato, verbale immutabile con vocabolario controllato e stato di verifica per voce (verificato / da verificare / non determinabile), nessun campo di classe energetica, collegamento facoltativo a evidenze della stessa pratica, stati pratica `INSPECTION_SCHEDULED` → `INSPECTION_DONE`, vista cliente limitata, moduli nel portale web. Dettagli in `docs/CERTIFIER_WORKFLOW.md`.
+
+## 33. AI documentale con revisione professionale (Claude, 23/11/2026)
+PR #15 (impilata su #14). Porta `ExtractionProvider` isolata e **disattivata** (nessun fornitore autorizzato), proposte con provenienza/modello/confidenza in stato `needs_review`, revisione obbligatoria del certificatore (accetta/correggi/respingi) con storico append-only, scarto degli output fuori vocabolario (nessuna classe energetica), blocco dell'invio di file non scansionati, metriche di correzione per campo e modello, pannello di revisione nel portale. Dettagli: `docs/AI_EXTRACTION.md`.
