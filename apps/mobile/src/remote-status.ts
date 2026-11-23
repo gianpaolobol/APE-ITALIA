@@ -26,3 +26,7 @@ export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undef
 export async function downloadCertificate(caseId: string): Promise<string> {
  return download(`/v1/cases/${caseId}/certificate/content`, `ape-${caseId}.pdf`);
 }
+
+export type PaymentState = { enabled: boolean; payable: boolean; paid: boolean; amountCents: number | null };
+export const fetchPayment = (caseId: string) => api<PaymentState>(`/v1/cases/${caseId}/payment`, { org: true });
+export const startPayment = (caseId: string) => api<{ url: string; amountCents: number }>(`/v1/cases/${caseId}/payment`, { org: true, body: {} });

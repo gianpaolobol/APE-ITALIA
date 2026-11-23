@@ -20,6 +20,8 @@ import { PHOTO_READER, photoReaderFromEnv } from './survey/photo-reader';
 import { VIDEO_ANALYZER, videoAnalyzerFromEnv } from './survey/video-analysis';
 import { ApplicationsController } from './applications/applications.controller';
 import { PlatformAuthController } from './platform-auth/auth.controller';
+import { PaymentsController } from './payments/payments.controller';
+import { STRIPE_CONFIG, stripeFromEnv } from './payments/stripe';
 import { MAILER, mailerFromEnv } from './platform-auth/mailer';
 import { platformAuthFromEnv } from './platform-auth/tokens';
 import { PLATFORM_AUTH } from './auth.service';
@@ -34,7 +36,7 @@ class HealthController { @Get('health') health() { return { status: 'ok', servic
 const sharedStorage = process.env.RATE_LIMIT_STORE === 'postgres' ? new PgThrottlerStorage(new PrismaClient()) : undefined;
 
 @Module({ imports: [ThrottlerModule.forRoot({ throttlers: [{ name: 'default', ttl: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120) }], ...(sharedStorage ? { storage: sharedStorage } : {}) })],
- controllers: [HealthController, MeController, MembersController, CasesController, EvidenceController, CertifierController, ExtractionController, CertificateController, LifecycleController, SurveyController, ApplicationsController, PlatformAuthController],
+ controllers: [HealthController, MeController, MembersController, CasesController, EvidenceController, CertifierController, ExtractionController, CertificateController, LifecycleController, SurveyController, ApplicationsController, PlatformAuthController, PaymentsController],
  providers: [
   PrismaService,
   AuthService,
@@ -48,6 +50,8 @@ const sharedStorage = process.env.RATE_LIMIT_STORE === 'postgres' ? new PgThrott
   // Email-code login: requires PLATFORM_JWT_SECRET (>= 32 chars) and a mailer (MAILER=brevo|log).
   { provide: PLATFORM_AUTH, useFactory: () => platformAuthFromEnv() },
   { provide: MAILER, useFactory: () => mailerFromEnv() },
+  // Payments: STRIPE_SECRET_KEY + STRIPE_WEBHOOK_SECRET + PUBLIC_API_URL.
+  { provide: STRIPE_CONFIG, useFactory: () => stripeFromEnv() },
   { provide: APP_GUARD, useClass: ThrottlerGuard },
  ] })
 export class AppModule {}

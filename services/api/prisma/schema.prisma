@@ -352,3 +352,40 @@ model RefreshToken {
  createdAt DateTime @default(now())
  @@index([userId])
 }
+
+/// Resumable upload of a large evidence file (walkthrough video) in numbered parts.
+model ChunkedUpload {
+ id             String   @id @default(uuid())
+ caseId         String
+ organizationId String
+ kind           String
+ totalBytes     Int
+ partSize       Int
+ receivedParts  Int[]
+ createdBy      String
+ createdAt      DateTime @default(now())
+ completedAt    DateTime?
+ evidenceId     String?
+ @@index([caseId])
+}
+
+enum PaymentStatus {
+ PENDING
+ PAID
+ CANCELLED
+}
+
+/// Customer payment for a case (Stripe Checkout). Amount recomputed server-side from the survey.
+model Payment {
+ id              String        @id @default(uuid())
+ caseId          String
+ organizationId  String
+ amountCents     Int
+ currency        String        @default("eur")
+ status          PaymentStatus @default(PENDING)
+ stripeSessionId String?       @unique
+ createdBy       String
+ createdAt       DateTime      @default(now())
+ paidAt          DateTime?
+ @@index([caseId])
+}

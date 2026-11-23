@@ -40,6 +40,7 @@ describe.skipIf(!enabled)('PostgreSQL: consent-gated encrypted evidence upload',
  afterAll(async () => {
   const ids = [orgA, orgB].filter(Boolean);
   await db.auditEvent.deleteMany({ where: { organizationId: { in: ids } } });
+  await db.chunkedUpload.deleteMany({ where: { organizationId: { in: ids } } });
   await db.evidence.deleteMany({ where: { organizationId: { in: ids } } });
   await db.consent.deleteMany({ where: { organizationId: { in: ids } } });
   await db.apeCase.deleteMany({ where: { organizationId: { in: ids } } });
@@ -88,5 +89,23 @@ describe.skipIf(!enabled)('PostgreSQL: consent-gated encrypted evidence upload',
  });
  it('rejects a duplicate file in the same case', async () => {
   await expect(ctrl.upload(caseA, blob(jpegWithExif()), { kind: 'boiler' }, await bearer(userA), orgA)).rejects.toThrow('Duplicate');
+ });
+
+ it('resumable upload: parts in any order, idempotent retry, then the normal ingest pipeline', async () => {
+  await ctrl.consent(caseA, { kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing }, await bearer(userA), orgA);
+  const file = Buffer.concat([jpegWithExif(), randomBytes(5 * 1024 * 1024)]);
+  const start = await ctrl.startUpload(caseA, { kind: 'boiler', totalBytes: file.length }, await bearer(userA), orgA).catch(e => e);
+  // Photos are capped at 15 MB, so a 5 MB JPEG is accepted for the boiler kind.
+  expect(start.parts).toBe(2);
+  const part = (n: number) => Buffer.from(file.subarray(n * start.partSize, (n + 1) * start.partSize).toString('base64'), 'latin1');
+  await expect(ctrl.completeUpload(caseA, start.uploadId, await bearer(userA), orgA)).rejects.toThrow(/Missing parts/);
+  await ctrl.uploadPart(caseA, start.uploadId, '1', part(1), await bearer(userA), orgA);
+  await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userA), orgA);
+  await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userA), orgA); // retry
+  await expect(ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userB), orgB)).rejects.toBeInstanceOf(NotFoundException);
+  const ev = await ctrl.completeUpload(caseA, start.uploadId, await bearer(userA), orgA);
+  expect(ev.kind).toBe('boiler');
+  const again = await ctrl.completeUpload(caseA, start.uploadId, await bearer(userA), orgA);
+  expect(again.id).toBe(ev.id);
  });
 });

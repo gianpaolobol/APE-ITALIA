@@ -1,5 +1,5 @@
 /** Sends a completed local request to the APE Italia API (only when the app is configured with a server). */
-import { api, serverEnabled } from './server';
+import { api, serverEnabled, uploadResumable } from './server';
 import { PROVINCES, pruneHidden, type Answers, type Photos } from './survey/questions';
 import { estimate } from './energy/estimate';
 import { quote } from './pricing';
@@ -48,10 +48,15 @@ export async function submitToServer(input: { answers: Answers; photos: Photos; 
  let i = 0;
  for (const { q, p } of files) {
   onProgress(`Carico foto e documenti (${i + 1}/${files.length})`, 0.1 + (0.8 * i) / Math.max(1, files.length));
-  const form = new FormData();
-  form.append('kind', KIND[q] ?? 'document');
-  form.append('file', { uri: p.uri, name: p.name, type: p.mimeType } as unknown as Blob);
-  await api(`/v1/cases/${caseId}/evidence`, { org: true, form, timeoutMs: p.mimeType.startsWith('video/') ? 15 * 60_000 : 120_000 });
+  if (p.mimeType.startsWith('video/')) {
+   const base = 0.1 + (0.8 * i) / Math.max(1, files.length);
+   await uploadResumable(caseId, 'video', p.uri, r => onProgress(`Carico il video (${Math.round(r * 100)}%)`, base + (0.8 / Math.max(1, files.length)) * r));
+  } else {
+   const form = new FormData();
+   form.append('kind', KIND[q] ?? 'document');
+   form.append('file', { uri: p.uri, name: p.name, type: p.mimeType } as unknown as Blob);
+   await api(`/v1/cases/${caseId}/evidence`, { org: true, form, timeoutMs: 120_000 });
+  }
   uploaded.push(p.uri);
   checkpoint({ remoteCaseId: caseId, uploaded });
   i++;

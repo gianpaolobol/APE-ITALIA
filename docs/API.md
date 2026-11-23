@@ -2,7 +2,7 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-60 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+68 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
@@ -20,6 +20,10 @@
 | POST | `/v1/cases/:caseId/consents` | membro dell'organizzazione | 201 | predefinito | `EvidenceController.consent` |
 | GET | `/v1/cases/:caseId/evidence` | membro dell'organizzazione | 200 | predefinito | `EvidenceController.list` |
 | POST | `/v1/cases/:caseId/evidence` | membro dell'organizzazione | 201 | 30/min | `EvidenceController.upload` |
+| POST | `/v1/cases/:caseId/uploads` | membro dell'organizzazione | 201 | 10/min | `EvidenceController.startUpload` |
+| GET | `/v1/cases/:caseId/uploads/:uploadId` | membro dell'organizzazione | 200 | predefinito | `EvidenceController.uploadStatus` |
+| POST | `/v1/cases/:caseId/uploads/:uploadId/complete` | membro dell'organizzazione | 201 | predefinito | `EvidenceController.completeUpload` |
+| POST | `/v1/cases/:caseId/uploads/:uploadId/parts/:n` | membro dell'organizzazione | 204 | 120/min | `EvidenceController.uploadPart` |
 | DELETE | `/v1/cases/:id` | membro dell'organizzazione | 204 | predefinito | `CasesController.deleteCase` |
 | GET | `/v1/cases/:id` | membro dell'organizzazione | 200 | predefinito | `CasesController.getCase` |
 | POST | `/v1/cases/:id/cancel` | membro dell'organizzazione | 201 | predefinito | `LifecycleController.cancel` |
@@ -28,6 +32,8 @@
 | GET | `/v1/cases/:id/evidence-requests` | membro dell'organizzazione | 200 | predefinito | `LifecycleController.listRequests` |
 | POST | `/v1/cases/:id/evidence-requests/:requestId/resolve` | membro dell'organizzazione | 201 | predefinito | `LifecycleController.resolve` |
 | GET | `/v1/cases/:id/inspection` | membro dell'organizzazione | 200 | predefinito | `CasesController.caseInspection` |
+| GET | `/v1/cases/:id/payment` | membro dell'organizzazione | 200 | predefinito | `PaymentsController.status` |
+| POST | `/v1/cases/:id/payment` | membro dell'organizzazione | 201 | predefinito | `PaymentsController.checkout` |
 | POST | `/v1/cases/:id/submit` | membro dell'organizzazione | 201 | predefinito | `CasesController.submitCase` |
 | POST | `/v1/cases/:id/survey` | membro dell'organizzazione | 200 | predefinito | `CasesController.saveSurvey` |
 | POST | `/v1/certifier-applications` | pubblico | 201 | 5/min | `ApplicationsController.apply` |
@@ -60,6 +66,8 @@
 | GET | `/v1/members` | membro dell'organizzazione | 200 | predefinito | `MembersController.list` |
 | PATCH | `/v1/members/:id` | membro dell'organizzazione | 200 | predefinito | `MembersController.update` |
 | GET | `/v1/notices` | pubblico | 200 | predefinito | `EvidenceController.notices` |
+| GET | `/v1/payments/return` | pubblico | 200 | predefinito | `PaymentsController.paymentReturn` |
+| POST | `/v1/payments/webhook` | pubblico | 200 | predefinito | `PaymentsController.webhook` |
 | GET | `/v1/properties` | membro dell'organizzazione | 200 | predefinito | `CasesController.listProperties` |
 | POST | `/v1/properties` | membro dell'organizzazione | 201 | predefinito | `CasesController.createProperty` |
 | DELETE | `/v1/properties/:id` | membro dell'organizzazione | 204 | predefinito | `CasesController.deleteProperty` |

@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LoginSheet } from './LoginSheet';
 import { getSession } from '../server';
-import { downloadCertificate, fetchRemoteJob } from '../remote-status';
+import { downloadCertificate, fetchPayment, fetchRemoteJob, startPayment, type PaymentState } from '../remote-status';
+import * as WebBrowser from 'expo-web-browser';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as Sharing from 'expo-sharing';
 import { fmtWhen } from '../job';
@@ -28,6 +29,13 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
  const [sending, setSending] = useState<string | null>(null);
  const [login, setLogin] = useState(false);
  const [remoteNote, setRemoteNote] = useState<string | null>(null);
+ const [pay, setPay] = useState<PaymentState | null>(null);
+ const refreshPay = () => { if (draft.remoteCaseId) fetchPayment(draft.remoteCaseId).then(setPay).catch(() => undefined); };
+ const doPay = async () => {
+  try { const r = await startPayment(draft.remoteCaseId!); await WebBrowser.openBrowserAsync(r.url); }
+  catch (e) { Alert.alert('Pagamento non disponibile', e instanceof Error ? e.message : 'Riprova.'); }
+  finally { refreshPay(); }
+ };
  // Live status from the server for requests already sent.
  useEffect(() => {
   if (!draft.remoteCaseId || !serverConfigured()) return;
@@ -35,6 +43,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
   fetchRemoteJob(draft.remoteCaseId).then(r => {
    if (!alive) return;
    if (r.job) onUpdate(d => ({ ...d, job: r.job }));
+   if (r.job?.verbale) refreshPay();
    setRemoteNote(r.job ? null : r.caseStatus === 'SUBMITTED' || r.caseStatus === 'ASSIGNED' ? 'Stiamo cercando il certificatore della tua zona: riceverai una notifica appena accetta.' : null);
   }).catch(() => undefined);
   return () => { alive = false; };
@@ -92,6 +101,13 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
       ) : null}
       {draft.job.visit ? <View style={st.step}><Ionicons name="calendar-outline" size={20} color={C.brand} /><Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Sopralluogo · {fmtWhen(draft.job.visit.at)}</Text></View> : null}
       {draft.job.verbale ? <View style={st.step}><Ionicons name="checkmark-done-outline" size={20} color={C.accent} /><Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Sopralluogo eseguito il {draft.job.verbale.date}</Text></View> : null}
+      {pay?.enabled && pay.payable && !pay.paid ? (
+       <View style={st.step}>
+        <Ionicons name="card-outline" size={20} color={C.brand} />
+        <Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Sopralluogo eseguito: puoi pagare{pay.amountCents ? ` ${euro(pay.amountCents / 100)}` : ''}</Text>
+        <Pressable onPress={doPay} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Paga</Text></Pressable>
+       </View>
+      ) : pay?.paid ? <View style={st.step}><Ionicons name="checkmark-circle" size={20} color={C.accent} /><Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Pagamento ricevuto</Text></View> : null}
       {draft.job.ape ? (
        <View style={[st.step, { borderBottomWidth: 0 }]}>
         <ClassBadge value={draft.job.ape.energyClass as never} size={36} />

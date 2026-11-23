@@ -72,13 +72,14 @@ export async function freshSession(): Promise<Session | null> {
 }
 
 /** Authenticated JSON call. `org` adds the organization header for customer routes. */
-export async function api<T>(path: string, init: { method?: string; body?: unknown; org?: boolean; form?: FormData; timeoutMs?: number } = {}): Promise<T> {
+export async function api<T>(path: string, init: { method?: string; body?: unknown; org?: boolean; form?: FormData; text?: string; timeoutMs?: number } = {}): Promise<T> {
  const s = await freshSession();
  if (!s) throw new ServerError(401, 'Accedi per continuare');
  const headers: Record<string, string> = { Authorization: `Bearer ${s.accessToken}` };
  if (init.org) { if (!s.organizationId) throw new ServerError(403, 'Account senza organizzazione'); headers['x-organization-id'] = s.organizationId; }
  let body: BodyInit | undefined;
  if (init.form) body = init.form;
+ else if (init.text !== undefined) { headers['Content-Type'] = 'text/plain'; body = init.text; }
  else if (init.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(init.body); }
  return raw<T>(path, { method: init.method ?? (body ? 'POST' : 'GET'), headers, ...(body ? { body } : {}) }, init.timeoutMs);
 }
@@ -99,4 +100,46 @@ export async function deleteAccount(): Promise<void> {
  await api('/v1/auth/account', { method: 'DELETE' });
  cached = null;
  await SecureStore.deleteItemAsync(KEY).catch(() => undefined);
+}
+
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+export function toBase64(bytes: Uint8Array): string {
+ let out = '';
+ for (let i = 0; i < bytes.length; i += 3) {
+  const a = bytes[i], b = bytes[i + 1], c = bytes[i + 2];
+  out += B64[a >> 2] + B64[((a & 3) << 4) | ((b ?? 0) >> 4)] + (b === undefined ? '=' : B64[((b & 15) << 2) | ((c ?? 0) >> 6)]) + (c === undefined ? '=' : B64[c & 63]);
+ }
+ return out;
+}
+
+/**
+ * Resumable upload of a large local file (walkthrough video) in 4 MiB parts: already received parts are
+ * skipped, so a retry after a dropped connection continues where it stopped.
+ */
+export async function uploadResumable(caseId: string, kind: string, uri: string, onProgress: (ratio: number) => void, existing?: string): Promise<{ id: string; uploadId: string }> {
+ const file = new File(uri);
+ const total = file.size ?? 0;
+ if (!total) throw new ServerError(400, 'File vuoto');
+ let uploadId = existing, partSize = 4 * 1024 * 1024, received: number[] = [];
+ if (uploadId) {
+  try { const st = await api<{ receivedParts: number[]; completed: boolean; evidenceId: string | null }>(`/v1/cases/${caseId}/uploads/${uploadId}`, { org: true }); received = st.receivedParts; if (st.completed && st.evidenceId) return { id: st.evidenceId, uploadId }; }
+  catch { uploadId = undefined; }
+ }
+ if (!uploadId) { const st = await api<{ uploadId: string; partSize: number }>(`/v1/cases/${caseId}/uploads`, { org: true, body: { kind, totalBytes: total } }); uploadId = st.uploadId; partSize = st.partSize; }
+ const parts = Math.ceil(total / partSize);
+ const h = file.open();
+ try {
+  for (let n = 0; n < parts; n++) {
+   if (received.includes(n)) { onProgress((n + 1) / parts); continue; }
+   h.offset = n * partSize;
+   const bytes = h.readBytes(Math.min(partSize, total - n * partSize));
+   for (let attempt = 0; ; attempt++) {
+    try { await api(`/v1/cases/${caseId}/uploads/${uploadId}/parts/${n}`, { org: true, text: toBase64(bytes), timeoutMs: 120_000 }); break; }
+    catch (e) { if (attempt >= 3 || (e instanceof ServerError && e.status < 500 && e.status !== 429)) throw e; await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); }
+   }
+   onProgress((n + 1) / parts);
+  }
+ } finally { h.close(); }
+ const ev = await api<{ id: string }>(`/v1/cases/${caseId}/uploads/${uploadId}/complete`, { org: true, body: {}, timeoutMs: 10 * 60_000 });
+ return { id: ev.id, uploadId };
 }

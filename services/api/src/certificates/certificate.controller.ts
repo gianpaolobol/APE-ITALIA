@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
 import { MAILER, type Mailer } from '../platform-auth/mailer';
 import { notifyCustomer } from '../platform-auth/notify';
+import { stripeFromEnv } from '../payments/stripe';
 import { AuthService } from '../auth.service';
 import { EVIDENCE_STORAGE, MALWARE_SCANNER } from '../evidence/evidence.controller';
 import { evidenceStorageKey, type ObjectStorage } from '../evidence/storage';
@@ -102,6 +103,8 @@ export class CertificateController {
   const s = await this.auth.authorize(token, org);
   const cert = await this.db.certificate.findFirst({ where: { caseId: id, organizationId: s.organizationId } });
   if (!cert) throw new NotFoundException('Certificate not available');
+  // When payments are enabled the APE is released after payment (customers pay after the inspection).
+  if (stripeFromEnv() && !(await this.db.payment.findFirst({ where: { caseId: id, status: 'PAID' } }))) throw new HttpException('Payment required before download', HttpStatus.PAYMENT_REQUIRED);
   const file = await evidenceFile(this.storage, { id: cert.id, storageKey: cert.storageKey, mimeType: 'application/pdf', scanStatus: cert.scanStatus });
   await this.db.$transaction(async tx => {
    const first = await tx.certificate.updateMany({ where: { id: cert.id, deliveredAt: null }, data: { deliveredAt: new Date(), deliveredTo: s.actorId } });
