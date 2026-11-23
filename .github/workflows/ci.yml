@@ -47,4 +47,5 @@ jobs:
       - run: npm run typecheck -w @ape/mobile
       - run: npm run test -w @ape/mobile
       - run: npm run bundle:check -w @ape/mobile
+      - run: npm run test -w @ape/web
       - run: npm run build -w @ape/web

@@ -120,3 +120,6 @@ PR #10 (impilata su #9). Il wizard crea la pratica in bozza dopo il login, racco
 
 ## 29. Sprint 4 — matching e workflow certificatori (Claude, 23/11/2026)
 PR #11 (impilata su #10). Profili certificatore verificati solo da operatore (CLI, verifica umana sull'elenco regionale), matching con filtri obbligatori (attivo, verificato, regione, indipendenza dall'organizzazione richiedente, nessuna riproposta, capacità) e ranking per carico/anzianità, offerta automatica all'invio con scadenza 48 h, accettazione/rifiuto con fallback, minimizzazione dei dati prima dell'accettazione, accesso alle evidenze solo con incarico accettato. Dettagli: `docs/CERTIFIER_WORKFLOW.md`. Sopralluogo, verbale, firma e deposito non ancora implementati.
+
+## 30. Portale web certificatori (Claude, 23/11/2026)
+PR #12 (impilata su #11). Next.js con login OIDC + PKCE lato server (BFF), sessione in cookie cifrato HttpOnly, verifica firma ID token con JWKS, proxy per API e download, Server Actions per accettare/rifiutare incarichi, header di sicurezza, portale chiuso senza configurazione. Dettagli e limiti: `docs/WEB_PORTAL.md`.

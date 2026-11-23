@@ -52,3 +52,8 @@ CI Run #85 su `d489a81` (PR #10): **verde**; API 98 test, mobile 82.
 ## Iterazione 5 — PR #11 `feat/sprint-4-certifier-workflow` (base: `feat/sprint-4-mobile-evidence`)
 Implementato: modelli `Certifier`/`Assignment`, matching puro con filtri obbligatori e ranking, offerta automatica all'invio, endpoint certificatore (me, lista, accetta, rifiuta, evidenze), sweep scadenze via CLI, CLI `register-certifier`, refactor download evidenze condiviso. Dettagli `docs/CERTIFIER_WORKFLOW.md`.
 Test locali: API typecheck OK; 84 superati + 30 saltati (DB, inclusi 8 nuovi del ciclo certificatore).
+CI Run #86 su `2a075f4` (PR #11): **verde**; API 114 test (30 PostgreSQL), nessuna deriva (tipo `TEXT[]` confermato).
+
+## Iterazione 6 — PR #12 `feat/web-certifier-portal` (base: `feat/sprint-4-certifier-workflow`)
+Implementato: portale Next.js BFF con OIDC/PKCE lato server, cookie cifrati, pagine incarichi ed evidenze, proxy download, header di sicurezza. `apps/web/tsconfig.json` ora versionato con `strict: true`. Dettagli `docs/WEB_PORTAL.md`.
+Test locali: web 15 test; `next build` OK; smoke `next start` senza configurazione: `/` 200, `/certifier` "non configurato", `/auth/login` 503, logout GET 405, header presenti.

@@ -19,7 +19,7 @@
 ## Sprint 2: interfacce
 - [ ] Richiesta privati in 5 step
 - [ ] Portafoglio professionisti
-- [ ] Dashboard certificatori
+- [x] Dashboard certificatori web (offerte/incarichi/evidenze; sopralluogo e verbale da fare)
 - [ ] Sincronizzazione stati
 
 ## Sprint 3: AI documentale
