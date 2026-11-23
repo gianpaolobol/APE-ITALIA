@@ -57,3 +57,13 @@ describe('case submission authorization', () => {
   expect(offerNext).toHaveBeenCalledWith(tx, '123e4567-e89b-42d3-a456-426614174000');
  });
 });
+
+describe('property update input', () => {
+ it('rejects an empty update before touching the database (ES2022 class fields keep undefined keys)', async () => {
+  const { controller } = setup();
+  const tx = vi.fn();
+  (controller as any).db.$transaction = tx;
+  await expect(controller.updateProperty('123e4567-e89b-42d3-a456-426614174000', {}, 'Bearer t', 'org-a')).rejects.toThrow('Nothing to update');
+  expect(tx).not.toHaveBeenCalled();
+ });
+});

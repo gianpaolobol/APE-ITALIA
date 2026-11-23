@@ -122,14 +122,15 @@ export class CasesController {
  async updateProperty(@Param('id', new ParseUUIDPipe()) id:string,@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
   const s=await this.session(token,org);
   if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
-  const dto=validated(UpdatePropertyDto,body);
-  if(!Object.keys(dto).length) throw new BadRequestException('Nothing to update');
+  // With ES2022 class fields, optional DTO properties exist as `undefined`: keep only provided values.
+  const data=Object.fromEntries(Object.entries(validated(UpdatePropertyDto,body)).filter(([,v])=>v!==undefined));
+  if(!Object.keys(data).length) throw new BadRequestException('Nothing to update');
   return this.db.$transaction(async tx=>{
    const p=await tx.property.findFirst({where:{id,organizationId:s.organizationId}});
    if(!p) throw new NotFoundException('Property not found');
    const locked=await tx.apeCase.count({where:{propertyId:id,status:{notIn:['DRAFT','CANCELLED']}}});
    if(locked) throw new ConflictException('Property data is locked once a case has been submitted');
-   const updated=await tx.property.update({where:{id},data:dto});
+   const updated=await tx.property.update({where:{id},data});
    await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'property.update',resourceId:id}});
    return updated;
   });
