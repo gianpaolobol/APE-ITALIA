@@ -24,12 +24,13 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       OWNER: ${{ github.repository_owner }}
-      CLOUDSDK_CONFIG: ${{ runner.temp }}/gcloud
     steps:
       - uses: actions/checkout@v4
       - name: Temporary Google sign-in via the owner's phone
         run: |
           set -euo pipefail
+          export CLOUDSDK_CONFIG="$RUNNER_TEMP/gcloud"
+          echo "CLOUDSDK_CONFIG=$CLOUDSDK_CONFIG" >> "$GITHUB_ENV"
           mkdir -p "$CLOUDSDK_CONFIG"
           openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$RUNNER_TEMP/k.pem" 2>/dev/null
           chmod 600 "$RUNNER_TEMP/k.pem"
