@@ -92,7 +92,12 @@ export class PlatformAuthController {
   const t = typeof body?.refreshToken === 'string' ? body.refreshToken : '';
   if (!t) throw new BadRequestException('refreshToken required');
   const row = await this.db.refreshToken.findUnique({ where: { tokenHash: hashToken(t) }, include: { user: true } });
-  if (!row || row.revokedAt || row.expiresAt < new Date() || row.user.deletedAt || !row.user.email) throw new UnauthorizedException('Session expired');
+  if (row?.revokedAt) {
+   // A rotated (already used) refresh token is presented again: possible theft, revoke every session.
+   await this.db.refreshToken.updateMany({ where: { userId: row.userId, revokedAt: null }, data: { revokedAt: new Date() } });
+   throw new UnauthorizedException('Session expired');
+  }
+  if (!row || row.expiresAt < new Date() || row.user.deletedAt || !row.user.email) throw new UnauthorizedException('Session expired');
   const rotated = await this.db.refreshToken.updateMany({ where: { id: row.id, revokedAt: null }, data: { revokedAt: new Date() } });
   if (rotated.count !== 1) {
    // Reuse of a rotated token: revoke every session of the user.
