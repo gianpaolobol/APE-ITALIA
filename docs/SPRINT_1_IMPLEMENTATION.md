@@ -41,3 +41,6 @@ Aggiunti tre test d'integrazione PostgreSQL con due organizzazioni sintetiche: v
 
 ## Iterazione CI — 23/11/2026
 Corrette le dichiarazioni Prisma generator/datasource in blocchi multilinea. Aggiunto trigger `workflow_dispatch` per avvio manuale di GitHub Actions e controllo `prisma migrate status` dopo `migrate deploy`. Il test PostgreSQL non inizializza PrismaClient quando non è abilitato. **Queste correzioni sono commit, non attestazioni di esecuzione:** nessuna CI verde o build verificata in questa sessione. Non unire la PR finché GitHub Actions non riporta esito positivo e non sono verificati i controlli di sicurezza.
+
+## CI run #50 — primo riscontro effettivo
+Esecuzione GitHub Actions 45090610595: installazione, validazione/generazione Prisma, migrazione PostgreSQL, controllo migrazioni, typecheck API e test API **superati**. Build Next.js **fallita** nel prerender della pagina `/404` con `TypeError: Cannot read properties of null (reading 'useContext')`; compilazione Next.js completata prima dell'errore. Ipotesi: risoluzione incoerente di React/React DOM tra workspaces. In risposta, versioni web React/React DOM fissate a 19.1.0 e Next a 15.5.29, con stampa albero dipendenze nella CI. **Correzione non ancora confermata da una nuova CI verde**. Nessun merge fino al successo.
