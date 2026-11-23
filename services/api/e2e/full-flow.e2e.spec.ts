@@ -48,7 +48,7 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   api = spawn(process.execPath, [resolve(__dirname, '../dist/main.js')], {
    env: { ...process.env, PORT: String(port), OIDC_ISSUER: issuer, OIDC_AUDIENCE: 'ape-italia-api', OIDC_JWKS_URL: issuer + 'jwks.json',
     NODE_EXTRA_CA_CERTS: join(dir, 'c.pem'), EVIDENCE_STORAGE_DIR: join(dir, 'store'), EVIDENCE_ENCRYPTION_KEY: randomBytes(32).toString('base64'),
-    EVIDENCE_ALLOW_UNSCANNED: '1', RATE_LIMIT_PER_MINUTE: '1000' },
+    EVIDENCE_ALLOW_UNSCANNED: '1', RATE_LIMIT_PER_MINUTE: '1000', RATE_LIMIT_STORE: 'postgres' },
    stdio: ['ignore', 'inherit', 'inherit'],
   });
   base = `http://127.0.0.1:${port}`;

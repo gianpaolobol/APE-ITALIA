@@ -28,6 +28,7 @@ services:
       <<: *db
       PORT: "3001"
       TRUST_PROXY: ${TRUST_PROXY:-1}
+      RATE_LIMIT_STORE: postgres
       OIDC_ISSUER: ${OIDC_ISSUER:-}
       OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ape-italia-api}
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}

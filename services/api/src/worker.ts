@@ -2,6 +2,7 @@ import { PrismaClient } from '@prisma/client';
 import { storageFromEnv } from './evidence/storage';
 import { runExpireOffers, runRescan, runRetention, startSchedules, type Schedule } from './worker/jobs';
 import { scannerFromEnv } from './evidence/clamav';
+import { sweepRateLimitBuckets } from './rate-limit/pg-throttler-storage';
 
 /** Background worker: `node dist/worker.js`. Safe to run on several instances (advisory locks). */
 const db = new PrismaClient();
@@ -12,6 +13,7 @@ const schedules: Schedule[] = [
  { name: 'expire-offers', everyMs: minutes(process.env.WORKER_EXPIRE_EVERY_MIN, 15), run: () => runExpireOffers(db) },
  { name: 'retention', everyMs: minutes(process.env.WORKER_RETENTION_EVERY_MIN, 24 * 60), run: () => runRetention(db, storage) },
 ];
+schedules.push({ name: 'rate-limit-sweep', everyMs: 60 * 60_000, run: () => sweepRateLimitBuckets(db) });
 if (storage && scanner) schedules.push({ name: 'rescan', everyMs: minutes(process.env.WORKER_RESCAN_EVERY_MIN, 5), run: () => runRescan(db, storage, scanner) });
 const stop = startSchedules(schedules);
 const shutdown = async () => { stop(); await db.$disconnect(); process.exit(0); };

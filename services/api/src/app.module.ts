@@ -1,6 +1,8 @@
 import { Controller, Get, Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { PrismaClient } from '@prisma/client';
+import { PgThrottlerStorage } from './rate-limit/pg-throttler-storage';
 import { PrismaService } from './prisma.service';
 import { CasesController } from './cases.controller';
 import { AuthService } from './auth.service';
@@ -20,7 +22,10 @@ import { scannerFromEnv } from './evidence/clamav';
 class HealthController { @Get('health') health() { return { status: 'ok', service: 'ape-italia-api', mode: 'development' }; } }
 
 /** Default: 120 requests/minute per client IP (in-memory, per instance; use a shared store when scaling out). */
-@Module({ imports: [ThrottlerModule.forRoot({ throttlers: [{ name: 'default', ttl: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120) }] })],
+/** RATE_LIMIT_STORE=postgres shares counters across API instances (own small connection pool). */
+const sharedStorage = process.env.RATE_LIMIT_STORE === 'postgres' ? new PgThrottlerStorage(new PrismaClient()) : undefined;
+
+@Module({ imports: [ThrottlerModule.forRoot({ throttlers: [{ name: 'default', ttl: 60_000, limit: Number(process.env.RATE_LIMIT_PER_MINUTE ?? 120) }], ...(sharedStorage ? { storage: sharedStorage } : {}) })],
  controllers: [HealthController, MeController, MembersController, CasesController, EvidenceController, CertifierController, ExtractionController, CertificateController, LifecycleController],
  providers: [
   PrismaService,

@@ -186,3 +186,6 @@ Realm Keycloak di riferimento versionato (`deploy/keycloak/`) e job CI che esegu
 
 ## 51. Antivirus ClamAV (Claude, 23/11/2026)
 Adattatore `clamd` INSTREAM con comportamento fail-closed sugli upload, ri-scansione periodica dei file pendenti nel worker con quarantena auditata, servizio nel compose di staging; verificato in CI contro ClamAV reale con il file di prova EICAR. Toglie uno dei bloccanti della issue #5.
+
+## 52. Rate limiting condiviso (Claude, 23/11/2026)
+Storage del throttler su PostgreSQL (`RATE_LIMIT_STORE=postgres`): finestra fissa per chiave aggiornata con un unico upsert atomico, blocco dopo il limite, pulizia oraria nel worker; attivo nel compose di staging e nell'E2E dell'API. Test di concorrenza e di condivisione tra due istanze.

@@ -180,3 +180,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Iterazione 26 (`mobile/eas-builds`): eas.json, bundle id iOS, permessi minimi verificati con prebuild, icona provvisoria, guida `docs/DEVICE_BUILDS.md`.
 - Iterazione 27 (`test/keycloak-e2e`): E2E con Keycloak reale in CI (Run #130 verde); corretto il realm (scope predefiniti) grazie al test.
 - Iterazione 28 (`feat/clamav`): antivirus ClamAV fail-closed, rescan nel worker, job CI `clamav` con EICAR.
+- Iterazione 29 (`feat/shared-rate-limit`): rate limit condiviso su PostgreSQL; SQL verificato anche via psql locale.

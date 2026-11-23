@@ -269,3 +269,12 @@ model EvidenceRequest {
  @@index([caseId])
  @@index([organizationId])
 }
+
+/// Shared rate-limit counters (fixed window per key) so that several API instances enforce one limit.
+model RateLimitBucket {
+ key String @id
+ hits Int
+ expiresAt DateTime
+ blockedUntil DateTime?
+ @@index([expiresAt])
+}
