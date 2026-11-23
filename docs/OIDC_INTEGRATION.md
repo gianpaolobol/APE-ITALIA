@@ -25,3 +25,6 @@ Status: design approved for implementation; no identity provider configured.
 6. Review GDPR, session retention and incident response.
 
 No real user onboarding or production access until these gates pass.
+
+## Stato (23/11/2026)
+Flusso implementato su app, portale e API; verificato end-to-end con un provider reale (Keycloak) in CI: vedi `docs/OIDC_KEYCLOAK.md`. Restano: scelta del provider di produzione, MFA, test su dispositivi.

@@ -16,3 +16,4 @@ No checkboxes may be checked without evidence from executed tests.
 
 ## End-to-end API (PR #18)
 - [x] Processo API compilato + PostgreSQL + JWKS remoto HTTPS: percorso completo cliente → certificatore → verbale → esportazione, audit; chiave sconosciuta 401, altro tenant 403, AI disattivata 503 — CI Run #95
+- [x] Provider OIDC reale (Keycloak 26, HTTPS) → portale → API compilata → PostgreSQL in Chrome; password errata senza sessione — job CI `keycloak-e2e` (Run #130)
