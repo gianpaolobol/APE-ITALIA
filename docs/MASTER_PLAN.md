@@ -93,3 +93,12 @@ Il file `docs/MASTER_PLAN.md` è la fonte primaria. Ogni PR deve riportare: obie
 
 ## 20. Avanzamento 23/11/2026 — Sprint 1
 Branch di lavoro `feat/sprint-1-persistence`: schema Prisma, Docker PostgreSQL locale, servizio database, endpoint API volutamente bloccati (403) in attesa di autenticazione. Nessun CRUD funzionante o migrazione verificata. Dettagli: `docs/SPRINT_1_IMPLEMENTATION.md`. Il rilascio richiede test reali e controllo isolamento tenant.
+
+## 21. Avanzamento Sprint 2 — 23/11/2026
+La PR #4 dello Sprint 1 è stata integrata in main (commit `aa0d6b2`) dopo CI verde Run #56. Resta aperta la issue #5 per autenticazione reale e hardening prima della produzione. Il branch `feat/sprint-2-mobile-api` introduce un client API TypeScript per immobili/pratiche, controlli HTTPS e gestione errori, oltre a validazione iniziale del workflow. **Non è ancora collegato alla UI Expo** e non esiste login OIDC operativo. Stato dettagliato: `docs/SPRINT_2_IMPLEMENTATION.md`.
+
+## 22. Sprint 2 — wizard mobile e limite di autenticazione
+Il wizard Expo ora utilizza la funzione `submitApeRequest` che valida i dati e prepara chiamate API immobili/pratiche. La funzione `getVerifiedSession()` restituisce null fino all'integrazione OIDC PKCE: **nessun invio reale è possibile**. Sono stati aggiunti test e controllo TypeScript mobile in CI. Restano da verificare build e test su iOS/Android, sessione sicura, upload, dati persistenti via app.
+
+## 23. Contratto autenticazione OIDC/PKCE
+Aggiunto `docs/OIDC_INTEGRATION.md`: autorizzazione mobile via browser di sistema, PKCE S256, token verificati, archiviazione sicura, provisioning membership e test negativi obbligatori. Nessun provider è stato ancora scelto o attivato. I dati reali restano vietati fino al completamento dei controlli.
