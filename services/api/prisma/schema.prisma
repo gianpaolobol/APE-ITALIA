@@ -6,6 +6,7 @@ model Organization {
  name String
  properties Property[]
  cases ApeCase[]
+ memberships Membership[]
  createdAt DateTime @default(now())
 }
 model Property {
@@ -49,4 +50,16 @@ model AuditEvent {
  resourceId String
  occurredAt DateTime @default(now())
  @@index([organizationId,occurredAt])
+}
+
+model Membership {
+ id String @id @default(uuid())
+ organizationId String
+ organization Organization @relation(fields: [organizationId], references: [id])
+ userSubject String
+ role String @default("member")
+ active Boolean @default(true)
+ createdAt DateTime @default(now())
+ @@unique([organizationId,userSubject])
+ @@index([userSubject])
 }
