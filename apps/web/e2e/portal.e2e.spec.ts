@@ -22,6 +22,8 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
  const ASSIGNMENT = randomUUID(), CASE = randomUUID(), ORG_A = randomUUID(), ORG_B = randomUUID(), PROP = randomUUID();
  const invitations: { id: string; role: string; createdBy: string; expiresAt: string; createdAt: string }[] = [];
  const orgHeaders: string[] = [];
+ const created: { id: string; propertyId: string; status: string; createdAt: string; consent: boolean; uploads: { kind: string; bytes: number }[] }[] = [];
+ const createdProps: Record<string, { id: string; address: string; city: string; region: string; floorAreaM2: number | null }> = {};
  const ACCESS_TOKEN = 'synthetic-access-' + randomBytes(12).toString('hex');
  const state = { accepted: false, tokenRequests: 0, pkceFailures: 0, apiAuthFailures: 0 };
  let idp: Server, api: Server, next: ChildProcess, browser: Browser, key: CryptoKey, issuer = '', apiBase = '', web = '';
@@ -80,8 +82,22 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
     const org = String(req.headers['x-organization-id'] ?? '');
     orgHeaders.push(org);
     if (org !== ORG_A && org !== ORG_B) return send(403, {});
-    if (path === '/v1/properties') return send(200, [{ id: PROP, address: 'Via Portafoglio 3', city: 'Bologna', region: 'Emilia-Romagna', floorAreaM2: 90 }]);
-    if (path === '/v1/cases') return send(200, [{ id: CASE, propertyId: PROP, status: 'INSPECTION_SCHEDULED', createdAt: new Date().toISOString() }]);
+    if (path === '/v1/properties' && req.method === 'POST') { const b = JSON.parse(await readBody(req)); if (!b.address) return send(400, {}); const id = randomUUID(); createdProps[id] = { id, ...b, floorAreaM2: b.floorAreaM2 ?? null }; return send(201, createdProps[id]); }
+    if (path === '/v1/cases' && req.method === 'POST') { const b = JSON.parse(await readBody(req)); const c = { id: randomUUID(), propertyId: b.propertyId, status: 'DRAFT', createdAt: new Date().toISOString(), consent: false, uploads: [] }; created.push(c); return send(201, c); }
+    if (path === '/v1/notices') return send(200, { evidence_processing: '2026-11-23-draft' });
+    const m = /^\/v1\/cases\/([0-9a-f-]{36})\/(.+)$/.exec(path);
+    const mine = m && created.find(c => c.id === m[1]);
+    if (m && mine) {
+     if (m[2] === 'consents') { mine.consent = true; return send(201, { id: randomUUID() }); }
+     if (m[2] === 'evidence' && req.method === 'POST') { const raw = await readBody(req); if (!mine.consent) return send(403, {}); mine.uploads.push({ kind: /name="kind"\r\n\r\n(\w+)/.exec(raw)?.[1] ?? '?', bytes: raw.length }); return send(201, { id: randomUUID() }); }
+     if (m[2] === 'evidence') return send(200, mine.uploads.map((u, i) => ({ id: randomUUID(), kind: u.kind, mimeType: 'image/png', sizeBytes: u.bytes, scanStatus: 'unscanned', createdAt: new Date().toISOString(), idx: i })));
+     if (m[2] === 'submit') { mine.status = 'SUBMITTED'; return send(201, mine); }
+     if (m[2] === 'inspection') return send(200, { caseStatus: mine.status, inspection: null });
+     if (m[2] === 'certificate') return send(200, { certificate: null });
+     if (m[2] === 'evidence-requests') return send(200, []);
+    }
+    if (path === '/v1/properties') return send(200, [{ id: PROP, address: 'Via Portafoglio 3', city: 'Bologna', region: 'Emilia-Romagna', floorAreaM2: 90 }, ...Object.values(createdProps)]);
+    if (path === '/v1/cases') return send(200, [{ id: CASE, propertyId: PROP, status: 'INSPECTION_SCHEDULED', createdAt: new Date().toISOString() }, ...created.map(({ id, propertyId, status, createdAt }) => ({ id, propertyId, status, createdAt }))]);
     if (path === '/v1/members') return send(200, [{ id: randomUUID(), userSubject: 'synthetic-certifier', role: 'owner', active: true, createdAt: new Date().toISOString() }]);
     if (path === '/v1/invitations' && req.method === 'POST') {
      const body = JSON.parse(await readBody(req));
@@ -189,6 +205,43 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
   await ctx.addCookies([{ name: '__Host-ape_org', value: randomUUID(), domain: 'localhost', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
   await page.goto(web + '/org');
   await page.getByText("Scegli l'organizzazione").waitFor({ state: 'visible', timeout: 15_000 });
+  await ctx.close();
+ }, 60_000);
+
+ it('professional creates, documents and submits a case from the web', async () => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const page = await ctx.newPage();
+  await page.goto(web + '/auth/login?returnTo=/org');
+  await page.waitForURL(web + '/org');
+  await page.locator('form', { hasText: 'Studio Alfa' }).getByRole('button', { name: 'Apri' }).click();
+  await page.getByRole('link', { name: 'Nuova pratica' }).click();
+  await page.waitForURL(web + '/org/new');
+  await page.locator('input[name=address]').fill('Via Nuova 12');
+  await page.locator('input[name=city]').fill('Imola');
+  await page.locator('input[name=floorAreaM2]').fill('72,5');
+  await page.getByRole('button', { name: 'Crea bozza' }).click();
+  await page.waitForURL(u => /\/org\/cases\/[0-9a-f-]{36}/.test(u.toString()));
+  expect(created).toHaveLength(1);
+  expect(Object.values(createdProps)[0]).toMatchObject({ address: 'Via Nuova 12', city: 'Imola', region: 'Emilia-Romagna', floorAreaM2: 72.5 });
+  await page.getByText('Via Nuova 12, Imola').first().waitFor({ state: 'visible', timeout: 15_000 });
+
+  // Upload without consent is refused by the API and explained to the user.
+  const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from('synthetic')]);
+  await page.locator('select[name=kind]').selectOption('window');
+  await page.locator('input[type=file]').setInputFiles({ name: 'serramento.png', mimeType: 'image/png', buffer: png });
+  await page.getByRole('button', { name: 'Carica' }).click();
+  await page.getByText("Serve il consenso").waitFor({ state: 'visible', timeout: 15_000 });
+  await page.getByRole('button', { name: 'Ho letto e acconsento' }).click();
+  await page.getByText('Consenso registrato').waitFor({ state: 'visible', timeout: 15_000 });
+  await page.locator('select[name=kind]').selectOption('window');
+  await page.locator('input[type=file]').setInputFiles({ name: 'serramento.png', mimeType: 'image/png', buffer: png });
+  await page.getByRole('button', { name: 'Carica' }).click();
+  await page.getByText('File caricato.').waitFor({ state: 'visible', timeout: 15_000 });
+  expect(created[0].uploads).toEqual([expect.objectContaining({ kind: 'window' })]);
+
+  await page.getByRole('button', { name: 'Invia la richiesta' }).click();
+  await page.getByText('Richiesta inviata').waitFor({ state: 'visible', timeout: 15_000 });
+  expect(created[0].status).toBe('SUBMITTED');
   await ctx.close();
  }, 60_000);
 

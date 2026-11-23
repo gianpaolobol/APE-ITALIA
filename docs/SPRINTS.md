@@ -18,7 +18,7 @@
 
 ## Sprint 2: interfacce
 - [x] Richiesta privati in 5 step (bozza, evidenze, invio; non testata su dispositivo)
-- [x] Portafoglio professionisti (web: pratiche, stati, membri, inviti; creazione pratiche via web da fare)
+- [x] Portafoglio professionisti (web: pratiche, stati, membri, inviti, creazione e invio pratiche)
 - [x] Dashboard certificatori web (offerte/incarichi/evidenze; sopralluogo e verbale da fare)
 - [x] Sincronizzazione stati (app: scheda pratiche; web: area organizzazioni; aggiornamento manuale, nessuna notifica push)
 

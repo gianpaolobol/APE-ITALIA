@@ -76,3 +76,54 @@ export async function cancelCase(form: FormData) {
  await orgFetch(cfg, s, org, `/v1/cases/${id}/cancel`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ reason: String(form.get('reason') ?? '') }) });
  revalidatePath(`/org/cases/${id}`);
 }
+
+const KINDS = ['boiler', 'heating', 'envelope', 'window', 'floorplan', 'document'];
+
+/** Creates property + draft case for the selected organization (member or above). */
+export async function createCase(form: FormData) {
+ const { cfg, s, org } = await writer('/org/new');
+ const area = String(form.get('floorAreaM2') ?? '').trim().replace(',', '.');
+ const property = { address: String(form.get('address') ?? '').trim(), city: String(form.get('city') ?? '').trim(), region: String(form.get('region') ?? '').trim(), ...(area ? { floorAreaM2: Number(area) } : {}) };
+ let caseId = '';
+ try {
+  const p = await orgJson<{ id: string }>(cfg, s, org, '/v1/properties', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(property) });
+  caseId = (await orgJson<{ id: string }>(cfg, s, org, '/v1/cases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ propertyId: p.id }) })).id;
+ } catch (e) {
+  redirect('/org/new?error=' + (e instanceof ApiFailure && e.status === 400 ? 'invalid' : 'error'));
+ }
+ redirect(`/org/cases/${caseId}`);
+}
+
+export async function giveConsent(form: FormData) {
+ const id = String(form.get('caseId') ?? '');
+ if (!isUuid(id)) throw new Error('Invalid case');
+ const { cfg, s, org } = await writer(`/org/cases/${id}`);
+ const notices = await orgJson<{ evidence_processing: string }>(cfg, s, org, '/v1/notices');
+ await orgFetch(cfg, s, org, `/v1/cases/${id}/consents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'evidence_processing', version: notices.evidence_processing }) });
+ redirect(`/org/cases/${id}?msg=consent`);
+}
+
+export async function uploadEvidence(form: FormData) {
+ const id = String(form.get('caseId') ?? '');
+ if (!isUuid(id)) throw new Error('Invalid case');
+ const kind = String(form.get('kind') ?? '');
+ const file = form.get('file');
+ if (!KINDS.includes(kind) || !(file instanceof File) || file.size === 0) redirect(`/org/cases/${id}?msg=upload-missing`);
+ const { cfg, s, org } = await writer(`/org/cases/${id}`);
+ const out = new FormData();
+ out.set('kind', kind);
+ out.set('file', file as File, 'file');
+ let msg = 'upload-ok';
+ try { await orgFetch(cfg, s, org, `/v1/cases/${id}/evidence`, { method: 'POST', body: out }); }
+ catch (e) { msg = 'upload-' + (e instanceof ApiFailure ? e.status : 'error'); }
+ redirect(`/org/cases/${id}?msg=${msg}`);
+}
+
+export async function submitCase(form: FormData) {
+ const id = String(form.get('caseId') ?? '');
+ if (!isUuid(id)) throw new Error('Invalid case');
+ const { cfg, s, org } = await writer(`/org/cases/${id}`);
+ let msg = 'submitted';
+ try { await orgFetch(cfg, s, org, `/v1/cases/${id}/submit`, { method: 'POST' }); } catch { msg = 'submit-error'; }
+ redirect(`/org/cases/${id}?msg=${msg}`);
+}

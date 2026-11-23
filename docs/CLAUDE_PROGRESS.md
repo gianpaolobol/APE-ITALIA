@@ -174,3 +174,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Merge via API ancora negato dalla sessione; il titolare ha poi **autorizzato esplicitamente il push diretto su `main`**. Integrato `main` aggiornato (avviso diritti) in cima alla pila (CI Run #114 verde su `a3550e0`), poi fast-forward di `main` da `7c1b008` a `a3550e0`. PR #7 risultata *merged*; #8–#27 chiuse con commento (commit già in `main`; GitHub non consente di ritargettarle).
 - Nuovo flusso: branch → PR → CI verde → fast-forward di `main`.
 - Iterazione 22 (`ops/containers`): Dockerfile API e web, `.dockerignore`, `deploy/docker-compose.staging.yml`, `deploy/.env.example`, job CI `containers`. Localmente: build `standalone` di Next avviata e verificata (`/` 200, `/auth/login` 503); il demone Docker non è disponibile qui, immagini verificate solo in CI.
+- Iterazione 23 (`feat/web-case-creation`): creazione/consenso/caricamento/invio pratiche dal web; E2E browser 5/5 locale.

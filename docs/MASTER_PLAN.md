@@ -168,3 +168,6 @@ PR #26 (impilata su #25). Il cliente scarica l'APE consegnato nella cache privat
 
 ## 45. Integrazione in main e container per lo staging (Claude, 23/11/2026)
 Su autorizzazione del titolare, `main` è stato portato con fast-forward a `a3550e0` (PR #7 risultata integrata, #8–#27 chiuse con riferimento). Aggiunte immagini Docker per API/worker/migrazione e portale (Next standalone), compose di staging e job CI di smoke test. Dettagli: `docs/DEPLOYMENT.md`.
+
+## 46. Creazione pratiche dal web (Claude, 23/11/2026)
+Professionisti e agenzie creano, documentano e inviano le pratiche anche dal portale web (`/org/new` e pagina pratica), con gli stessi controlli di consenso e file dell'app. Verificato con E2E in Chrome.

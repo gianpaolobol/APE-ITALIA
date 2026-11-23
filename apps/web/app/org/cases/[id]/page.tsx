@@ -5,15 +5,19 @@ import { isUuid, orgContext } from '../../../../lib/org';
 import { ApiFailure, orgJson, type CaseView, type EvidenceView, type PropertyView } from '../../../../lib/api';
 import { Notice, box } from '../../../ui';
 import { STATUS_IT } from '../../../../lib/labels';
-import { cancelCase, resolveEvidenceRequest } from '../../actions';
+import { cancelCase, giveConsent, resolveEvidenceRequest, submitCase, uploadEvidence } from '../../actions';
 type RequestInfo = { id: string; message: string; kinds: string[]; createdAt: string; resolvedAt: string | null };
 
 export const dynamic = 'force-dynamic';
 type CertificateInfo = { certificate: { regionalId: string; depositedAt: string; validUntil: string | null; sha256: string; deliveredAt: string | null } | null };
 type InspectionInfo = { caseStatus: string; inspection: { status: string; scheduledAt: string; performedAt: string | null; certifierName: string } | null };
 
-export default async function OrgCase({ params }: { params: Promise<{ id: string }> }) {
+const MSG: Record<string, string> = { consent: 'Consenso registrato: ora puoi caricare foto e documenti.', 'upload-ok': 'File caricato.', 'upload-missing': 'Scegli la voce e il file.', 'upload-403': 'Serve il consenso all\'informativa prima del caricamento.', 'upload-409': 'File già caricato o pratica chiusa.', 'upload-413': 'File oltre 15 MB.', 'upload-415': 'Formato non accettato (JPEG, PNG, HEIC; PDF solo per planimetrie e documenti).', 'upload-422': 'File non valido.', submitted: 'Richiesta inviata: verrà proposta a un certificatore abilitato.', 'submit-error': 'Invio non riuscito.' };
+const KIND_IT: Record<string, string> = { boiler: 'Caldaia e targhetta', heating: 'Terminali', envelope: 'Pareti e sezioni', window: 'Serramenti', floorplan: 'Planimetria', document: 'Documento' };
+
+export default async function OrgCase({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ msg?: string }> }) {
  const { id } = await params;
+ const { msg } = await searchParams;
  if (!isUuid(id)) notFound();
  const ctx = await orgContext(`/org/cases/${id}`);
  if (!ctx) return <Notice>Portale non configurato.</Notice>;
@@ -35,6 +39,15 @@ export default async function OrgCase({ params }: { params: Promise<{ id: string
   <p><Link href="/org">← Pratiche</Link></p>
   <h1>{p ? `${p.address}, ${p.city}` : 'Pratica'}</h1>
   <p>Stato: <strong>{STATUS_IT[info.caseStatus] ?? info.caseStatus}</strong></p>
+  {msg && MSG[msg] ? <Notice>{MSG[msg]}</Notice> : null}
+  {['DRAFT', 'AWAITING_EVIDENCE'].includes(info.caseStatus) && ctx.membership!.role !== 'viewer' ? <section style={box}>
+   <h2>Foto e documenti</h2>
+   <form action={giveConsent}><input type="hidden" name="caseId" value={id} /><p style={{ fontSize: 14 }}>Le immagini e i documenti servono al certificatore abilitato; sono conservati cifrati e accessibili alla tua organizzazione e al certificatore incaricato; i dati di posizione delle foto JPEG vengono rimossi. Informativa in bozza, in attesa di revisione legale.</p><button type="submit">Ho letto e acconsento</button></form>
+   <form action={uploadEvidence} encType="multipart/form-data" style={{ marginTop: 12, display: 'flex', gap: 8, alignItems: 'center' }}><input type="hidden" name="caseId" value={id} />
+    <select name="kind" required defaultValue=""><option value="" disabled>Voce…</option>{Object.entries(KIND_IT).map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
+    <input type="file" name="file" required accept="image/jpeg,image/png,image/heic,application/pdf" /><button type="submit">Carica</button></form>
+   {info.caseStatus === 'DRAFT' ? <form action={submitCase} style={{ marginTop: 12 }}><input type="hidden" name="caseId" value={id} /><button type="submit">Invia la richiesta</button></form> : null}
+  </section> : null}
   {requests.filter(r => !r.resolvedAt).map(r => <section key={r.id} style={{ ...box, borderColor: '#d9a400' }}><h2>Integrazioni richieste dal certificatore</h2>
    <p>{r.message}</p><p>Voci: {r.kinds.join(', ')}. Carica i file dall'app mobile, poi conferma.</p>
    {ctx.membership!.role !== 'viewer' ? <form action={resolveEvidenceRequest}><input type="hidden" name="caseId" value={id} /><input type="hidden" name="requestId" value={r.id} /><button type="submit">Ho caricato quanto richiesto</button></form> : null}
