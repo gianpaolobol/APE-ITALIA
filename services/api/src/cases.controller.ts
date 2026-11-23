@@ -80,6 +80,24 @@ export class CasesController {
    return tx.apeCase.findFirstOrThrow({where:{id,organizationId:s.organizationId}});
   });
  }
+ /** Guided-survey answers, indicative estimate and quote from the mobile app (editable only while DRAFT). */
+ @Post('cases/:id/survey')
+ @HttpCode(200)
+ async saveSurvey(@Param('id', new ParseUUIDPipe()) id:string,@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
+  if(!body||typeof body!=='object'||Array.isArray(body)) throw new BadRequestException('survey object required');
+  const json=JSON.stringify(body);
+  if(json.length>64_000) throw new BadRequestException('survey too large');
+  const res=await this.db.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT'},data:{survey:JSON.parse(json)}});
+  if(res.count!==1){
+   const exists=await this.db.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true}});
+   if(!exists) throw new NotFoundException('Case not found');
+   throw new ConflictException('Survey can be changed only before submission');
+  }
+  await this.db.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.survey',resourceId:id}});
+  return {id};
+ }
  /** Customer view: date, status and certifier name only; the technical report stays with the certifier. */
  @Get('cases/:id/inspection')
  async caseInspection(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){

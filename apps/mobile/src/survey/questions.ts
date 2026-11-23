@@ -68,13 +68,15 @@ export const STEPS: Step[] = [
   questions: [
    { id: 'purpose', kind: 'choice', label: 'Motivo', required: true, layout: 'cards', options: [
     { value: 'vendita', label: 'Vendita', hint: 'Obbligatorio dall’annuncio al rogito', icon: 'home-outline' },
-    { value: 'affitto', label: 'Affitto', hint: 'Da allegare al contratto', icon: 'key-outline' },
+    { value: 'affitto', label: 'Affitto', hint: 'Da consegnare all’inquilino', icon: 'key-outline' },
     { value: 'lavori', label: 'Lavori / bonus', hint: 'Ante o post intervento', icon: 'construct-outline' },
     { value: 'altro', label: 'Altro', hint: 'Mutuo, verifica, curiosità', icon: 'ellipsis-horizontal' },
    ] },
    { id: 'urgency', kind: 'choice', label: 'Quando ti serve?', required: true, layout: 'chips', options: [
-    { value: 'standard', label: 'Entro 7–10 giorni' }, { value: 'urgente', label: 'Urgente (+49 €, APE in 48 ore)' }, { value: 'flessibile', label: 'Nessuna fretta' },
+    { value: 'standard', label: 'Entro 7–10 giorni' }, { value: 'urgente', label: 'Urgente (+49 €, APE entro 48 ore dal sopralluogo)' }, { value: 'flessibile', label: 'Nessuna fretta' },
    ] },
+   { id: 'dataNotice', kind: 'toggle', required: true, label: 'Ho letto come vengono usati i miei dati: risposte e foto servono a preparare il fascicolo per il certificatore che farà il sopralluogo' },
+   { id: 'aiConsent', kind: 'toggle', label: 'Permetti la lettura automatica delle foto (targhette, planimetria) per compilare i dati al posto tuo', help: 'Le foto lette vengono analizzate da un servizio di intelligenza artificiale e non vengono conservate da esso. Puoi lasciarlo spento e compilare a mano.' },
   ],
  },
  {
@@ -252,7 +254,7 @@ export const STEPS: Step[] = [
    { id: 'availability', kind: 'multi', label: 'Quando sei disponibile per il sopralluogo?', required: true, options: [
     { value: 'mattina', label: 'Mattina' }, { value: 'pomeriggio', label: 'Pomeriggio' }, { value: 'sera', label: 'Dopo le 18' }, { value: 'sabato', label: 'Sabato' },
    ] },
-   { id: 'privacy', kind: 'toggle', label: 'Acconsento al trattamento dei dati per ricevere il preventivo e il sopralluogo', required: true },
+   { id: 'privacy', kind: 'toggle', label: 'Accetto che i miei dati, le risposte e le foto vengano inviati ai certificatori accreditati della mia zona per preventivo e sopralluogo', required: true },
   ],
  },
 ];

@@ -29,7 +29,7 @@ export function WizardScreen({ draft, startStepId, onUpdate, onAddPhoto, onRemov
  const i = Math.min(index, steps.length - 1);
  const step = steps[i];
  const missing = stepMissing(step, draft.answers, draft.photos);
- const est = useMemo(() => estimate(draft.answers), [draft.answers]);
+ const est = useMemo(() => (draft.answers.heatingSystem ? estimate(draft.answers) : null), [draft.answers]);
  const last = i === steps.length - 1;
 
  const setAnswer = (id: string, v: AnswerValue | undefined) => {
@@ -62,7 +62,7 @@ export function WizardScreen({ draft, startStepId, onUpdate, onAddPhoto, onRemov
     <ProgressBar ratio={(i + 1) / steps.length} />
    </View>
 
-   <ScrollView ref={scroll} contentContainerStyle={{ padding: S.m, paddingBottom: 140 }} keyboardShouldPersistTaps="handled">
+   <ScrollView ref={scroll} contentContainerStyle={{ padding: S.m, paddingBottom: 190 }} keyboardShouldPersistTaps="handled" automaticallyAdjustKeyboardInsets keyboardDismissMode="interactive">
     <View style={st.head}>
      <IconCircle name={step.icon as IconName} size={48} />
      <Text style={[F.title, { marginTop: 14 }]}>{step.title}</Text>
@@ -77,9 +77,16 @@ export function WizardScreen({ draft, startStepId, onUpdate, onAddPhoto, onRemov
     {step.questions.filter(q => isVisible(q, draft.answers)).map(q => (
      <QuestionView key={q.id} q={q} answers={draft.answers} photos={draft.photos[q.id] ?? []} showErrors={showErrors}
       onAnswer={setAnswer} onAddPhoto={onAddPhoto} onRemovePhoto={onRemovePhoto}
-      onAutoFill={(fields, summary) => {
-       onUpdate(d => ({ ...d, answers: { ...d.answers, ...fields }, updatedAt: new Date().toISOString() }));
-       setAutofill(summary || Object.keys(fields).length + ' campi');
+      onAutoFill={(fields, summary, source) => {
+       let filled = 0;
+       onUpdate(d => {
+        const stillThere = Object.values(d.photos).some(l => (l ?? []).some(x => x.uri === source.uri));
+        if (!stillThere) return d;
+        const add: Answers = {};
+        for (const [k, v] of Object.entries(fields)) if (d.answers[k] === undefined) { add[k] = v; filled++; }
+        return filled ? { ...d, answers: { ...d.answers, ...add }, updatedAt: new Date().toISOString() } : d;
+       });
+       if (filled) setAutofill(summary || `${filled} campi`);
       }} />
     ))}
    </ScrollView>

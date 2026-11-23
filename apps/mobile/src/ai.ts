@@ -18,14 +18,13 @@ export function mapReaderFields(kind: ExtractKind, f: Record<string, unknown>): 
   const brand = [s(f.brand), s(f.model)].filter(Boolean).join(' ');
   if (brand) out.generatorBrand = brand;
   const kw = n(f.nominalPowerKw, 1, 500); if (kw !== undefined) out.generatorPowerKw = kw;
-  const y = n(f.year, 1960, 2030); if (y !== undefined) out.generatorYear = Math.round(y);
+  const y = n(f.year, 1960, new Date().getFullYear()); if (y !== undefined) out.generatorYear = Math.round(y);
   if (f.condensing === true) out.heatGenerator = 'caldaia_condensazione';
   else if (f.condensing === false && f.type === 'boiler') out.heatGenerator = 'caldaia_tradizionale';
   if (f.type === 'heat_pump') out.heatGenerator = 'pompa_calore';
   if (f.fuel === 'metano' || f.fuel === 'gpl' || f.fuel === 'gasolio') out.fuel = f.fuel;
  }
- if (kind === 'ac_nameplate') { const y = n(f.year, 1980, 2030); if (y !== undefined) out.coolingYear = Math.round(y); }
- if (kind === 'cadastral_plan') { const a = n(f.floorAreaM2, 15, 1000); if (a !== undefined) out.floorArea = Math.round(a); }
+ if (kind === 'ac_nameplate') { const y = n(f.year, 1980, new Date().getFullYear()); if (y !== undefined) out.coolingYear = Math.round(y); }
  return out;
 }
 
@@ -34,7 +33,10 @@ export async function readPhoto(kind: ExtractKind, photo: PhotoRef): Promise<Rea
  const form = new FormData();
  form.append('kind', kind);
  form.append('file', { uri: photo.uri, name: photo.name, type: photo.mimeType } as unknown as Blob);
- const res = await fetch(`${base}/v1/survey/read-photo`, { method: 'POST', body: form });
+ const ctl = new AbortController();
+ const timer = setTimeout(() => ctl.abort(), 20_000);
+ let res: Response;
+ try { res = await fetch(`${base}/v1/survey/read-photo`, { method: 'POST', body: form, signal: ctl.signal }); } finally { clearTimeout(timer); }
  if (!res.ok) return null;
  const body = (await res.json()) as { fields?: Record<string, unknown>; summary?: string };
  return { fields: mapReaderFields(kind, body.fields ?? {}), summary: typeof body.summary === 'string' ? body.summary.slice(0, 300) : '' };

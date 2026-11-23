@@ -34,7 +34,7 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
      {(['A4', 'A1', 'B', 'C', 'D', 'E', 'F', 'G'] as const).map(c => <ClassBadge key={c} value={c} size={22} />)}
     </View>
     <Button title="Richiedi il tuo APE" icon="arrow-forward" onPress={onNew} style={{ backgroundColor: C.white, marginTop: S.l }} kind="secondary" />
-    <Text style={st.priceNote}>Prezzo fisso da {euro(minPrice)} · sopralluogo e deposito SACE inclusi</Text>
+    <Text style={st.priceNote}>Prezzo fisso da {euro(minPrice)} · sopralluogo, IVA e deposito SACE inclusi</Text>
    </LinearGradient>
 
    <View style={{ paddingHorizontal: S.m }}>
@@ -58,7 +58,7 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
      <IconCircle name="briefcase-outline" bg={C.warnSoft} color="#8A5A00" />
      <View style={{ flex: 1, marginLeft: 12 }}>
       <Text style={F.h3}>Ricevi incarichi nella tua zona</Text>
-      <Text style={[F.small, { marginTop: 2 }]}>{state.pro ? 'Candidatura inviata: in verifica sul registro SACE' : 'Fascicoli già pronti, sopralluoghi mirati. Serve l’accreditamento SACE.'}</Text>
+      <Text style={[F.small, { marginTop: 2 }]}>{state.pro ? (state.pro.status === 'inviata_al_server' ? 'Candidatura ricevuta: in verifica sull’elenco SACE' : 'Candidatura salvata sul telefono (versione di prova)') : 'Fascicoli già pronti, sopralluoghi mirati. Serve l’accreditamento SACE.'}</Text>
      </View>
      <Ionicons name="chevron-forward" size={20} color={C.muted} />
     </Card>
@@ -77,14 +77,14 @@ function DraftCard({ d, onOpen, onDelete }: { d: Draft; onOpen: () => void; onDe
   <Pressable onPress={() => { tap(); onOpen(); }} onLongPress={() => Alert.alert('Eliminare la richiesta?', 'Foto e risposte verranno cancellate dal telefono.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Elimina', style: 'destructive', onPress: onDelete }])}
    style={({ pressed }) => [st.draft, pressed && { opacity: 0.92 }]}>
    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-    {est ? <ClassBadge value={est.energyClass} size={40} /> : <IconCircle name="home-outline" size={44} />}
+    {est ? <ClassBadge value={est.energyClass} size={40} estimate /> : <IconCircle name="home-outline" size={44} />}
     <View style={{ flex: 1, marginLeft: 12 }}>
      <Text style={F.h3} numberOfLines={1}>{title}</Text>
-     <Text style={F.small}>{[prov, typeof d.answers.floorArea === 'number' ? `${d.answers.floorArea} m²` : null].filter(Boolean).join(' · ') || 'Da completare'}</Text>
+     <Text style={F.small}>{[est ? `classe indicativa ${est.energyClass}` : null, prov, typeof d.answers.floorArea === 'number' ? `${d.answers.floorArea} m²` : null].filter(Boolean).join(' · ') || 'Da completare'}</Text>
     </View>
-    {d.status === 'inviata' ? <Pill text="Inviata" icon="paper-plane" /> : <Pill tone="muted" text={`${p.done}/${p.total}`} />}
+    {d.status === 'inviata' ? <Pill text="Inviata" icon="paper-plane" /> : d.status === 'pronta' ? <Pill tone="warn" text="Pronta" /> : <Pill tone="muted" text={`${p.done}/${p.total}`} />}
    </View>
-   {d.status !== 'inviata' ? <View style={{ marginTop: 12 }}><ProgressBar ratio={p.ratio} /></View> : null}
+   {d.status === 'bozza' ? <View style={{ marginTop: 12 }}><ProgressBar ratio={p.ratio} /></View> : null}
   </Pressable>
  );
 }

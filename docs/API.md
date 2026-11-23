@@ -2,7 +2,7 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-49 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+51 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
@@ -22,6 +22,7 @@
 | POST | `/v1/cases/:id/evidence-requests/:requestId/resolve` | membro dell'organizzazione | 201 | predefinito | `LifecycleController.resolve` |
 | GET | `/v1/cases/:id/inspection` | membro dell'organizzazione | 200 | predefinito | `CasesController.caseInspection` |
 | POST | `/v1/cases/:id/submit` | membro dell'organizzazione | 201 | predefinito | `CasesController.submitCase` |
+| POST | `/v1/cases/:id/survey` | membro dell'organizzazione | 200 | predefinito | `CasesController.saveSurvey` |
 | POST | `/v1/certifier-applications` | pubblico | 201 | 5/min | `ApplicationsController.apply` |
 | GET | `/v1/certifier/assignments` | certificatore verificato | 200 | predefinito | `CertifierController.list` |
 | POST | `/v1/certifier/assignments/:assignmentId/evidence/:evidenceId/extract` | certificatore verificato | 201 | 20/min | `ExtractionController.extract` |
@@ -37,6 +38,7 @@
 | GET | `/v1/certifier/assignments/:id/inspection` | certificatore verificato | 200 | predefinito | `CertifierController.inspection` |
 | POST | `/v1/certifier/assignments/:id/inspection` | certificatore verificato | 201 | predefinito | `CertifierController.schedule` |
 | POST | `/v1/certifier/assignments/:id/inspection/report` | certificatore verificato | 201 | predefinito | `CertifierController.report` |
+| GET | `/v1/certifier/assignments/:id/survey` | certificatore verificato | 200 | predefinito | `CertifierController.survey` |
 | POST | `/v1/certifier/assignments/:id/withdraw` | certificatore verificato | 201 | predefinito | `LifecycleController.withdraw` |
 | GET | `/v1/certifier/inspection-schema` | certificatore verificato | 200 | predefinito | `CertifierController.inspectionSchema` |
 | GET | `/v1/certifier/me` | certificatore verificato | 200 | predefinito | `CertifierController.me` |

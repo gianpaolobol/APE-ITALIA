@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, View } from 'react-native';
+import { ActivityIndicator, AppState as RNAppState, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { C } from './src/ui/theme';
@@ -8,7 +8,6 @@ import { WizardScreen } from './src/ui/WizardScreen';
 import { ResultScreen } from './src/ui/ResultScreen';
 import { ProScreen } from './src/ui/ProScreen';
 import { deleteMedia, deletePhotoFile, loadState, newDraft, persistPhoto, saveState, type AppState, type Draft } from './src/survey/drafts';
-import { pruneHidden } from './src/survey/questions';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' };
 
@@ -18,6 +17,13 @@ export default function App() {
  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
  useEffect(() => { loadState().then(s => { latest.current = s; setState(s); }); }, []);
+ // Flush pending writes when the app goes to background (the debounce must not lose the last edit).
+ useEffect(() => {
+  const sub = RNAppState.addEventListener('change', st => {
+   if (st !== 'active' && latest.current) { if (saveTimer.current) clearTimeout(saveTimer.current); saveState(latest.current).catch(() => undefined); }
+  });
+  return () => sub.remove();
+ }, []);
 
  const latest = useRef<AppState | null>(null);
  /** Functional updates against the latest state: async photo reads never overwrite newer edits. */
@@ -41,25 +47,23 @@ export default function App() {
  if (route.name === 'home') {
   screen = <HomeScreen state={state}
    onNew={() => { const d = newDraft(); upsert(d); setRoute({ name: 'wizard', id: d.id }); }}
-   onOpen={d => setRoute(d.status === 'inviata' || Object.keys(d.answers).length > 8 ? { name: 'result', id: d.id } : { name: 'wizard', id: d.id })}
+   onOpen={d => setRoute(d.status !== 'bozza' || Object.keys(d.answers).length > 8 ? { name: 'result', id: d.id } : { name: 'wizard', id: d.id })}
    onDelete={d => { deleteMedia(d.id); update(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== d.id) })); }}
    onPro={() => setRoute({ name: 'pro' })} />;
  } else if (route.name === 'wizard' && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <WizardScreen key={`${d.id}-${route.step ?? ''}`} draft={d} startStepId={route.step}
-   onUpdate={fn => updateDraft(d.id, cur => {
-    const nd = fn(cur);
-    const pr = pruneHidden(nd.answers, nd.photos);
-    for (const [k, list] of Object.entries(nd.photos)) if (!pr.photos[k]) (list ?? []).forEach(deletePhotoFile);
-    return { ...nd, ...pr };
-   })}
+   // Answers/photos of questions that become hidden are kept (the user may switch back); they are
+   // excluded when sending.
+   onUpdate={fn => updateDraft(d.id, fn)}
    onAddPhoto={(qid, f) => { const ref = persistPhoto(d.id, f); updateDraft(d.id, cur => ({ ...cur, photos: { ...cur.photos, [qid]: [...(cur.photos[qid] ?? []), ref] }, updatedAt: new Date().toISOString() })); return ref; }}
    onRemovePhoto={(qid, p) => { deletePhotoFile(p); updateDraft(d.id, cur => ({ ...cur, photos: { ...cur.photos, [qid]: (cur.photos[qid] ?? []).filter(x => x.uri !== p.uri) } })); }}
    onClose={() => setRoute({ name: 'home' })}
    onFinish={() => setRoute({ name: 'result', id: d.id })} />;
  } else if (route.name === 'result' && draft(route.id)) {
   const d = draft(route.id)!;
-  screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onSent={replace} />;
+  screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
+   onDelete={() => { deleteMedia(d.id); update(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== d.id) })); setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
   screen = <ProScreen state={state} onBack={() => setRoute({ name: 'home' })} onSaved={pro => update(s => ({ ...s, pro }))} />;
  } else {

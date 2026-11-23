@@ -42,7 +42,7 @@ export function quote(a: Answers): Quote | null {
  if (a.urgency === 'urgente') items.push({ label: 'Consegna urgente (48 ore dal sopralluogo)', amount: PRICE_LIST.urgent });
  const total = items.reduce((s, i) => s + i.amount, 0);
  const taxable = (total - PRICE_LIST.regionalFee) / 1.22;
- return { total, items, certifierPayout: Math.round(taxable * (1 - PRICE_LIST.platformShare) + PRICE_LIST.regionalFee), note: 'Prezzo fisso in tutta l’Emilia-Romagna, IVA e contributo regionale inclusi. Paghi solo dopo il sopralluogo.' };
+ return { total, items, certifierPayout: Math.round(taxable * (1 - PRICE_LIST.platformShare) + PRICE_LIST.regionalFee), note: 'Prezzo fisso in tutta l’Emilia-Romagna: IVA, cassa previdenziale del professionista e contributo regionale SACE inclusi. Paghi solo dopo il sopralluogo.' };
 }
 
 export const euro = (n: number) => `${n.toLocaleString('it-IT', { maximumFractionDigits: 0 })} €`;

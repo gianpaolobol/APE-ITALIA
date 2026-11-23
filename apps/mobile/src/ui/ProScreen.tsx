@@ -29,7 +29,8 @@ export function ProScreen({ state, onBack, onSaved }: { state: AppState; onBack:
      <IconCircle name="hourglass-outline" size={60} bg={C.warnSoft} color="#8A5A00" />
      <Text style={[F.title, { marginTop: S.m, textAlign: 'center' }]}>Candidatura in verifica</Text>
      <Text style={[F.body, { textAlign: 'center', marginTop: 6 }]}>Controlliamo il numero di accreditamento <Text style={{ fontWeight: '800', color: C.ink }}>{state.pro.data.saceNumber}</Text> sull’elenco pubblico dei certificatori dell’Emilia-Romagna. Ti avvisiamo via email a {state.pro.data.email}.</Text>
-     <View style={{ marginTop: S.m }}><Pill tone={state.pro.status === 'inviata_al_server' ? 'brand' : 'warn'} text={state.pro.status === 'inviata_al_server' ? 'Ricevuta dal server' : 'Salvata sul telefono (versione di prova)'} /></View>
+     <View style={{ marginTop: S.m }}><Pill tone={state.pro.status === 'inviata_al_server' ? 'brand' : 'warn'} text={state.pro.status === 'inviata_al_server' ? 'Ricevuta' : 'Salvata sul telefono (versione di prova)'} /></View>
+     {state.pro.status !== 'inviata_al_server' ? <Button title="Riprova l’invio" kind="secondary" icon="refresh" style={{ marginTop: S.m, alignSelf: 'stretch' }} busy={busy} onPress={() => send(state.pro!.data)} /> : null}
     </Card>
    </Shell>
   );
@@ -39,7 +40,10 @@ export function ProScreen({ state, onBack, onSaved }: { state: AppState; onBack:
   const e = validateRegistration(r);
   setErrors(e);
   if (Object.keys(e).length) { Alert.alert('Controlla i campi', 'Alcuni dati mancano o non sono validi.'); return; }
-  const data = { ...(r as ProRegistration), saceNumber: normalizeSaceNumber(r.saceNumber!) };
+  await send({ ...(r as ProRegistration), saceNumber: normalizeSaceNumber(r.saceNumber!) });
+ };
+
+ async function send(data: ProRegistration) {
   setBusy(true);
   let status: 'in_verifica' | 'inviata_al_server' = 'in_verifica';
   try {
@@ -51,7 +55,7 @@ export function ProScreen({ state, onBack, onSaved }: { state: AppState; onBack:
   } catch { /* offline: kept on the device */ }
   setBusy(false);
   onSaved({ data, submittedAt: new Date().toISOString(), status });
- };
+ }
 
  return (
   <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -74,8 +78,8 @@ export function ProScreen({ state, onBack, onSaved }: { state: AppState; onBack:
     <Group title="Accreditamento">
      <F2 label="Numero di accreditamento SACE" required>
       <Field value={txt('saceNumber')} onChangeText={t => set('saceNumber', t)} autoCapitalize="none" placeholder="Es. 05990" keyboard="numeric" maxLength={5} error={errors.saceNumber} />
-      <Help>Il codice di 5 cifre con cui iniziano i tuoi APE (es. 05990-034798-2026). Lo verifichiamo sull’elenco pubblico SACE.</Help>
-      <Pressable onPress={() => Linking.openURL('https://sace-er.regione.emilia-romagna.it/ui/elenco-certificatori')} hitSlop={6}><Text style={st.link}>Apri l’elenco pubblico dei certificatori</Text></Pressable>
+      <Help>Il tuo numero di accreditamento (5 cifre, es. 05905). Lo verifichiamo sull’elenco pubblico SACE prima di attivare il profilo.</Help>
+      <Pressable onPress={() => { Linking.openURL('https://sace-er.regione.emilia-romagna.it/ui/elenco-certificatori').catch(() => undefined); }} hitSlop={6}><Text style={st.link}>Apri l’elenco pubblico dei certificatori</Text></Pressable>
      </F2>
      <F2 label="Professione" required><Chips options={PROFESSIONS} value={r.profession} onChange={v => set('profession', v as ProRegistration['profession'])} />{errors.profession ? <Text style={st.err}>{errors.profession}</Text> : null}</F2>
      <Two>

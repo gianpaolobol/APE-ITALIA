@@ -52,6 +52,8 @@ model ApeCase {
  inspections Inspection[]
  certificate Certificate?
  evidenceRequests EvidenceRequest[]
+ /// Guided survey from the app (answers, indicative estimate, quote). Not an APE.
+ survey Json?
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@index([organizationId,status])

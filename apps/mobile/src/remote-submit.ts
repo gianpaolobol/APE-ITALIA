@@ -2,7 +2,9 @@
 import { ApeApi } from './api';
 import { resolveApiSession } from './session';
 import { appAuthConfig, oidcClient } from './auth/runtime';
-import { PROVINCES, type Answers, type Photos } from './survey/questions';
+import { PROVINCES, pruneHidden, type Answers, type Photos } from './survey/questions';
+import { estimate } from './energy/estimate';
+import { quote } from './pricing';
 import type { EvidenceKind } from './evidence';
 
 export const serverConfigured = (): boolean => !!appAuthConfig && !!oidcClient;
@@ -15,12 +17,22 @@ const KIND: Record<string, EvidenceKind> = {
 
 export type SubmitProgress = (label: string, ratio: number) => void;
 
-export async function submitToServer(answers: Answers, photos: Photos, onProgress: SubmitProgress): Promise<{ caseId: string }> {
+export type SubmitCheckpoint = (p: { remoteCaseId: string; uploaded: string[] }) => void;
+
+/**
+ * Idempotent: a retry reuses the case already created and skips files already uploaded.
+ * Only answers and photos of visible questions are sent.
+ */
+export async function submitToServer(input: { answers: Answers; photos: Photos; remoteCaseId?: string; uploaded?: string[] }, onProgress: SubmitProgress, checkpoint: SubmitCheckpoint): Promise<{ caseId: string }> {
+ const { answers, photos } = pruneHidden(input.answers, input.photos);
  if (!appAuthConfig || !oidcClient) throw new Error('Server non configurato');
  if (!(await oidcClient.getSession())) await oidcClient.login();
  const r = await resolveApiSession(oidcClient, appAuthConfig.apiBaseUrl, undefined);
  if (!r.session) throw new Error('Account senza organizzazione attiva');
  const api = new ApeApi(r.session);
+ let caseId = input.remoteCaseId;
+ const uploaded = [...(input.uploaded ?? [])];
+ if (!caseId) {
  onProgress('Creo la richiesta', 0.05);
  const province = PROVINCES.find(p => p.value === answers.province)?.label ?? String(answers.province ?? '');
  const property = await api.createProperty({
@@ -30,17 +42,25 @@ export async function submitToServer(answers: Answers, photos: Photos, onProgres
   ...(typeof answers.floorArea === 'number' ? { floorAreaM2: answers.floorArea } : {}),
  });
  const c = await api.createCase(property.id);
+ caseId = c.id;
  const notices = await api.getNotices();
+ // The customer accepted the processing notice in the survey (dataNotice + privacy questions).
  await api.giveConsent(c.id, notices.evidence_processing);
- const files = Object.entries(photos).flatMap(([q, list]) => (list ?? []).map(p => ({ q, p })));
+ checkpoint({ remoteCaseId: c.id, uploaded });
+ }
+ const est = estimate(answers);
+ await api.saveSurvey(caseId, { answers, estimate: est, quote: quote(answers), app: 'mobile-1' }).catch(() => undefined);
+ const files = Object.entries(photos).flatMap(([q, list]) => (list ?? []).map(p => ({ q, p }))).filter(f => !uploaded.includes(f.p.uri));
  let i = 0;
  for (const { q, p } of files) {
   onProgress(`Carico foto e documenti (${i + 1}/${files.length})`, 0.1 + (0.8 * i) / Math.max(1, files.length));
-  await api.uploadEvidence(c.id, KIND[q] ?? 'document', { uri: p.uri, name: p.name, mimeType: p.mimeType });
+  await api.uploadEvidence(caseId, KIND[q] ?? 'document', { uri: p.uri, name: p.name, mimeType: p.mimeType });
+  uploaded.push(p.uri);
+  checkpoint({ remoteCaseId: caseId, uploaded });
   i++;
  }
  onProgress('Invio ai certificatori', 0.95);
- await api.submitCase(c.id);
+ await api.submitCase(caseId);
  onProgress('Fatto', 1);
- return { caseId: c.id };
+ return { caseId };
 }

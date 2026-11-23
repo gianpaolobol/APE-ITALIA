@@ -2,13 +2,15 @@
 
 *Ricerca desk del 23/11/2026. Tutte le cifre provengono da pagine web aperte durante la ricerca (URL in tabella). Dove un dato è un mio calcolo è indicato esplicitamente come "calcolo".*
 
+> **Nota di revisione (23/11/2026).** Questo report è stato ricontrollato da un secondo agente indipendente sulle fonti primarie. Le correzioni sono in fondo, nella sezione *Revisione indipendente*, e prevalgono sul testo originale dove i due non concordano.
+
 ## Sintesi
 
 1. **Il prezzo di mercato di un APE residenziale in ER si colloca tra ~115 € e ~300 € tutto incluso** per un appartamento standard. I listini degli studi locali con prezzo pieno pubblicato vanno da 169 € a 300 € (mediana 250 €). Le piattaforme online nazionali partono più in basso (113–183 € "a partire da"). Villette e case indipendenti costano tipicamente 300–400 €, fino a 500 € nelle stime più alte.
 2. **Nessun segnale di differenze di prezzo strutturali tra province.** Diversi operatori applicano lo **stesso listino in più province ER**: certificazione-energetica.it chiede 250 € a Bologna, Reggio Emilia e Piacenza; ApeFacile 137,70 € + IVA e oneri a Bologna, Modena, Piacenza e Rimini. La variabilità *dentro* la stessa provincia (Bologna: 169–300 €) supera quella *tra* province. → **Raccomandazione: un unico listino regionale**, articolato per tipologia e superficie, più un'opzione urgenza.
 3. **Costi fissi regolatori:** 15 € di contributo regionale per ogni APE registrato su SACE, a carico del certificatore e di solito ribaltato sul cliente (DGR 304/2016). Iscrizione all'elenco certificatori: 100 € una tantum. Visura catastale gratuita per il titolare online, 1,35 € per terzi.
 4. **Normativa ER (DGR 1275/2015 e s.m.i.):** il sopralluogo è obbligatorio a pena di nullità dell'APE. L'APE vale 10 anni dalla registrazione e può decadere se non si rispettano i controlli sugli impianti termici. La scala A4–G usa le stesse soglie del DM 26/6/2015 (0,40 … 3,50 × EP dell'edificio di riferimento).
-5. **Verifica pubblica dei certificatori:** l'elenco dei certificatori accreditati è consultabile su SACE, per nominativo e per area territoriale. C'è anche la visura pubblica degli APE, per codice o dati catastali. Il numero di accreditamento ha 5 cifre (es. `05990`) ed è il prefisso del codice APE (`NNNNN-NNNNNN-AAAA`). Questo consente all'app una verifica incrociata.
+5. **Verifica pubblica dei certificatori:** l'elenco dei certificatori accreditati è consultabile su SACE, per nominativo e per area territoriale. C'è anche la visura pubblica degli APE, per codice o dati catastali. Il codice APE ha formato `NNNNN-NNNNNN-AAAA`; il prefisso a 5 cifre identifica il **soggetto certificatore**, che può essere anche un ente o una società, distinto dal tecnico firmatario (vedi Revisione indipendente). La verifica va fatta a mano sull'elenco pubblico.
 
 ## Dati raccolti
 
@@ -189,3 +191,25 @@ Le soglie sono **identiche** a quelle delle Linee guida nazionali del DM 26/6/20
 - **Fonti non accessibili** (bloccate o di errore): ProntoPro (pagine prezzi Bologna/Modena), Idealista, le FAQ regionali e il Quaderno SACE, il testo dell'**allegato della DGR 1385/2020** (URL troppo lungo per il proxy). Non ho quindi potuto confermare cosa cambi la 1385/2020 su sopralluogo, verbale e allegati. Il contenuto di DGR 1275/2015 citato sopra potrebbe essere stato modificato in parte.
 - **Contributo 15 €:** l'importo è confermato dalla DGR 304/2016 e dalla guida SACE al pagamento (rev.02, non datata). Non ho trovato atti successivi che lo modifichino, ma non posso escluderli.
 - **Nessuna fonte su volumi o domanda per provincia:** gli APE per provincia esisterebbero nei dati SIAPE/SACE, ma non li ho estratti. Nessuna indagine indipendente (Altroconsumo o simili) specifica per l'ER.
+
+
+## Revisione indipendente (fact-check del 23/11/2026)
+
+Un secondo agente ha riaperto le fonti citate e ricalcolato i numeri. Esito: **normativa solida, statistica dei prezzi debole, listino ragionevole come punto di partenza**.
+
+**Confermato sui testi primari**
+- Sopralluogo obbligatorio a pena di nullità (DGR 1275/2015, All. A-2, art. 1). Validità 10 anni dalla registrazione; decadenza il 31/12 dell'anno successivo alla prima scadenza di controllo degli impianti non rispettata.
+- Contributo di 15 € per APE (DGR 304 del 7/3/2016); 100 € una tantum e accreditamento triennale (DGR 1275/2015).
+- Scala delle classi con soglie 0,40…3,50 (All. A-5 della DGR); URL dell'elenco pubblico dei certificatori.
+- Prezzi di Studio SBD, Studio Mea (169 € ricalcolato), Malerba, Melara, ApeFacile, APEpronto, TiCalcolo.
+
+**Da correggere**
+1. *Varianza tra province:* con i dati di questa tabella le mediane provinciali differiscono di **67–92 €**, non "entro ~50 €"; il valore 183 € attribuito a Forlì-Cesena non ha fonte e va escluso. La tesi del listino unico regge solo qualitativamente: alcuni operatori applicano lo stesso prezzo in più province (ApeFacile confermato; certificazione-energetica.it non riverificabile, sito in errore).
+2. *Competitività del compenso:* i ~142 € al certificatore includono la cassa 4%; il netto è ≈136,6 €, **meno** dei 137,70 € di ApeFacile, che peraltro sono il prezzo al cliente e non il compenso del tecnico. L'argomento "paghiamo più di ApeFacile" è errato.
+3. *Prefisso del codice APE:* nell'esempio di Rimini 05990 è il soggetto certificatore (il Comune), mentre il tecnico ha il codice 05905. Il formato a 5 cifre è empirico, non fissato dalla DGR.
+4. *Prezzi del campione:* ApeFacile con cassa ≈190 € (non 183); Melara trilocale 237 € (con bollo); le fasce TiCalcolo potrebbero escludere il deposito regionale (10–30 € "a parte"); DokiCasa non dichiara il sopralluogo incluso nei 99 €.
+5. *Da verificare a mano:* testo coordinato della DGR 1385/2020 (allegati non accessibili); un APE SACE del 2026 riporta comunque data del sopralluogo e "rilievo in sito".
+
+**Regola fiscale da decidere prima del lancio:** il prezzo "IVA inclusa" con scorporo ÷1,22 non vale per i certificatori in regime forfettario. Serve una regola (con il commercialista) su chi fattura al cliente e su come si calcola il compenso.
+
+**Decisione adottata nell'app:** listino unico regionale 179 / 219 / 269 / 299 / 349 €, urgenza +49 €, commissione piattaforma 15% sull'imponibile, contributo SACE sempre al certificatore. Da ricalibrare dopo i primi 50–100 incarichi reali.

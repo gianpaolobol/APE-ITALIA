@@ -13,7 +13,7 @@ import type { Draft } from '../survey/drafts';
 
 const LOSS_LABEL = { muri: 'Muri', finestre: 'Finestre', tetto: 'Tetto', pavimento: 'Pavimento', ventilazione: 'Ricambi d’aria' } as const;
 
-export function ResultScreen({ draft, onBack, onEditStep, onSent }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onSent: (d: Draft) => void }) {
+export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void }) {
  const insets = useSafeAreaInsets();
  const est = useMemo(() => estimate(draft.answers), [draft.answers]);
  const items = checklist(draft.answers, draft.photos);
@@ -25,14 +25,17 @@ export function ResultScreen({ draft, onBack, onEditStep, onSent }: { draft: Dra
  const where = [a.street, a.municipality, PROVINCES.find(p => p.value === a.province)?.label].filter(Boolean).join(', ');
 
  const send = async () => {
+  if (sending) return;
   if (!serverConfigured()) {
-   Alert.alert('Versione di prova', 'In questa versione di test l’invio ai certificatori non è ancora attivo. La richiesta resta salvata sul telefono, completa di foto e stima.',
-    [{ text: 'Ok' }, { text: 'Segna come pronta', onPress: () => onSent({ ...draft, status: 'inviata', sentAt: new Date().toISOString() }) }]);
+   onUpdate(d => ({ ...d, status: 'pronta' }));
+   Alert.alert('Richiesta pronta', 'In questa versione di prova l’invio ai certificatori non è ancora attivo: la richiesta resta salvata sul telefono, completa di foto e stima, e potrai inviarla appena il servizio sarà online.');
    return;
   }
+  setSending('Accesso in corso…');
   try {
-   const r = await submitToServer(draft.answers, draft.photos, label => setSending(label));
-   onSent({ ...draft, status: 'inviata', sentAt: new Date().toISOString(), remoteCaseId: r.caseId });
+   const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCaseId: draft.remoteCaseId, uploaded: draft.uploaded }, label => setSending(label),
+    cp => onUpdate(d => ({ ...d, ...cp })));
+   onUpdate(d => ({ ...d, status: 'inviata', sentAt: new Date().toISOString(), remoteCaseId: r.caseId }));
    Alert.alert('Richiesta inviata', 'I certificatori della tua zona la stanno valutando. Ti contatteremo per fissare il sopralluogo.');
   } catch (e) {
    Alert.alert('Invio non riuscito', e instanceof Error ? e.message : 'Riprova tra poco.');
@@ -44,24 +47,26 @@ export function ResultScreen({ draft, onBack, onEditStep, onSent }: { draft: Dra
    <View style={[st.top, { paddingTop: insets.top + 6 }]}>
     <Pressable accessibilityLabel="Indietro" hitSlop={12} onPress={() => { tap(); onBack(); }} style={st.round}><Ionicons name="chevron-back" size={22} color={C.ink} /></Pressable>
     <Text style={st.topTitle}>Riepilogo</Text>
-    <View style={{ width: 40 }} />
+    <Pressable accessibilityLabel="Elimina richiesta" hitSlop={12} style={st.round} onPress={() => Alert.alert('Eliminare la richiesta?', 'Foto e risposte verranno cancellate dal telefono.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Elimina', style: 'destructive', onPress: onDelete }])}>
+     <Ionicons name="trash-outline" size={20} color={C.danger} />
+    </Pressable>
    </View>
-   <ScrollView contentContainerStyle={{ padding: S.m, paddingBottom: 150 }}>
+   <ScrollView contentContainerStyle={{ padding: S.m, paddingBottom: 180 }}>
     {where ? <Text style={[F.small, { marginBottom: 6 }]}>{where}</Text> : null}
     {est ? (
      <Card style={{ padding: S.l }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-       <ClassBadge value={est.energyClass} size={70} />
+       <ClassBadge value={est.energyClass} size={70} estimate />
        <View style={{ flex: 1, marginLeft: S.m }}>
-        <Text style={F.label}>Classe stimata</Text>
-        <Text style={[F.title, { marginTop: 2 }]}>Classe {est.energyClass}</Text>
+        <Text style={F.label}>Stima indicativa · non è un APE</Text>
+        <Text style={[F.title, { marginTop: 2 }]}>Classe indicativa {est.energyClass}</Text>
         <Text style={F.small}>{est.classRange[0] === est.classRange[1] ? 'Stima stabile' : `Probabilmente tra ${est.classRange[0]} e ${est.classRange[1]}`} · affidabilità {est.confidence}</Text>
        </View>
       </View>
       <View style={{ marginTop: S.l }}><ClassScale value={est.energyClass} range={est.classRange} /></View>
       <View style={st.kpis}>
-       <Kpi value={`${Math.round(est.epglNren)}`} unit="kWh/m²anno" label="Energia non rinnovabile" />
-       <Kpi value={`${Math.round(est.breakdown.heating)}`} unit="kWh/m²anno" label="di cui riscaldamento" />
+       <Kpi value={`≈ ${Math.round(est.epglNren / 5) * 5}`} unit="kWh/m² anno" label="Consumo stimato di energia non rinnovabile" />
+       <Kpi value={`≈ ${Math.round(est.breakdown.heating / 5) * 5}`} unit="kWh/m² anno" label="di cui per il riscaldamento" />
       </View>
       <View style={st.disclaimer}>
        <Ionicons name="information-circle" size={18} color="#8A5A00" />
@@ -130,7 +135,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onSent }: { draft: Dra
      </Card>
     </>) : null}
 
-    {draft.status === 'inviata' ? <View style={{ marginTop: S.m }}><Pill tone="brand" icon="paper-plane" text={draft.remoteCaseId ? 'Inviata ai certificatori' : 'Pronta (versione di prova)'} /></View> : null}
+    {draft.status !== 'bozza' ? <View style={{ marginTop: S.m }}><Pill tone={draft.status === 'inviata' ? 'brand' : 'warn'} icon="paper-plane" text={draft.status === 'inviata' ? 'Inviata ai certificatori' : 'Pronta: verrà inviata quando il servizio sarà online'} /></View> : null}
    </ScrollView>
    <View style={[st.bottom, { paddingBottom: insets.bottom + 10 }]}>
     {!ready ? <Text style={st.hint}>Completa i punti obbligatori per inviare la richiesta</Text> : null}

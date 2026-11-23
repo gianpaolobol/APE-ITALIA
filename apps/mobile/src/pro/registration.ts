@@ -48,7 +48,7 @@ export function normalizeSaceNumber(v: string): string {
  return /^\d{1,5}$/.test(s) ? s.padStart(5, '0') : s;
 }
 
-/** True when an APE code (NNNNN-NNNNNN-AAAA) was issued by the given accreditation number. */
+/** True when the APE code prefix (certifying subject: a person, firm or public body) equals the given number. */
 export function apeCodeMatchesCertifier(apeCode: string, saceNumber: string): boolean {
  const m = /^(\d{5})-(\d{6})-(\d{4})$/.exec(apeCode.trim());
  return !!m && m[1] === normalizeSaceNumber(saceNumber);
@@ -64,7 +64,7 @@ export function validateRegistration(r: Partial<ProRegistration>): FieldErrors {
  if (r.pec && r.pec.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(r.pec.trim())) e.pec = 'PEC non valida';
  if (r.phone && !/^\+?[0-9 ]{8,16}$/.test(r.phone.trim())) e.phone = 'Telefono non valido';
  if (r.vatNumber && !validVat(r.vatNumber)) e.vatNumber = 'Partita IVA non valida';
- if (r.taxCode && !/^([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]|\d{11})$/i.test(r.taxCode.trim())) e.taxCode = 'Codice fiscale non valido';
+ if (r.taxCode && !/^([A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]|\d{11})$/i.test(r.taxCode.trim())) e.taxCode = 'Codice fiscale non valido';
  if (r.saceNumber && !validSace(r.saceNumber)) e.saceNumber = 'Numero SACE non valido';
  if (!r.profession) e.profession = 'Seleziona la professione';
  if (!r.provinces || r.provinces.length === 0) e.provinces = 'Scegli almeno una provincia';

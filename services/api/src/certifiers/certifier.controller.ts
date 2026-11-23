@@ -113,6 +113,14 @@ export class CertifierController {
   await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'evidence.read', resourceId: ev.id } });
   return file;
  }
+ /** Customer survey (contacts, answers, photos checklist, indicative estimate): visible only after acceptance. */
+ @Get('assignments/:id/survey')
+ async survey(@Param('id', new ParseUUIDPipe()) id: string, @Headers('authorization') token?: string) {
+  const { a } = await this.accepted(token, id);
+  const row = await this.db.apeCase.findFirst({ where: { id: a.caseId, organizationId: a.organizationId }, select: { survey: true } });
+  return { caseId: a.caseId, survey: row?.survey ?? null, note: 'Stima indicativa generata dall’app: non è un APE e va verificata con il sopralluogo.' };
+ }
+
  @Get('inspection-schema')
  async inspectionSchema(@Headers('authorization') token?: string) {
   await this.certifier(token);

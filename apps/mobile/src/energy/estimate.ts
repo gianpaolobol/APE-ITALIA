@@ -42,6 +42,7 @@ const REF_ETA_W = 0.7 * 0.85;
 const REF_EER = 2.5;
 
 const HEATING_DAYS = { D: 166, E: 183, F: 200 } as const;
+const PERIOD_THICKNESS: Record<string, number> = { pre1945: 45, '1946_1975': 30, '1976_1991': 30, '1992_2005': 30, '2006_2015': 35, post2015: 40 };
 const COOLING_NEED_KWH_M2 = 18; // indicative sensible cooling need for Emilia-Romagna dwellings
 const PV_YIELD_KWH_KWP = 1250;
 const PV_SELF_CONSUMPTION = 0.3;
@@ -109,7 +110,7 @@ export function estimate(a: Answers): Estimate | null {
  // Walls
  let wallType = str(a, 'wallType');
  if (!wallType || wallType === 'non_so') { wallType = PERIOD_WALL[period]; unknowns++; assumptions.push('Tipo di muratura stimato dall’epoca di costruzione'); }
- const thicknessCm = num(a, 'wallThickness') ?? (unknowns++, assumptions.push('Spessore muri 30 cm'), 30);
+ const thicknessCm = num(a, 'wallThickness') ?? (unknowns++, assumptions.push(`Spessore muri ${PERIOD_THICKNESS[period]} cm`), PERIOD_THICKNESS[period]);
  let rWall = 0.17 + (thicknessCm / 100) / (WALL_LAMBDA[wallType] ?? 0.6);
  if (a.wallInsulated === true) rWall += ((num(a, 'wallInsulationCm') ?? (assumptions.push('Isolamento a cappotto 6 cm'), 6)) / 100) / 0.035;
  else if (period === '2006_2015' || period === 'post2015') rWall += 0.06 / 0.035; // insulation required by law in that period
@@ -131,14 +132,20 @@ export function estimate(a: Answers): Estimate | null {
  const uFloor = PERIOD_FLOOR_U[period];
  const bFloor = str(a, 'groundFloorType') === 'porticato' ? 1 : 0.5;
 
- const hWall = uWall * wallArea, hWin = uWin * windowArea, hRoof = uRoof * roofArea * 0.9, hFloor = uFloor * floorArea * bFloor;
- const hVe = 0.34 * 0.5 * volume * 0.8;
+ // Flats also lose heat towards unheated spaces (stairwell, lift shaft): about a quarter of the perimeter, b = 0.5.
+ const isFlat = type === 'appartamento' || type === 'ufficio';
+ const stairArea = isFlat ? perimeter * h * 0.25 : 0;
+ const BRIDGES = 1.1; // thermal bridges, simplified +10% on opaque elements
+ const hWall = uWall * (wallArea + stairArea * 0.5) * BRIDGES, hWin = uWin * windowArea, hRoof = uRoof * roofArea * 0.9 * BRIDGES, hFloor = uFloor * floorArea * bFloor * BRIDGES;
+ const hVe = 0.34 * 0.3 * volume;
  const hTot = hWall + hWin + hRoof + hFloor + hVe;
  const ref = REF_U[climate.zone];
- const hRef = ref.wall * wallArea + ref.window * windowArea + ref.roof * roofArea * 0.9 + ref.floor * floorArea * bFloor + hVe;
+ const hRef = (ref.wall * (wallArea + stairArea * 0.5) + ref.roof * roofArea * 0.9 + ref.floor * floorArea * bFloor) * BRIDGES + ref.window * windowArea + hVe;
 
  const days = HEATING_DAYS[climate.zone];
- const gains = (2.5 * area * 24 * days) / 1000 + windowArea * 0.5 * 0.6 * 220;
+ // Internal gains for dwellings (UNI/TS 11300-1): 7.987·Af − 0.0353·Af² W up to 120 m², 450 W above.
+ const phiInt = area <= 120 ? 7.987 * area - 0.0353 * area * area : 450;
+ const gains = (phiInt * 24 * days) / 1000 + windowArea * 0.5 * 0.6 * 220;
  const need = (hh: number) => Math.max(0, 0.024 * climate.gg * hh - 0.9 * gains);
  const qH = need(hTot), qHRef = need(hRef);
 
@@ -150,7 +157,16 @@ export function estimate(a: Answers): Estimate | null {
  const fuel = str(a, 'fuel');
  const fuelFp = fuel === 'gasolio' ? FP.gasolio : fuel === 'gpl' ? FP.gpl : FP.gas;
  let electricH = 0;
- if (sys === 'nessuno' || !g) { etaGen = 1; fp = FP.elettricita; assumptions.push('Senza impianto si considera un riscaldamento elettrico virtuale, come prevede la norma'); }
+ let sysForEta = sys;
+ if (!sys) {
+  // Heating not described yet: typical generator of the period, so the live estimate is not misleading.
+  unknowns++; assumptions.push('Impianto non ancora indicato: si ipotizza una caldaia tipica dell’epoca');
+  etaGen = period === 'post2015' || period === '2006_2015' ? 0.97 : 0.86; fp = FP.gas;
+ } else if (sys === 'nessuno' || !g) {
+  // No system: a virtual system with reference efficiencies is assumed (to be confirmed by the certifier).
+  etaGen = REF_ETA_GEN_H; fp = FP.gas; sysForEta = 'autonomo';
+  assumptions.push('Senza impianto si ipotizza un impianto virtuale con efficienze di riferimento');
+ }
  else if (g === 'caldaia_condensazione') { etaGen = year && year < 2010 ? 0.95 : 0.98; fp = fuelFp; }
  else if (g === 'caldaia_tradizionale') { etaGen = year && year < 1996 ? 0.78 : 0.86; fp = fuelFp; }
  else if (g === 'caldaia_non_so') { etaGen = year && year >= 2016 ? 0.98 : year && year < 1996 ? 0.8 : 0.88; fp = fuelFp; unknowns++; assumptions.push('Tipo di caldaia da confermare con la targhetta'); }
@@ -162,7 +178,7 @@ export function estimate(a: Answers): Estimate | null {
  const etaEm = g === 'biomassa' || g === 'elettrico' ? 0.9 : em === 'pavimento' ? 0.97 : em === 'ventilconvettori' ? 0.95 : 0.92;
  const ctl = Array.isArray(a.controls) ? a.controls : [];
  const etaRg = ctl.includes('valvole') ? 0.97 : ctl.includes('cronotermostato') ? 0.92 : 0.86;
- const etaD = sys === 'centralizzato' ? 0.9 : 0.96;
+ const etaD = sysForEta === 'centralizzato' ? 0.9 : 0.96;
  const etaH = etaGen * etaEm * etaRg * etaD;
  const deliveredH = qH / etaH;
  if (fp === FP.elettricita) electricH = deliveredH;
@@ -170,7 +186,7 @@ export function estimate(a: Answers): Estimate | null {
  const epHRef = ((qHRef / (REF_ETA_UTIL_H * REF_ETA_GEN_H)) * FP.gas) / area;
 
  // Domestic hot water (UNI/TS 11300-2 residential volume, 40 °C, cold water 15 °C)
- const litres = Math.max(60, 1.067 * area + 36.5);
+ const litres = Math.min(250, Math.max(60, 1.067 * area + 36.5));
  let qW = (1.162 * litres * 25 * 365) / 1000;
  if (a.solarThermal === true) qW *= 0.45;
  const dhw = str(a, 'dhw');

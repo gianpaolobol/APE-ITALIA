@@ -114,10 +114,15 @@ export function ProgressBar({ ratio, color = C.accent, track = C.line }: { ratio
  );
 }
 
-export function ClassBadge({ value, size = 64 }: { value: EnergyClass; size?: number }) {
+const LIGHT: EnergyClass[] = ['B', 'C', 'D'];
+export const classInk = (c: EnergyClass) => (LIGHT.includes(c) ? '#1C1A0E' : C.white);
+
+export function ClassBadge({ value, size = 64, estimate }: { value: EnergyClass; size?: number; estimate?: boolean }) {
  return (
-  <View style={{ width: size * 1.25, height: size, borderRadius: size * 0.22, backgroundColor: CLASS_COLORS[value], alignItems: 'center', justifyContent: 'center' }}>
-   <Text style={{ color: C.white, fontWeight: '900', fontSize: size * 0.46, letterSpacing: -1 }}>{value}</Text>
+  <View accessible accessibilityLabel={`${estimate ? 'Classe energetica stimata' : 'Classe'} ${value}`}
+   style={{ width: size * 1.25, height: size, borderRadius: size * 0.22, backgroundColor: CLASS_COLORS[value], alignItems: 'center', justifyContent: 'center' }}>
+   <Text style={{ color: classInk(value), fontWeight: '900', fontSize: size * (estimate ? 0.4 : 0.46), letterSpacing: -1 }}>{value}</Text>
+   {estimate && size >= 50 ? <Text style={{ color: classInk(value), fontSize: 9, fontWeight: '800', letterSpacing: 1, opacity: 0.85 }}>STIMA</Text> : null}
   </View>
  );
 }
@@ -127,13 +132,13 @@ export function ClassScale({ value, range }: { value: EnergyClass; range: [Energ
  const lo = CLASSES.indexOf(range[0]), hi = CLASSES.indexOf(range[1]);
  return (
   <View>
-   <View style={{ flexDirection: 'row', gap: 3 }}>
+   <View style={{ flexDirection: 'row', gap: 3 }} accessible accessibilityLabel={`Scala da A4 a G, classe stimata ${value}, intervallo da ${range[0]} a ${range[1]}`}>
     {CLASSES.map((c, i) => {
      const on = c === value; const inRange = i >= lo && i <= hi;
      return (
       <View key={c} style={{ flex: 1, alignItems: 'center' }}>
-       <View style={{ height: on ? 40 : 28, alignSelf: 'stretch', borderRadius: 7, backgroundColor: CLASS_COLORS[c], opacity: on ? 1 : inRange ? 0.75 : 0.28, alignItems: 'center', justifyContent: 'center', marginTop: on ? 0 : 6 }}>
-        <Text style={{ color: C.white, fontWeight: '800', fontSize: on ? 14 : 11 }}>{c}</Text>
+       <View style={{ height: on ? 40 : 28, alignSelf: 'stretch', borderRadius: 7, backgroundColor: CLASS_COLORS[c], opacity: on ? 1 : inRange ? 0.8 : 0.45, alignItems: 'center', justifyContent: 'center', marginTop: on ? 0 : 6 }}>
+        <Text style={{ color: classInk(c), fontWeight: '800', fontSize: on ? 14 : 11 }}>{c}</Text>
        </View>
        <View style={{ height: 3, alignSelf: 'stretch', marginTop: 6, borderRadius: 2, backgroundColor: inRange ? C.ink : 'transparent' }} />
       </View>
@@ -182,7 +187,7 @@ const st = StyleSheet.create({
  choiceHint: { fontSize: 12, lineHeight: 16, color: C.muted, marginTop: 3 },
  check: { position: 'absolute', top: 10, right: 10 },
  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
- chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, borderRadius: R.pill, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.line },
+ chip: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 10, minHeight: 44, borderRadius: R.pill, backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.line },
  chipOn: { backgroundColor: C.brand, borderColor: C.brand },
  chipText: { fontSize: 14, fontWeight: '600', color: C.ink },
  field: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderRadius: R.m, borderWidth: 1.5, borderColor: C.line, paddingHorizontal: 14, minHeight: 54 },

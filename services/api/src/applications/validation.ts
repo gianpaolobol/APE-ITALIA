@@ -33,7 +33,7 @@ export function validateApplication(body: unknown): { ok: true; value: Applicati
  if (pec && !EMAIL.test(pec)) errors.push('pec invalid');
  if (phone && !/^\+?[0-9 ]{8,16}$/.test(phone)) errors.push('phone invalid');
  if (vatNumber && !validVat(vatNumber)) errors.push('vatNumber invalid');
- if (taxCode && !/^([A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]|\d{11})$/.test(taxCode)) errors.push('taxCode invalid');
+ if (taxCode && !/^([A-Z]{6}[0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{2}[A-Z][0-9LMNPQRSTUV]{3}[A-Z]|\d{11})$/.test(taxCode)) errors.push('taxCode invalid');
  if (profession && !PROFESSIONS.includes(profession)) errors.push('profession invalid');
  if (saceRaw && !/^\d{1,5}$/.test(saceRaw)) errors.push('saceNumber must be the 5-digit SACE accreditation number');
  if (b.region !== 'Emilia-Romagna') errors.push('region must be Emilia-Romagna');

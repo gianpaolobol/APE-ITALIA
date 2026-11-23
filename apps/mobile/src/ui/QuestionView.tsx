@@ -14,7 +14,7 @@ type Props = {
  onAnswer: (id: string, v: AnswerValue | undefined) => void;
  onAddPhoto: (id: string, file: { uri: string; name: string; mimeType: string }) => PhotoRef;
  onRemovePhoto: (id: string, p: PhotoRef) => void;
- onAutoFill: (fields: Answers, summary: string) => void;
+ onAutoFill: (fields: Answers, summary: string, source: PhotoRef) => void;
  showErrors: boolean;
 };
 
@@ -62,24 +62,35 @@ function Block({ q, children, warn }: { q: Question; children: React.ReactNode; 
  );
 }
 
+/** Accepts "1.200" (thousands) and "2,70" (decimals). */
+export function parseItalianNumber(t: string): number | undefined {
+ const clean = t.trim();
+ if (!clean) return undefined;
+ const v = Number((/^\d{1,3}(\.\d{3})+$/.test(clean) ? clean.replace(/\./g, '') : clean).replace(',', '.'));
+ return Number.isFinite(v) ? v : undefined;
+}
+
 function NumberQ({ q, answers, onAnswer, showErrors }: Props & { q: NumberQuestion }) {
+ const [touched, setTouched] = useState(false);
  const [text, setText] = useState(fmt(answers[q.id], q.decimals));
  useEffect(() => { setText(fmt(answers[q.id], q.decimals)); }, [answers[q.id]]); // eslint-disable-line react-hooks/exhaustive-deps
  const err = questionError(q, answers);
  return (
   <Block q={q} warn={showErrors && q.required && answers[q.id] === undefined}>
-   <Field value={text} unit={q.unit} placeholder={q.placeholder} keyboard={q.decimals ? 'decimal' : 'numeric'} error={err}
+   <Field value={text} unit={q.unit} placeholder={q.placeholder} keyboard={q.decimals ? 'decimal' : 'numeric'} error={touched || showErrors ? err : null}
+    onBlur={() => setTouched(true)}
     onChangeText={t => {
      const clean = t.replace(/[^0-9.,]/g, '');
      setText(clean);
-     const v = Number(clean.replace(',', '.'));
-     onAnswer(q.id, clean === '' || !Number.isFinite(v) ? undefined : v);
+     setTouched(false);
+     onAnswer(q.id, parseItalianNumber(clean));
     }} />
   </Block>
  );
 }
 
-function PhotoQ({ q, photos, onAddPhoto, onRemovePhoto, onAutoFill, showErrors }: Props & { q: PhotoQuestion }) {
+function PhotoQ(p: Props & { q: PhotoQuestion }) {
+ const { q, photos, onAddPhoto, onRemovePhoto, onAutoFill, showErrors } = p;
  const [reading, setReading] = useState(false);
  const max = q.max ?? 3;
  const full = photos.length >= max;
@@ -89,11 +100,11 @@ function PhotoQ({ q, photos, onAddPhoto, onRemovePhoto, onAutoFill, showErrors }
    if (!f) return;
    if (f.size !== undefined && f.size > 15 * 1024 * 1024) { Alert.alert('File troppo grande', 'Massimo 15 MB.'); return; }
    const ref = onAddPhoto(q.id, f);
-   if (q.extract) {
+   if (q.extract && p.answers.aiConsent === true) {
     setReading(true);
     try {
      const r = await readPhoto(q.extract, ref);
-     if (r && Object.keys(r.fields).length) onAutoFill(r.fields, r.summary);
+     if (r && Object.keys(r.fields).length) onAutoFill(r.fields, r.summary, ref);
     } catch { /* reading is optional */ } finally { setReading(false); }
    }
   } catch (e) {
@@ -115,7 +126,7 @@ function PhotoQ({ q, photos, onAddPhoto, onRemovePhoto, onAutoFill, showErrors }
        {ph.mimeType === 'application/pdf'
         ? <View style={[st.thumbImg, { alignItems: 'center', justifyContent: 'center', backgroundColor: C.surfaceAlt }]}><Ionicons name="document-text" size={30} color={C.brand} /><Text style={F.small}>PDF</Text></View>
         : <Image source={{ uri: ph.uri }} style={st.thumbImg} />}
-       <Pressable accessibilityLabel="Rimuovi" hitSlop={8} onPress={() => { tap(); onRemovePhoto(q.id, ph); }} style={st.remove}><Ionicons name="close" size={14} color={C.white} /></Pressable>
+       <Pressable accessibilityLabel="Rimuovi" hitSlop={10} onPress={() => { tap(); onRemovePhoto(q.id, ph); }} style={st.remove}><Ionicons name="close" size={14} color={C.white} /></Pressable>
       </View>
      ))}
     </View>
@@ -149,7 +160,7 @@ const st = StyleSheet.create({
  thumbs: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 10 },
  thumb: { width: 92, height: 92 },
  thumbImg: { width: 92, height: 92, borderRadius: 14, backgroundColor: C.line },
- remove: { position: 'absolute', top: -6, right: -6, width: 24, height: 24, borderRadius: 12, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.white },
+ remove: { position: 'absolute', top: -8, right: -8, width: 30, height: 30, borderRadius: 15, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: C.white },
  actions: { flexDirection: 'row', gap: 8 },
  action: { flex: 1, minHeight: 50, borderRadius: R.m, borderWidth: 1.5, borderColor: C.line, backgroundColor: C.surface, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
  actionText: { fontSize: 15, fontWeight: '700', color: C.brand },

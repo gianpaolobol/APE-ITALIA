@@ -32,6 +32,7 @@ export class ApeApi {
  createProperty(input:PropertyInput){return this.request<PropertyRecord>('properties','POST',input);}
  listCases(){return this.request<CaseRecord[]>('cases');}
  createCase(propertyId:string){return this.request<CaseRecord>('cases','POST',{propertyId});}
+ saveSurvey(caseId:string,survey:unknown){return this.request<{id:string}>('cases/'+encodeURIComponent(caseId)+'/survey','POST',survey);}
  submitCase(caseId:string){return this.request<CaseRecord>('cases/'+encodeURIComponent(caseId)+'/submit','POST',{});}
  evidenceRequests(caseId:string){return this.request<{id:string;message:string;kinds:EvidenceKind[];createdAt:string;resolvedAt:string|null}[]>('cases/'+encodeURIComponent(caseId)+'/evidence-requests');}
  resolveEvidenceRequest(caseId:string,requestId:string){return this.request<{id:string;status:string}>('cases/'+encodeURIComponent(caseId)+'/evidence-requests/'+encodeURIComponent(requestId)+'/resolve','POST',{});}
