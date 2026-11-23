@@ -26,3 +26,6 @@ Branch: `feat/sprint-1-persistence` · PR #4 (draft)
 4. Provisioning membership tramite procedura amministrativa sicura da implementare.
 
 **Non utilizzare in produzione né unire la PR prima del collaudo.**
+
+## Iterazione sicurezza e QA — 23/11/2026
+Aggiunta policy di isolamento tenant e autorizzazione scrittura per ruoli owner/admin/member; viewer in sola lettura. Sei test unitari Vitest definiti per membership, revoca e ruoli; workflow CI configurato per eseguirli. **Non ancora eseguiti con esito verificato**: nessun risultato CI disponibile all'ultimo controllo. La sola policy applicativa non sostituisce test di integrazione su database reale.
