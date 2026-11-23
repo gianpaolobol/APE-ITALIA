@@ -126,3 +126,6 @@ PR #12 (impilata su #11). Next.js con login OIDC + PKCE lato server (BFF), sessi
 
 ## 31. Hardening sicurezza (Claude, 23/11/2026)
 PR #13 (impilata su #12). Rate limiting, header helmet e CORS disattivato sull'API, `package-lock.json` versionato e `npm ci` in CI, scansione segreti dei file tracciati, audit dipendenze bloccante sulle critiche. Tabella stato controlli e rischio residuo in `docs/SECURITY.md`. Aggiornamenti major (Expo 58, Next 16, Prisma 7) rinviati a PR dedicate.
+
+## 32. Sopralluogo e verbale strutturato (Claude, 23/11/2026)
+PR #14 (impilata su #13). Programmazione/riprogrammazione del sopralluogo da parte del certificatore con incarico accettato, verbale immutabile con vocabolario controllato e stato di verifica per voce (verificato / da verificare / non determinabile), nessun campo di classe energetica, collegamento facoltativo a evidenze della stessa pratica, stati pratica `INSPECTION_SCHEDULED` → `INSPECTION_DONE`, vista cliente limitata, moduli nel portale web. Dettagli in `docs/CERTIFIER_WORKFLOW.md`.

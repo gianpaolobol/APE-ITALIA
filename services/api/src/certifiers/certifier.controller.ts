@@ -1,5 +1,5 @@
 import {
- Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post,
+ BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AuthService } from '../auth.service';
@@ -7,6 +7,7 @@ import { EVIDENCE_STORAGE } from '../evidence/evidence.controller';
 import { EVIDENCE_PUBLIC_FIELDS, evidenceFile } from '../evidence/read';
 import type { ObjectStorage } from '../evidence/storage';
 import { offerNext } from './assignment.service';
+import { FINDING_FIELDS, FINDING_SOURCES, VERIFICATION_STATUSES, validateReport, validateSchedule } from '../inspections/report';
 
 /**
  * Certifier workspace. Access is per accepted assignment: before acceptance a certifier sees only the
@@ -109,5 +110,68 @@ export class CertifierController {
   const file = await evidenceFile(this.storage, ev);
   await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'evidence.read', resourceId: ev.id } });
   return file;
+ }
+ @Get('inspection-schema')
+ async inspectionSchema(@Headers('authorization') token?: string) {
+  await this.certifier(token);
+  return { fields: FINDING_FIELDS, statuses: VERIFICATION_STATUSES, sources: FINDING_SOURCES };
+ }
+
+ @Get('assignments/:id/inspection')
+ async inspection(@Param('id', new ParseUUIDPipe()) id: string, @Headers('authorization') token?: string) {
+  const { a } = await this.accepted(token, id);
+  // Wrapped: a bare null would be sent by Nest as an empty body.
+  return { inspection: (await this.db.inspection.findUnique({ where: { assignmentId: a.id } })) ?? null };
+ }
+
+ /** Schedules or reschedules the on-site inspection (only while not yet performed). */
+ @Post('assignments/:id/inspection')
+ async schedule(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: { scheduledAt?: unknown } | undefined, @Headers('authorization') token?: string) {
+  const { c, a } = await this.accepted(token, id);
+  const when = validateSchedule(body?.scheduledAt, new Date());
+  if (typeof when === 'string') throw new BadRequestException(when);
+  return this.db.$transaction(async tx => {
+   const existing = await tx.inspection.findUnique({ where: { assignmentId: a.id } });
+   if (existing && existing.status !== 'SCHEDULED') throw new ConflictException('Inspection already performed or cancelled');
+   const insp = existing
+    ? await tx.inspection.update({ where: { id: existing.id }, data: { scheduledAt: when } })
+    : await tx.inspection.create({ data: { caseId: a.caseId, assignmentId: a.id, organizationId: a.organizationId, scheduledAt: when } });
+   if (!existing) {
+    const moved = await tx.apeCase.updateMany({ where: { id: a.caseId, status: 'ASSIGNED' }, data: { status: 'INSPECTION_SCHEDULED' } });
+    if (moved.count !== 1) throw new ConflictException('Case is not in ASSIGNED state');
+   }
+   await tx.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: existing ? 'inspection.reschedule' : 'inspection.schedule', resourceId: insp.id } });
+   return insp;
+  });
+ }
+
+ /** Submits the immutable structured report; values are only what the certifier recorded. */
+ @Post('assignments/:id/inspection/report')
+ async report(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: unknown, @Headers('authorization') token?: string) {
+  const { c, a } = await this.accepted(token, id);
+  return this.db.$transaction(async tx => {
+   const insp = await tx.inspection.findUnique({ where: { assignmentId: a.id } });
+   if (!insp) throw new ConflictException('Schedule the inspection first');
+   if (insp.status !== 'SCHEDULED') throw new ConflictException('Report already submitted');
+   const now = new Date();
+   const res = validateReport(body, { scheduledAt: insp.scheduledAt, now });
+   if (!res.ok) throw new BadRequestException(res.errors);
+   const evidenceIds = [...new Set(res.report.findings.map(f => f.evidenceId).filter((x): x is string => !!x))];
+   if (evidenceIds.length) {
+    const found = await tx.evidence.count({ where: { id: { in: evidenceIds }, caseId: a.caseId, organizationId: a.organizationId } });
+    if (found !== evidenceIds.length) throw new BadRequestException('Findings reference evidence outside this case');
+   }
+   const updated = await tx.inspection.updateMany({
+    where: { id: insp.id, status: 'SCHEDULED' },
+    data: { status: 'DONE', performedAt: new Date(res.report.performedAt), report: res.report, reportSubmittedAt: now },
+   });
+   if (updated.count !== 1) throw new ConflictException('Report already submitted');
+   const moved = await tx.apeCase.updateMany({ where: { id: a.caseId, status: 'INSPECTION_SCHEDULED' }, data: { status: 'INSPECTION_DONE' } });
+   if (moved.count !== 1) throw new ConflictException('Case is not awaiting an inspection');
+   await tx.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'inspection.report', resourceId: insp.id } });
+   const summary = { verified: 0, to_verify: 0, undeterminable: 0 };
+   for (const f of res.report.findings) summary[f.status]++;
+   return { id: insp.id, status: 'DONE', summary };
+  });
  }
 }

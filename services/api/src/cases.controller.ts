@@ -74,4 +74,13 @@ export class CasesController {
    return tx.apeCase.findFirstOrThrow({where:{id,organizationId:s.organizationId}});
   });
  }
+ /** Customer view: date, status and certifier name only; the technical report stays with the certifier. */
+ @Get('cases/:id/inspection')
+ async caseInspection(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  const c=await this.db.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true,status:true}});
+  if(!c) throw new NotFoundException('Case not found');
+  const insp=await this.db.inspection.findFirst({where:{caseId:id,organizationId:s.organizationId,status:{not:'CANCELLED'}},include:{assignment:{include:{certifier:{select:{displayName:true}}}}},orderBy:{createdAt:'desc'}});
+  return {caseStatus:c.status,inspection:insp?{status:insp.status,scheduledAt:insp.scheduledAt,performedAt:insp.performedAt,certifierName:insp.assignment.certifier.displayName}:null};
+ }
 }

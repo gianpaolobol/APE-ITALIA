@@ -2,7 +2,8 @@ import React from 'react';
 import Link from 'next/link';
 import { notFound, redirect } from 'next/navigation';
 import { config, readSession } from '../../../lib/session';
-import { ApiFailure, apiJson, type AssignmentView, type EvidenceView } from '../../../lib/api';
+import { ApiFailure, apiJson, type AssignmentView, type EvidenceView, type InspectionSchema, type InspectionView } from '../../../lib/api';
+import { InspectionPanel } from '../InspectionPanel';
 import { Notice, box } from '../../ui';
 
 export const dynamic = 'force-dynamic';
@@ -16,11 +17,15 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
  if (!cfg) return <Notice>Portale non configurato.</Notice>;
  const s = await readSession(cfg);
  if (!s) redirect(`/auth/login?returnTo=/certifier/${id}`);
- let assignment: AssignmentView | undefined, evidence: EvidenceView[] = [];
+ let assignment: AssignmentView | undefined, evidence: EvidenceView[] = [], inspection: InspectionView | null = null, schema: InspectionSchema | null = null;
  try {
   assignment = (await apiJson<AssignmentView[]>(cfg, s, '/v1/certifier/assignments')).find(a => a.id === id && a.status === 'ACCEPTED');
   if (!assignment) notFound();
-  evidence = await apiJson<EvidenceView[]>(cfg, s, `/v1/certifier/assignments/${id}/evidence`);
+  [evidence, inspection, schema] = await Promise.all([
+   apiJson<EvidenceView[]>(cfg, s, `/v1/certifier/assignments/${id}/evidence`),
+   apiJson<{ inspection: InspectionView | null }>(cfg, s, `/v1/certifier/assignments/${id}/inspection`).then(r => r.inspection),
+   apiJson<InspectionSchema>(cfg, s, '/v1/certifier/inspection-schema'),
+  ]);
  } catch (e) {
   if (e instanceof ApiFailure && (e.status === 404 || e.status === 403)) notFound();
   throw e;
@@ -35,5 +40,6 @@ export default async function AssignmentPage({ params }: { params: Promise<{ id:
    <strong>{LABELS[e.kind] ?? e.kind}</strong> · {e.mimeType} · {(e.sizeBytes / 1024).toFixed(0)} KB · scansione: {e.scanStatus}
    {' '}<a href={`/certifier/${id}/evidence/${e.id}`}>Scarica</a>
   </li>)}</ul>}
+  {schema ? <InspectionPanel assignmentId={id} inspection={inspection} schema={schema} /> : null}
  </main>;
 }

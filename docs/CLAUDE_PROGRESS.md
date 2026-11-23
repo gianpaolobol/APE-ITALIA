@@ -62,3 +62,8 @@ CI Run #88 su `d6dd888` (PR #12): **verde**; API 114, mobile 82, web 15, build N
 ## Iterazione 7 — PR #13 `feat/security-hardening` (base: `feat/web-certifier-portal`)
 Implementato: `@nestjs/throttler` globale (per rotta e IP), limiti stretti su accettazione inviti e upload, `helmet` con CSP restrittiva, `TRUST_PROXY`, CORS disattivato; `package-lock.json` versionato e `npm ci`; `scripts/check-secrets.mjs`; audit dipendenze in CI (fallisce su critiche).
 Test locali: `npm ci` da zero OK; API 86 + 30 saltati (incl. test 429 e header); mobile 82; web 15; scansione segreti OK e verificata con un falso positivo intenzionale (file temporaneo non committato).
+CI Run #89 su `69112b9` (PR #13): **verde**; `npm ci`, scansione segreti (117 file), audit (nessuna critica), API 116, mobile 82, web 15.
+
+## Iterazione 8 — PR #14 `feat/inspections` (base: `feat/security-hardening`)
+Implementato: modello `Inspection`, validazione verbale con vocabolario controllato, endpoint certificatore (schema, lettura, programmazione, verbale), vista cliente, pannello web di programmazione e verbale, conversione ora di Roma.
+Test locali: API typecheck OK, 97 superati + 37 saltati (DB, inclusi 7 nuovi del sopralluogo); web 19 test, `next build` OK.

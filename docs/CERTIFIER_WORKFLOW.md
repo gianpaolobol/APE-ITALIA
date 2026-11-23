@@ -27,3 +27,12 @@ Tutti gli eventi (`assignment.offer|decline|expire|accept|no_candidate`) sono re
 - Dichiarazioni esplicite di conflitto d'interesse oltre all'appartenenza all'organizzazione (es. parentela, interesse sull'immobile): da raccogliere in onboarding.
 - Due invii concorrenti possono superare di una unità la capacità di un certificatore (nessun lock sul conteggio): accettabile nel pilota, da rivedere.
 - Portale web certificatori (prossima iterazione).
+
+## Sopralluogo e verbale (iterazione 8)
+- `POST /v1/certifier/assignments/:id/inspection {scheduledAt}`: solo con incarico accettato; tra 15 minuti e 90 giorni; prima programmazione ⇒ pratica `INSPECTION_SCHEDULED`; riprogrammazione consentita finché il verbale non è inviato (audit `inspection.schedule` / `inspection.reschedule`).
+- `GET /v1/certifier/inspection-schema`: vocabolario controllato delle voci (generatore, potenza, anno, terminali, regolazione, ACS, raffrescamento, pareti, isolamenti, serramenti, superficie e volume, fotovoltaico). **Nessuna voce per classe energetica o indici di prestazione**: il calcolo resta nel software conforme.
+- `POST /v1/certifier/assignments/:id/inspection/report`: verbale strutturato, **immutabile** dopo l'invio; ogni voce ha stato `verified` / `to_verify` / `undeterminable`, fonte (`inspection`/`document`/`photo`), eventuale evidenza della stessa pratica e nota. Regole: valori nei range con unità; `undeterminable` senza valore e con motivazione; un valore verificato proveniente da foto/documento richiede nota su come è stato confermato; dichiarazione di sopralluogo personale obbligatoria; data non futura. Pratica ⇒ `INSPECTION_DONE`; audit `inspection.report`.
+- Cliente: `GET /v1/cases/:id/inspection` mostra stato, data e nome del certificatore, non il contenuto tecnico.
+- Portale web: programmazione (ora di Roma) e modulo del verbale; visualizzazione in sola lettura dopo l'invio.
+
+Resta da implementare: annullamento/riassegnazione dopo l'accettazione, controllo qualità, collegamento al software di calcolo, firma e deposito.

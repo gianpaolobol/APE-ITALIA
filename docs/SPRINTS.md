@@ -29,7 +29,7 @@
 
 ## Sprint 4: workflow APE
 - [x] Matching certificatori (filtri obbligatori + fallback; distanza/costo/qualità non disponibili)
-- [ ] Agenda e verbale sopralluogo
+- [x] Agenda e verbale sopralluogo (API + portale web; annullamento/riassegnazione da fare)
 - [ ] Export verso software energetico conforme
 - [ ] Gestione deposito e consegna
 

@@ -22,3 +22,6 @@ export type AssignmentView = {
  property: { city: string; region: string; address?: string; floorAreaM2?: number | null };
 };
 export type EvidenceView = { id: string; kind: string; mimeType: string; sizeBytes: number; scanStatus: string; createdAt: string };
+export type FieldSpec = { label: string; kind: 'enum'; values: string[] } | { label: string; kind: 'number'; unit: string; min: number; max: number; integer?: boolean };
+export type InspectionSchema = { fields: Record<string, FieldSpec>; statuses: string[]; sources: string[] };
+export type InspectionView = { id: string; status: 'SCHEDULED' | 'DONE' | 'CANCELLED'; scheduledAt: string; performedAt: string | null; report: { findings: { field: string; status: string; value?: string | number; source: string; note?: string }[]; attendees: string; generalNotes?: string } | null };
