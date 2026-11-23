@@ -1,0 +1,8 @@
+{
+  "projectId": "bytebudget-f8aaa",
+  "projectNumber": "137839521041",
+  "androidAppId": "1:137839521041:android:5960b24a35bef8714a30b0",
+  "serviceAccount": "github-app-distribution@bytebudget-f8aaa.iam.gserviceaccount.com",
+  "workloadIdentityProvider": "projects/137839521041/locations/global/workloadIdentityPools/github/providers/ape-italia",
+  "testerGroup": "interni"
+}
