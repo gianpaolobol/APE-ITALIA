@@ -175,3 +175,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Nuovo flusso: branch → PR → CI verde → fast-forward di `main`.
 - Iterazione 22 (`ops/containers`): Dockerfile API e web, `.dockerignore`, `deploy/docker-compose.staging.yml`, `deploy/.env.example`, job CI `containers`. Localmente: build `standalone` di Next avviata e verificata (`/` 200, `/auth/login` 503); il demone Docker non è disponibile qui, immagini verificate solo in CI.
 - Iterazione 23 (`feat/web-case-creation`): creazione/consenso/caricamento/invio pratiche dal web; E2E browser 5/5 locale.
+- Iterazione 24 (`ops/backup-restore`): script backup/ripristino, ciclo completo provato nel job CI `containers`.

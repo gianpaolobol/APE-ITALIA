@@ -83,6 +83,24 @@ jobs:
           test "$(docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^migrate ' | cut -d' ' -f2)" = 0
           docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env logs worker | grep -q '\[worker\] expire-offers ok'
           docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec -T api id -u | grep -vq '^0$'
+      - name: Backup, destroy, restore and verify (synthetic data)
+        run: |
+          C="docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env"
+          $C exec -T api node dist/admin/provision-cli.js create-organization --name "Synthetic Backup Org" --owner-subject synthetic-backup-owner --operator ci-backup
+          $C exec -T api sh -c 'mkdir -p /var/lib/ape-italia/evidence/org && echo synthetic-marker > /var/lib/ape-italia/evidence/org/marker'
+          STAMP=$(deploy/backup.sh /tmp/ape-backup | tail -1)
+          ls -l /tmp/ape-backup
+          $C down -v
+          $C up -d
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:3001/health >/dev/null && break; sleep 2; done
+          test "$($C exec -T postgres psql -U ape -d ape_italia -tAc "select count(*) from \"Organization\" where name='Synthetic Backup Org'")" = 0
+          if deploy/restore.sh /tmp/ape-backup "$STAMP"; then echo "restore without --yes must fail"; exit 1; fi
+          deploy/restore.sh /tmp/ape-backup "$STAMP" --yes
+          test "$($C exec -T postgres psql -U ape -d ape_italia -tAc "select count(*) from \"Organization\" where name='Synthetic Backup Org'")" = 1
+          test "$($C exec -T postgres psql -U ape -d ape_italia -tAc "select count(*) from \"AuditEvent\" where \"actorId\"='operator:ci-backup'")" = 2
+          test "$($C exec -T api cat /var/lib/ape-italia/evidence/org/marker)" = synthetic-marker
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:3001/health >/dev/null && break; sleep 2; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/v1/me)" = 401
       - name: Logs on failure
         if: failure()
         run: docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env logs --no-color | tail -200

@@ -171,3 +171,6 @@ Su autorizzazione del titolare, `main` è stato portato con fast-forward a `a355
 
 ## 46. Creazione pratiche dal web (Claude, 23/11/2026)
 Professionisti e agenzie creano, documentano e inviano le pratiche anche dal portale web (`/org/new` e pagina pratica), con gli stessi controlli di consenso e file dell'app. Verificato con E2E in Chrome.
+
+## 47. Backup e ripristino provati (Claude, 23/11/2026)
+Script `deploy/backup.sh` e `deploy/restore.sh` (dump PostgreSQL + volume evidenze cifrate, hash di integrità, ripristino solo con conferma esplicita), verificati in CI con distruzione e ricostruzione dello stack. Contribuisce al gate §16 "backup/restore"; restano da definire frequenza, conservazione e cifratura dei backup fuori sede.

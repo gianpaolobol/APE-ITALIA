@@ -28,7 +28,8 @@ Questa è una specifica, non una dichiarazione di controlli già implementati.
 | Installazione riproducibile (`npm ci` con `package-lock.json`) | implementato | CI |
 | Audit dipendenze | CI fallisce solo su vulnerabilità **critiche**; vedi rischio residuo | |
 | MFA certificatori/amministratori | dipende dal provider OIDC (non scelto) | |
-| Backup/restore, DPIA, DPA, retention | **non implementati** | |
+| Backup/restore | script provati in CI (dump + volume, hash, ripristino con conferma) | `docs/DEPLOYMENT.md` |
+| DPIA, DPA | **non implementati** (attività legali) | |
 
 ### Rischio residuo dipendenze (npm audit, 23/11/2026)
 `npm audit --omit=dev` segnala 18 avvisi (6 alti, 12 moderati), tutti in strumenti di build/CLI: catena `@expo/cli`/`@expo/config` (glob, minimatch, image-size), `prisma`/`@prisma/config` (effect, deepmerge-ts), `postcss` incluso in `next` per la compilazione CSS. `npm audit fix` non li risolve senza aggiornamenti major (Expo SDK 58, Next 16, Prisma 7), che richiedono una PR dedicata con verifica su dispositivi e test di regressione. Nessuno di questi pacchetti elabora input degli utenti a runtime nell'API.

@@ -17,3 +17,13 @@ Senza OIDC configurato l'API risponde 401 e il portale 503 (fail closed). Il vol
 **Verifica automatica**: il job CI `containers` costruisce le immagini, avvia lo stack con segreti sintetici e controlla `/health` 200, `/v1/me` 401, portale 200, login 503, migrazione terminata con 0, worker attivo, API non eseguita come root.
 
 **Non coperto**: backup/restore di database e volume (da pianificare e provare), monitoraggio, scelta dell'hosting, dominio e certificati.
+
+## Backup e ripristino
+```
+deploy/backup.sh /percorso/backup          # stampa lo STAMP: dump PostgreSQL (formato custom) + tar del volume evidenze + SHA256SUMS
+deploy/restore.sh /percorso/backup STAMP --yes   # verifica gli hash, ferma api/worker/web, ripristina DB e file, riavvia
+```
+- I file delle evidenze sono già cifrati; il dump del database **non** lo è: conservare i backup cifrati e fuori dal server (es. `age`/`gpg` + storage esterno). Le chiavi (`EVIDENCE_ENCRYPTION_KEY`, `WEB_SESSION_KEY`) non sono nel backup e vanno custodite separatamente: senza la chiave delle evidenze il ripristino dei file è inutile.
+- Il ripristino è distruttivo e richiede `--yes`.
+- **Provato in CI** a ogni esecuzione: dati sintetici → backup → `down -v` (volumi distrutti) → stack vuoto → ripristino senza `--yes` rifiutato → ripristino → organizzazione, eventi di audit e file presenti, API operativa.
+- Da definire: frequenza (es. giornaliera), conservazione dei backup, prova periodica di ripristino su un host separato, RPO/RTO.
