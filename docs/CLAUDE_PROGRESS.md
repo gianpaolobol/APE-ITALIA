@@ -177,3 +177,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Iterazione 23 (`feat/web-case-creation`): creazione/consenso/caricamento/invio pratiche dal web; E2E browser 5/5 locale.
 - Iterazione 24 (`ops/backup-restore`): script backup/ripristino, ciclo completo provato nel job CI `containers`.
 - Iterazione 25 (`feat/crud-and-api-index`): CRUD bozze, `docs/API.md` generato e verificato da test; API 113 test locali + 59 saltati.
+- Iterazione 26 (`mobile/eas-builds`): eas.json, bundle id iOS, permessi minimi verificati con prebuild, icona provvisoria, guida `docs/DEVICE_BUILDS.md`.

@@ -6,10 +6,26 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "it.apeitalia.app"
     },
     "android": {
-      "package": "it.apeitalia.app"
+      "package": "it.apeitalia.app",
+      "permissions": [
+        "android.permission.CAMERA"
+      ],
+      "blockedPermissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.SYSTEM_ALERT_WINDOW",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#176344"
+      }
     },
     "plugins": [
       [
@@ -22,6 +38,7 @@
       ],
       "expo-secure-store",
       "expo-web-browser"
-    ]
+    ],
+    "icon": "./assets/icon.png"
   }
 }
