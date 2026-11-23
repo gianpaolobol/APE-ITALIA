@@ -81,4 +81,4 @@ CI Run #92 su `2ee6414` (PR #16): **verde**.
 
 ## Iterazione 11 — PR #17 `feat/web-org-portal` (base: `feat/calculation-export`)
 Implementato: area web organizzazioni (portafoglio, dettaglio pratica, membri/inviti) sopra le API esistenti.
-Test locali: web typecheck e `next build` OK; smoke `next start` senza configurazione: `/`, `/org`, `/org/members` 200 con messaggio "non configurato". Nessun test end-to-end con provider reale.
+Test locali: web typecheck e `next build` OK; smoke `next start` senza configurazione: `/` 200 con i due accessi, `/org` e `/org/members` 200 "Portale non configurato", `/certifier` 200, `/auth/login` 503. (Un primo tentativo aveva interrogato un processo `next-server` rimasto da un test precedente e restituito 404: processo terminato e test ripetuto.) Nessun test end-to-end con provider reale.
