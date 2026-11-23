@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { deleteAccount, getSession, logout, serverEnabled } from '../server';
+import { API_BASE, deleteAccount, getSession, logout, serverEnabled } from '../server';
+import * as WebBrowser from 'expo-web-browser';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -79,6 +80,12 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
       </View>
      </Card>
     </>) : null}
+    {serverEnabled() ? (
+     <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: S.l }}>
+      <Pressable onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/privacy`)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '700' }}>Privacy</Text></Pressable>
+      <Pressable onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/termini`)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '700' }}>Termini</Text></Pressable>
+     </View>
+    ) : null}
     <Text style={[F.small, { textAlign: 'center', marginTop: S.l }]}>La stima dell’app non sostituisce l’APE: l’attestato è redatto e firmato solo da un certificatore accreditato dopo il sopralluogo.</Text>
    </View>
   </ScrollView>

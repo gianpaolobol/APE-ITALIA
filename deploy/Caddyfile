@@ -1,0 +1,12 @@
+# API behind TLS. API_DOMAIN must point (DNS A/AAAA record) to this host before the first start.
+{$API_DOMAIN} {
+	encode gzip
+	request_body {
+		max_size 320MB
+	}
+	reverse_proxy api:3001
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}

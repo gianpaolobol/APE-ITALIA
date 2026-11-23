@@ -21,7 +21,7 @@ describe('API index', () => {
  });
  it('public routes are only health, notices, certifier applications and the survey photo reader (all throttled)', () => {
   const pub = routes.filter(r => r.access === 'pubblico');
-  expect(pub.map(r => r.path).sort()).toEqual(['/health', '/v1/auth/email/start', '/v1/auth/email/verify', '/v1/auth/logout', '/v1/auth/refresh', '/v1/certifier-applications', '/v1/notices', '/v1/payments/return', '/v1/payments/webhook', '/v1/survey/read-photo']);
+  expect(pub.map(r => r.path).sort()).toEqual(['/health', '/privacy', '/termini', '/v1/auth/email/start', '/v1/auth/email/verify', '/v1/auth/logout', '/v1/auth/refresh', '/v1/certifier-applications', '/v1/notices', '/v1/payments/return', '/v1/payments/webhook', '/v1/survey/read-photo']);
   for (const r of pub.filter(x => x.method === 'POST' && x.path !== '/v1/auth/logout' && x.path !== '/v1/auth/refresh' && x.path !== '/v1/payments/webhook')) expect(r.limit).toBeLessThanOrEqual(10);
  });
  it('docs/API.md is up to date (run `npm run docs:api -w @ape/api`)', () => {

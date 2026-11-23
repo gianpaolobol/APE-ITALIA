@@ -2,6 +2,15 @@
 #   docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build
 # TLS termination (HTTPS) must be provided by a reverse proxy in front of api and web.
 services:
+  # TLS reverse proxy (automatic Let's Encrypt certificates) in front of the API.
+  caddy:
+    image: caddy:2-alpine
+    ports: ["80:80", "443:443"]
+    environment:
+      API_DOMAIN: ${API_DOMAIN:-localhost}
+    volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy_data:/data]
+    depends_on: [api]
+    restart: unless-stopped
   postgres:
     image: postgres:16-alpine
     environment:
@@ -35,7 +44,19 @@ services:
       EVIDENCE_STORAGE_DIR: /var/lib/ape-italia/evidence
       EVIDENCE_ENCRYPTION_KEY: ${EVIDENCE_ENCRYPTION_KEY:-}
       CLAMAV_HOST: clamav
-    volumes: [evidence:/var/lib/ape-italia/evidence]
+      # Email-code login, notifications, AI reading, payments (each feature stays off when unset).
+      PLATFORM_JWT_SECRET: ${PLATFORM_JWT_SECRET:-}
+      MAILER: ${MAILER:-}
+      BREVO_API_KEY: ${BREVO_API_KEY:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      SURVEY_PHOTO_READER: ${SURVEY_PHOTO_READER:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      ANTHROPIC_VISION_MODEL: ${ANTHROPIC_VISION_MODEL:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-}
+      UPLOAD_TMP_DIR: /var/lib/ape-italia/uploads
+    volumes: [evidence:/var/lib/ape-italia/evidence, uploads:/var/lib/ape-italia/uploads]
     ports: ["127.0.0.1:3001:3001"]
     depends_on: { migrate: { condition: service_completed_successfully } }
     restart: unless-stopped
@@ -67,3 +88,5 @@ services:
 volumes:
   pgdata:
   evidence:
+  uploads:
+  caddy_data:

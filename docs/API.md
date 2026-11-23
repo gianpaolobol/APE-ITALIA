@@ -2,11 +2,13 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-68 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+70 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
 | GET | `/health` | pubblico | 200 | predefinito | `HealthController.health` |
+| GET | `/privacy` | pubblico | 200 | predefinito | `LegalController.privacy` |
+| GET | `/termini` | pubblico | 200 | predefinito | `LegalController.terms` |
 | DELETE | `/v1/auth/account` | utente autenticato | 204 | predefinito | `PlatformAuthController.deleteAccount` |
 | POST | `/v1/auth/email/start` | pubblico | 202 | 3/min | `PlatformAuthController.start` |
 | POST | `/v1/auth/email/verify` | pubblico | 201 | 10/min | `PlatformAuthController.verify` |
