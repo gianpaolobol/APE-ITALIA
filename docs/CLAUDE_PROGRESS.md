@@ -77,3 +77,8 @@ CI Run #91 su `0c4765e` (PR #15): **verde**; API 143 test (43 PostgreSQL), mobil
 ## Iterazione 10 — PR #16 `feat/calculation-export` (base: `feat/ai-extraction-review`)
 Implementato: builder puro dell'esportazione, CSV con protezione formula injection, endpoint certificatore con audit, proxy e link nel portale.
 Test locali: API 105 superati + 45 saltati (5 unitari export, 2 nuovi casi DB); web typecheck e build OK.
+CI Run #92 su `2ee6414` (PR #16): **verde**.
+
+## Iterazione 11 — PR #17 `feat/web-org-portal` (base: `feat/calculation-export`)
+Implementato: area web organizzazioni (portafoglio, dettaglio pratica, membri/inviti) sopra le API esistenti.
+Test locali: web typecheck e `next build` OK; smoke `next start` senza configurazione: `/`, `/org`, `/org/members` 200 con messaggio "non configurato". Nessun test end-to-end con provider reale.

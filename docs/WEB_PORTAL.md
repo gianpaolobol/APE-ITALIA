@@ -31,3 +31,8 @@
 
 ## Mancante
 Refresh token lato server, logout RP-initiated presso il provider, pagine per professionisti (portafoglio, membri, inviti), sopralluogo/verbale, test E2E (Playwright).
+
+## Area organizzazioni (privati, professionisti, agenzie) — iterazione 11
+- `/org`: scelta dell'organizzazione (preferenza in cookie `__Host-ape_org`, sempre riconvalidata con `GET /v1/me`: non è un'autorizzazione), riepilogo per stato, elenco pratiche con immobile.
+- `/org/cases/[id]`: stato, sopralluogo (data, certificatore), elenco file caricati; nessun contenuto tecnico del verbale.
+- `/org/members` (owner/admin): ruoli e revoca/riattivazione con gli stessi vincoli dell'API (ultimo owner protetto, admin non modifica owner/admin), creazione inviti con **codice mostrato una sola volta** in un componente client (`useActionState`), elenco e revoca inviti. Nessun invio email.

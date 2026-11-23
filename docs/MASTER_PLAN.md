@@ -135,3 +135,6 @@ PR #15 (impilata su #14). Porta `ExtractionProvider` isolata e **disattivata** (
 
 ## 34. Esportazione per il calcolo (Claude, 23/11/2026)
 PR #16 (impilata su #15). Documento JSON versionato `ape-italia/case-export` v1.0 e CSV dei rilievi, disponibili al certificatore solo dopo il verbale; provenienza (hash evidenze), stato di verifica per voce, completezza sul vocabolario, nessuna classe energetica. Adattatore al software scelto da realizzare quando il fornitore sarà deciso. Dettagli: `docs/CALCULATION_EXPORT.md`.
+
+## 35. Portale web organizzazioni (Claude, 23/11/2026)
+PR #17 (impilata su #16). Area `/org` per privati, professionisti e agenzie: portafoglio pratiche con stato, dettaglio pratica con sopralluogo ed evidenze, gestione membri e inviti per owner/admin (codice monouso mostrato una volta). Le pratiche si creano ancora solo da app mobile. Dettagli in `docs/WEB_PORTAL.md`.
