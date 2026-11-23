@@ -14,3 +14,6 @@ Branch: `feat/sprint-3-auth-foundation`.
 - Test di integrazione con token firmati e dispositivi reali.
 
 Nessuna credenziale viene inserita nel repository pubblico; il login rimane disabilitato fino al completamento.
+
+## Iterazione 23/11 — PKCE preparatorio
+Aggiunti helper di codifica base64url, generazione verifier a partire da byte sicuri forniti dalla piattaforma e costruzione URL di autorizzazione S256, con cinque test unitari. **Non sono ancora implementati**: generatore casuale nativo, SHA-256 del verifier per produrre il challenge, apertura browser, verifica callback state/nonce, scambio code/token, secure storage e provider reale. Non presentare gli helper come login funzionante.
