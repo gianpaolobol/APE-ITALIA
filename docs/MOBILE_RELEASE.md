@@ -38,7 +38,7 @@ Il numero di build è il numero dell'esecuzione (`github.run_number`), quindi se
 | `APPLE_TEAM_ID` | Team ID (10 caratteri) |
 | `ASC_KEY_ID` | Key ID |
 | `ASC_ISSUER_ID` | Issuer ID |
-| `ASC_KEY_P8_BASE64` | contenuto del `.p8` in base64 (PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`) |
+| `ASC_KEY_P8` | testo del file `.p8` incollato così com'è (comodo da iPhone: aprilo in File → copia tutto). In alternativa `ASC_KEY_P8_BASE64` con il file in base64 (PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`) |
 
 5. Dopo il primo caricamento: **TestFlight → Test interni** → aggiungi te stesso; installa l'app **TestFlight** sull'iPhone e accetta l'invito. L'app dichiara solo crittografia standard (`ITSAppUsesNonExemptEncryption = false`): conferma che è corretto per il tuo caso.
 

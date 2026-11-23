@@ -166,7 +166,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 90
     env:
-      HAS_ASC: ${{ secrets.ASC_KEY_P8_BASE64 != '' && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_ASC: ${{ (secrets.ASC_KEY_P8 != '' || secrets.ASC_KEY_P8_BASE64 != '') && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -189,11 +189,16 @@ jobs:
       - name: App Store Connect API key
         if: env.HAS_ASC == 'true'
         env:
+          KEY_PEM: ${{ secrets.ASC_KEY_P8 }}
           KEY_B64: ${{ secrets.ASC_KEY_P8_BASE64 }}
           KEY_ID: ${{ secrets.ASC_KEY_ID }}
         run: |
-          echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"
-          chmod 600 "$RUNNER_TEMP/AuthKey.p8"
+          set -euo pipefail
+          umask 077
+          # ASC_KEY_P8: the .p8 text pasted as-is (easy from an iPhone); ASC_KEY_P8_BASE64: base64 of the file.
+          if [ -n "$KEY_PEM" ]; then printf '%s\n' "$KEY_PEM" | tr -d '\r' > "$RUNNER_TEMP/AuthKey.p8"
+          else echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"; fi
+          grep -q 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/AuthKey.p8" || { echo "::error::The App Store Connect key is not a .p8 private key"; exit 1; }
       - name: Archive (automatic signing via API key)
         if: env.HAS_ASC == 'true'
         working-directory: apps/mobile/ios
