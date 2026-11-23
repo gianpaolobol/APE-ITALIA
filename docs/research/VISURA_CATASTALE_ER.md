@@ -75,3 +75,14 @@
 - I prezzi dei servizi online sono quelli mostrati dalle pagine il 23/11/2026 e possono cambiare. Alcune pagine sono incoerenti (Bartolucci 40/50 €; VisuraSì "da 7,50 €" contro 8 €).
 - Le regole sui tecnici Sister vengono da un articolo del 2022 (Edotto), non da una fonte AdE aggiornata.
 - Non ho aperto la pagina Idealista del 31/03/2026 su Sister (errore di caricamento).
+
+## Revisione indipendente (fact-check del 23/11/2026)
+
+Un secondo agente ha ricontrollato le fonti. **Confermati:** gratuità delle consultazioni telematiche dal 2025 (Provv. 460187/2024), tariffe di sportello nazionali (3 € / 5 € / 30 €, D.Lgs. 139/2024), planimetria riservata agli aventi diritto, prezzi dei concorrenti, download gratuito per l'intestatario con SPID/CIE/CNS ("Consultazione personale online").
+
+**Correzioni, prevalgono sul testo sopra:**
+1. *Delega:* due strade. (a) Certificatore abilitato a Sister: basta l'incarico scritto del titolare che citi l'APE, più nome e codice fiscale dell'intestatario (da confermare con un utente Sister: la fonte è Edotto 2022). (b) Certificatore senza Sister o intermediario: delega firmata + documento d'identità dell'intestatario. L'app raccoglie comunque delega e documento, così entrambe le strade sono coperte.
+2. *Esito negativo:* **rimborso totale** se la planimetria non è disponibile, come fa ReteVisure; niente trattenuta.
+3. *Precisioni:* "0 € online" ha un'eccezione (5 € per i documenti nati cartacei); la gratuità della planimetria via Sister è dedotta e non scritta; il servizio gratuito vale solo per chi risulta intestatario in catasto (non per un erede senza voltura).
+
+**Decisione adottata nell'app:** prezzo unico regionale 14,90 € IVA inclusa per visura + planimetria, rimborsato per intero se la planimetria non è reperibile; opzione gratuita "La scarico io" per gli intestatari con SPID/CIE.
