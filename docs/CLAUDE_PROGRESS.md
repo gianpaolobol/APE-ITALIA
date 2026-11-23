@@ -95,3 +95,4 @@ CI Run #97 su `6e9a453` (PR #19): **verde**; E2E 3/3 inclusa consegna APE.
 ## Iterazione 14 — PR #20 `feat/mobile-case-status` (base: `feat/certificate-delivery`)
 Implementato: `GET /v1/case-summaries`, scheda "Le mie pratiche" nell'app con avanzamento. E2E esteso.
 Test locali: API typecheck OK; mobile typecheck, 84 test, bundle Android/iOS OK.
+CI Run #99 su `9c814ba` (PR #20): **verde**.
