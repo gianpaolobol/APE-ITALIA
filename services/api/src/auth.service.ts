@@ -17,7 +17,7 @@ export class AuthService {
    const {payload}=await jwtVerify(authorization.slice(7),jwks,{issuer,audience,algorithms:['RS256']});
    if(!payload.sub) throw new UnauthorizedException('Missing subject');
    const membership=await this.db.membership.findUnique({where:{organizationId_userSubject:{organizationId,userSubject:payload.sub}}});
-   if(!hasTenantAccess(membership,organizationId,payload.sub)) throw new ForbiddenException('Organization access denied');
+   if(!membership || !hasTenantAccess(membership,organizationId,payload.sub)) throw new ForbiddenException('Organization access denied');
    return {organizationId,actorId:payload.sub,role:membership.role};
   } catch(e) {
    if(e instanceof ForbiddenException || e instanceof UnauthorizedException) throw e;
