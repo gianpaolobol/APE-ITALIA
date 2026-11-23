@@ -39,3 +39,18 @@ describe('tenant-scoped API query contract',()=>{
   expect(propertyFindFirst).toHaveBeenCalledWith({where:{id:'123e4567-e89b-42d3-a456-426614174000',organizationId:'org-a'}});
  });
 });
+
+describe('case submission authorization', () => {
+ it('viewers cannot submit', async () => {
+  const { controller } = setup('org-a', 'viewer');
+  await expect(controller.submitCase('123e4567-e89b-42d3-a456-426614174000', 'Bearer t', 'org-a')).rejects.toBeInstanceOf(ForbiddenException);
+ });
+ it('only transitions DRAFT cases of the verified tenant', async () => {
+  const { controller } = setup();
+  const updateMany = vi.fn().mockResolvedValue({ count: 1 });
+  const tx = { apeCase: { updateMany, findFirstOrThrow: vi.fn().mockResolvedValue({ status: 'SUBMITTED' }) }, auditEvent: { create: vi.fn() } };
+  (controller as any).db.$transaction = vi.fn(async (fn: any) => fn(tx));
+  await controller.submitCase('123e4567-e89b-42d3-a456-426614174000', 'Bearer t', 'org-b');
+  expect(updateMany).toHaveBeenCalledWith({ where: { id: '123e4567-e89b-42d3-a456-426614174000', organizationId: 'org-a', status: 'DRAFT' }, data: { status: 'SUBMITTED' } });
+ });
+});

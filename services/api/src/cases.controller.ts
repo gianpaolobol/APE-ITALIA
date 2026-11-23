@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Get, Headers, Param, Post, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Inject, Get, Headers, Param, ParseUUIDPipe, Post, ConflictException, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { AuthService } from './auth.service';
 import { canWrite } from './tenant-policy';
@@ -54,6 +54,22 @@ export class CasesController {
    const item=await tx.apeCase.create({data:{propertyId:property.id,organizationId:s.organizationId}});
    await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.create',resourceId:item.id}});
    return item;
+  });
+ }
+ /** Customer submission: DRAFT -> SUBMITTED only. Later transitions belong to certifier workflows. */
+ @Post('cases/:id/submit')
+ async submitCase(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
+  return this.db.$transaction(async tx=>{
+   const res=await tx.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT'},data:{status:'SUBMITTED'}});
+   if(res.count!==1){
+    const exists=await tx.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true}});
+    if(!exists) throw new NotFoundException('Case not found');
+    throw new ConflictException('Only draft cases can be submitted');
+   }
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.submit',resourceId:id}});
+   return tx.apeCase.findFirstOrThrow({where:{id,organizationId:s.organizationId}});
   });
  }
 }

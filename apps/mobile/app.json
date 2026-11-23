@@ -10,6 +10,18 @@
     },
     "android": {
       "package": "it.apeitalia.app"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "APE Italia usa la fotocamera per fotografare caldaia, targhette, serramenti e impianti della pratica.",
+          "photosPermission": "APE Italia accede alle foto che scegli per allegarle alla pratica.",
+          "microphonePermission": false
+        }
+      ],
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
   }
 }

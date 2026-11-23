@@ -114,3 +114,6 @@ PR #8 (impilata su #7). Nessuna creazione pubblica di organizzazioni: bootstrap 
 
 ## 27. Sprint 4 (parziale) — caricamento evidenze protetto e consenso (Claude, 23/11/2026)
 PR #9 (impilata su #8). Upload multipart con verifica del tipo dal contenuto, limite 15 MB, rimozione EXIF/GPS dai JPEG, deduplica SHA-256, cifratura AES-256-GCM a riposo con chiave legata all'oggetto, consenso versionato obbligatorio per pratica, download auditato e bloccato finché il file non è scansionato. Specifica e limiti: `docs/EVIDENCE_UPLOAD.md`. **Informativa privacy in bozza, nessuno scanner antivirus e nessuno storage cloud configurati.**
+
+## 28. Sprint 2/4 — wizard mobile collegato a bozza, evidenze e invio (Claude, 23/11/2026)
+PR #10 (impilata su #9). Il wizard crea la pratica in bozza dopo il login, raccoglie consenso e fotografie/documenti per voce e invia la pratica (`DRAFT → SUBMITTED`, nuovo endpoint auditato). Le transizioni successive restano riservate al workflow certificatori (da implementare). Nessun test su dispositivo reale.

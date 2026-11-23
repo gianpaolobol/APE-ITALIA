@@ -44,3 +44,28 @@ describe.skipIf(!enabled)('PostgreSQL tenant isolation integration',()=>{
   expect(audit?.actorId).toBe(subject);
  });
 });
+
+describe.skipIf(!enabled)('PostgreSQL case submission', () => {
+ const db = enabled ? new PrismaClient() : (null as unknown as PrismaClient);
+ const org = randomUUID(), other = randomUUID(), property = randomUUID();
+ const auth = { authorize: async (_t?: string, o?: string) => ({ organizationId: o!, actorId: 'submit-test-subject', role: 'member' }) } as AuthService;
+ const controller = new CasesController(db as any, auth);
+ beforeAll(async () => {
+  await db.organization.createMany({ data: [{ id: org, name: 'Submit tenant' }, { id: other, name: 'Other tenant' }] });
+  await db.property.create({ data: { id: property, organizationId: org, address: 'Test S', city: 'Bologna', region: 'Emilia-Romagna' } });
+ });
+ afterAll(async () => {
+  await db.auditEvent.deleteMany({ where: { organizationId: { in: [org, other] } } });
+  await db.apeCase.deleteMany({ where: { organizationId: { in: [org, other] } } });
+  await db.property.deleteMany({ where: { organizationId: org } });
+  await db.organization.deleteMany({ where: { id: { in: [org, other] } } });
+  await db.$disconnect();
+ });
+ it('submits a draft once, refuses resubmission and foreign tenants', async () => {
+  const c = await controller.createCase({ propertyId: property }, 'Bearer test', org);
+  await expect(controller.submitCase(c.id, 'Bearer test', other)).rejects.toThrow('Case not found');
+  expect((await controller.submitCase(c.id, 'Bearer test', org)).status).toBe('SUBMITTED');
+  await expect(controller.submitCase(c.id, 'Bearer test', org)).rejects.toThrow('Only draft cases');
+  expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.submit', resourceId: c.id } })).toBe(1);
+ });
+});

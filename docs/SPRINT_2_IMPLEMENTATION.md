@@ -28,3 +28,10 @@ Aggiunti quattro test unitari del client mobile per rifiuto HTTP non cifrato, in
 
 ## Iterazione flusso richieste — 23/11/2026
 Aggiunti due test con fetch simulato: creazione immobile seguita dalla creazione della pratica con ID corretto; interruzione del flusso quando la creazione dell'immobile restituisce 403. Non costituiscono test con provider OIDC o database reale e non rendono attivo l'invio dall'app, poiché `getVerifiedSession` restituisce null. Il codice attende esito CI del commit e review.
+
+## Iterazione Claude 23/11 — wizard collegato a bozza, evidenze e invio
+- Passo 1: con utente autenticato e organizzazione confermata, "Crea bozza" crea immobile e pratica `DRAFT` (i campi diventano non modificabili).
+- Passi 2–4: informativa in bozza con consenso esplicito per pratica, poi per ogni voce (caldaia/targhetta, terminali, pareti, serramenti, planimetria, documenti) "Scatta foto" o "Dalla galleria"/"Scegli file", con pre-controllo di formato e dimensione lato app; il server resta l'unica autorità.
+- Passo 5: "Invia richiesta" porta la pratica da `DRAFT` a `SUBMITTED` (`POST /v1/cases/:id/submit`, auditato).
+- Permessi fotocamera/galleria dichiarati in `app.json` (plugin `expo-image-picker`), EXIF non richiesto al picker.
+- **Non verificato su dispositivo**: solo typecheck, 82 test unitari e bundle Hermes Android/iOS.

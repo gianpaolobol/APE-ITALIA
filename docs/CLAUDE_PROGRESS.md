@@ -43,3 +43,7 @@ Implementato: upload evidenze con consenso versionato, sniffing contenuto, limit
 Test locali: API typecheck OK, 74 superati + 21 saltati (DB), di cui 11 HTTP reali con multer (413/415/403/404/409/423/200).
 CI Run #83 su `0b55521`: **verde**; API 95 test (21 PostgreSQL), mobile 72, nessuna deriva schema/migrazioni.
 Mancano: informativa definitiva, antivirus, storage cloud, UI mobile (iterazione 4).
+
+## Iterazione 4 — PR #10 `feat/sprint-4-mobile-evidence` (base: `feat/sprint-4-evidence-upload`)
+Implementato: `POST /v1/cases/:id/submit` (solo DRAFT→SUBMITTED, tenant, audit); client mobile per notices/consenso/upload multipart/lista/invio; componente `EvidenceStep` con fotocamera, galleria e documenti; permessi in `app.json`.
+Test locali: API 76 superati + 22 saltati (DB); mobile typecheck OK, 82 test; `expo config` OK; bundle Android/iOS OK.
