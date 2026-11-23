@@ -1,6 +1,7 @@
 import {
  BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post, Query, StreamableFile,
 } from '@nestjs/common';
+import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
 import { AuthService } from '../auth.service';
 import { EVIDENCE_STORAGE } from '../evidence/evidence.controller';
@@ -113,6 +114,18 @@ export class CertifierController {
   await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'evidence.read', resourceId: ev.id } });
   return file;
  }
+ /** Schedules the optional pre-inspection video call (Jitsi room with an unguessable name). */
+ @Post('assignments/:id/call')
+ async scheduleCall(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: { at?: unknown } | undefined, @Headers('authorization') token?: string) {
+  const { c, a } = await this.accepted(token, id);
+  const at = typeof body?.at === 'string' ? new Date(body.at) : new Date(NaN);
+  if (Number.isNaN(at.getTime()) || at.getTime() < Date.now() - 3600_000 || at.getTime() > Date.now() + 90 * 86400_000) throw new BadRequestException('at must be an ISO date within 90 days');
+  const url = a.callUrl ?? `https://meet.jit.si/APEItalia-${randomBytes(12).toString('base64url').replace(/[^A-Za-z0-9]/g, '')}`;
+  await this.db.assignment.update({ where: { id: a.id }, data: { callAt: at, callUrl: url } });
+  await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'assignment.call', resourceId: a.id } });
+  return { at: at.toISOString(), url };
+ }
+
  /** Customer survey (contacts, answers, photos checklist, indicative estimate): visible only after acceptance. */
  @Get('assignments/:id/survey')
  async survey(@Param('id', new ParseUUIDPipe()) id: string, @Headers('authorization') token?: string) {

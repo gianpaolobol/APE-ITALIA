@@ -165,6 +165,9 @@ model Assignment {
  expiresAt DateTime
  respondedAt DateTime?
  declineReason String?
+ /// Optional pre-inspection video call (never a substitute for the mandatory on-site inspection).
+ callAt DateTime?
+ callUrl String?
  inspection Inspection?
  @@unique([caseId, certifierId])
  @@index([certifierId, status])

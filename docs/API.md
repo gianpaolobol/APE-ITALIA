@@ -2,7 +2,7 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-51 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+52 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
@@ -29,6 +29,7 @@
 | GET | `/v1/certifier/assignments/:assignmentId/extracted-fields` | certificatore verificato | 200 | predefinito | `ExtractionController.list` |
 | POST | `/v1/certifier/assignments/:assignmentId/extracted-fields/:fieldId/review` | certificatore verificato | 201 | predefinito | `ExtractionController.review` |
 | POST | `/v1/certifier/assignments/:id/accept` | certificatore verificato | 201 | predefinito | `CertifierController.accept` |
+| POST | `/v1/certifier/assignments/:id/call` | certificatore verificato | 201 | predefinito | `CertifierController.scheduleCall` |
 | POST | `/v1/certifier/assignments/:id/certificate` | certificatore verificato | 201 | predefinito | `CertificateController.upload` |
 | POST | `/v1/certifier/assignments/:id/decline` | certificatore verificato | 201 | predefinito | `CertifierController.decline` |
 | GET | `/v1/certifier/assignments/:id/evidence` | certificatore verificato | 200 | predefinito | `CertifierController.evidence` |

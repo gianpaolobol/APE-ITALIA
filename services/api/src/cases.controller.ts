@@ -105,7 +105,9 @@ export class CasesController {
   const c=await this.db.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true,status:true}});
   if(!c) throw new NotFoundException('Case not found');
   const insp=await this.db.inspection.findFirst({where:{caseId:id,organizationId:s.organizationId,status:{not:'CANCELLED'}},include:{assignment:{include:{certifier:{select:{displayName:true}}}}},orderBy:{createdAt:'desc'}});
-  return {caseStatus:c.status,inspection:insp?{status:insp.status,scheduledAt:insp.scheduledAt,performedAt:insp.performedAt,certifierName:insp.assignment.certifier.displayName}:null};
+  const acc=await this.db.assignment.findFirst({where:{caseId:id,organizationId:s.organizationId,status:'ACCEPTED'},select:{callAt:true,callUrl:true,certifier:{select:{displayName:true,registrationId:true}}}});
+  return {caseStatus:c.status,inspection:insp?{status:insp.status,scheduledAt:insp.scheduledAt,performedAt:insp.performedAt,certifierName:insp.assignment.certifier.displayName}:null,
+   certifier:acc?{name:acc.certifier.displayName,registrationId:acc.certifier.registrationId}:null,call:acc?.callAt&&acc.callUrl?{at:acc.callAt,url:acc.callUrl}:null};
  }
  /** One query for the customer's case list: property, live status, inspection date and certificate presence. */
  @Get('case-summaries')
