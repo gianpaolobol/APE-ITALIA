@@ -37,3 +37,9 @@ Implementato: CLI operatore per bootstrap organizzazione+owner, inviti monouso h
 Test locali: API typecheck OK, 48 test superati + 16 saltati (DB); build `tsc -p tsconfig.build.json` OK; migrazione `20261123030000_invitations` applicata via psql.
 CI Run #81 su `9c79388`: **verde**; API 64 test (16 PostgreSQL), mobile 72, "No difference detected" tra schema e migrazioni.
 Aggiornati `QA_CHECKLIST.md` (voci spuntate solo con evidenza CI) e `SPRINTS.md`.
+
+## Iterazione 3 — PR #9 `feat/sprint-4-evidence-upload` (base: `feat/sprint-4-provisioning`)
+Implementato: upload evidenze con consenso versionato, sniffing contenuto, limite 15 MB, rimozione EXIF/GPS da JPEG, deduplica, cifratura AES-256-GCM su disco, download con blocco "non scansionato", audit di letture e caricamenti. Specifica `docs/EVIDENCE_UPLOAD.md`.
+Test locali: API typecheck OK, 74 superati + 21 saltati (DB), di cui 11 HTTP reali con multer (413/415/403/404/409/423/200).
+CI Run #83 su `0b55521`: **verde**; API 95 test (21 PostgreSQL), mobile 72, nessuna deriva schema/migrazioni.
+Mancano: informativa definitiva, antivirus, storage cloud, UI mobile (iterazione 4).
