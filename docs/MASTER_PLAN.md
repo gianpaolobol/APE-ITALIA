@@ -123,3 +123,6 @@ PR #11 (impilata su #10). Profili certificatore verificati solo da operatore (CL
 
 ## 30. Portale web certificatori (Claude, 23/11/2026)
 PR #12 (impilata su #11). Next.js con login OIDC + PKCE lato server (BFF), sessione in cookie cifrato HttpOnly, verifica firma ID token con JWKS, proxy per API e download, Server Actions per accettare/rifiutare incarichi, header di sicurezza, portale chiuso senza configurazione. Dettagli e limiti: `docs/WEB_PORTAL.md`.
+
+## 31. Hardening sicurezza (Claude, 23/11/2026)
+PR #13 (impilata su #12). Rate limiting, header helmet e CORS disattivato sull'API, `package-lock.json` versionato e `npm ci` in CI, scansione segreti dei file tracciati, audit dipendenze bloccante sulle critiche. Tabella stato controlli e rischio residuo in `docs/SECURITY.md`. Aggiornamenti major (Expo 58, Next 16, Prisma 7) rinviati a PR dedicate.

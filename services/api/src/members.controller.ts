@@ -3,6 +3,7 @@ import {
  NotFoundException, Param, ParseUUIDPipe, Patch, Post,
 } from '@nestjs/common';
 import { createHash, randomBytes } from 'node:crypto';
+import { Throttle } from '@nestjs/throttler';
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Length, Matches, Max, Min, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { PrismaService } from './prisma.service';
@@ -117,6 +118,7 @@ export class MembersController {
 
  /** Any authenticated user may redeem a valid code; errors are uniform to avoid an oracle. */
  @Post('invitations/accept')
+ @Throttle({ default: { limit: 10, ttl: 60_000 } })
  async accept(@Body() body: unknown, @Headers('authorization') token?: string) {
   const { subject } = await this.auth.verify(token);
   const dto = validated(AcceptInvitationDto, body);

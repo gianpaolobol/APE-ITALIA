@@ -1,5 +1,5 @@
 # Quality gates — Sprint 1
-- [ ] npm ci passes from clean checkout — *nessun package-lock.json nel repo; la CI usa `npm install`*
+- [x] npm ci passes from clean checkout — eseguito localmente da `node_modules` vuoto (PR #13) e in CI
 - [x] prisma validate and generate pass — CI Run #79, #81
 - [x] PostgreSQL migration generated and applied against clean DB — CI Run #81 (`migrate deploy` + `migrate diff --exit-code`: "No difference detected")
 - [x] API TypeScript typecheck passes — CI Run #79, #81
@@ -10,6 +10,6 @@
 - [x] Unknown property ID returns 404 (not leak) — `tenant-db.integration.spec.ts`, CI Run #81
 - [x] Audit log records creations — integrazione PostgreSQL (property, case, organization, membership, invitation), CI Run #81
 - [ ] Android and iOS smoke tests — *solo bundle Hermes `expo export` verificato; nessun dispositivo*
-- [ ] Secrets scan and dependency audit
+- [x] Secrets scan and dependency audit — `scripts/check-secrets.mjs` + `npm audit --audit-level=critical` in CI; rischio residuo in SECURITY.md
 - [ ] PR review and MASTER_PLAN updated — *MASTER_PLAN aggiornato; review umana mancante*
 No checkboxes may be checked without evidence from executed tests.

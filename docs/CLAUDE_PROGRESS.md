@@ -57,3 +57,8 @@ CI Run #86 su `2a075f4` (PR #11): **verde**; API 114 test (30 PostgreSQL), nessu
 ## Iterazione 6 — PR #12 `feat/web-certifier-portal` (base: `feat/sprint-4-certifier-workflow`)
 Implementato: portale Next.js BFF con OIDC/PKCE lato server, cookie cifrati, pagine incarichi ed evidenze, proxy download, header di sicurezza. `apps/web/tsconfig.json` ora versionato con `strict: true`. Dettagli `docs/WEB_PORTAL.md`.
 Test locali: web 15 test; `next build` OK; smoke `next start` senza configurazione: `/` 200, `/certifier` "non configurato", `/auth/login` 503, logout GET 405, header presenti.
+CI Run #88 su `d6dd888` (PR #12): **verde**; API 114, mobile 82, web 15, build Next.
+
+## Iterazione 7 — PR #13 `feat/security-hardening` (base: `feat/web-certifier-portal`)
+Implementato: `@nestjs/throttler` globale (per rotta e IP), limiti stretti su accettazione inviti e upload, `helmet` con CSP restrittiva, `TRUST_PROXY`, CORS disattivato; `package-lock.json` versionato e `npm ci`; `scripts/check-secrets.mjs`; audit dipendenze in CI (fallisce su critiche).
+Test locali: `npm ci` da zero OK; API 86 + 30 saltati (incl. test 429 e header); mobile 82; web 15; scansione segreti OK e verificata con un falso positivo intenzionale (file temporaneo non committato).

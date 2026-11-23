@@ -4,6 +4,7 @@ import {
  UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { Throttle } from '@nestjs/throttler';
 import { createHash, randomUUID } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
 import { AuthService } from '../auth.service';
@@ -57,6 +58,7 @@ export class EvidenceController {
  }
 
  @Post('cases/:caseId/evidence')
+ @Throttle({ default: { limit: 30, ttl: 60_000 } })
  // No dest/storage option: multer keeps the file in memory (bounded by fileSize), never on public disk.
  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_EVIDENCE_BYTES, files: 1, fields: 4, parts: 5 } }))
  async upload(@Param('caseId', new ParseUUIDPipe()) caseId: string, @UploadedFile() file: UploadedBlob | undefined, @Body() body: { kind?: unknown } | undefined,
