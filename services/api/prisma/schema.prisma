@@ -47,6 +47,7 @@ model ApeCase {
  status CaseStatus @default(DRAFT)
  evidence Evidence[]
  consents Consent[]
+ assignments Assignment[]
  createdAt DateTime @default(now())
  updatedAt DateTime @updatedAt
  @@index([organizationId,status])
@@ -119,4 +120,45 @@ model Invitation {
  revokedAt DateTime?
  createdAt DateTime @default(now())
  @@index([organizationId])
+}
+
+/// Platform-level professional profile. Verification against the regional register is a human operator step.
+model Certifier {
+ id String @id @default(uuid())
+ userSubject String @unique
+ displayName String
+ registrationId String
+ regions String[]
+ maxActiveAssignments Int @default(5)
+ active Boolean @default(true)
+ verifiedAt DateTime?
+ verifiedBy String?
+ createdAt DateTime @default(now())
+ assignments Assignment[]
+}
+
+enum AssignmentStatus {
+ OFFERED
+ ACCEPTED
+ DECLINED
+ EXPIRED
+ WITHDRAWN
+}
+
+/// Offer of a case to a certifier. A certifier is never offered the same case twice.
+model Assignment {
+ id String @id @default(uuid())
+ caseId String
+ case ApeCase @relation(fields: [caseId], references: [id])
+ certifierId String
+ certifier Certifier @relation(fields: [certifierId], references: [id])
+ organizationId String
+ status AssignmentStatus @default(OFFERED)
+ offeredAt DateTime @default(now())
+ expiresAt DateTime
+ respondedAt DateTime?
+ declineReason String?
+ @@unique([caseId, certifierId])
+ @@index([certifierId, status])
+ @@index([caseId])
 }

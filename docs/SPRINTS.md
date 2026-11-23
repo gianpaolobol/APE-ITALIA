@@ -28,7 +28,7 @@
 - [ ] Test su dataset autorizzato
 
 ## Sprint 4: workflow APE
-- [ ] Matching certificatori
+- [x] Matching certificatori (filtri obbligatori + fallback; distanza/costo/qualità non disponibili)
 - [ ] Agenda e verbale sopralluogo
 - [ ] Export verso software energetico conforme
 - [ ] Gestione deposito e consegna

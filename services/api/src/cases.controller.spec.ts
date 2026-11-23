@@ -3,6 +3,8 @@ import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { CasesController } from './cases.controller';
 import type { PrismaService } from './prisma.service';
 import type { AuthService } from './auth.service';
+import { offerNext } from './certifiers/assignment.service';
+vi.mock('./certifiers/assignment.service', () => ({ offerNext: vi.fn().mockResolvedValue(null) }));
 
 function setup(tenant='org-a', role='member') {
  const authorize=vi.fn().mockResolvedValue({organizationId:tenant,actorId:'user-a',role});
@@ -52,5 +54,6 @@ describe('case submission authorization', () => {
   (controller as any).db.$transaction = vi.fn(async (fn: any) => fn(tx));
   await controller.submitCase('123e4567-e89b-42d3-a456-426614174000', 'Bearer t', 'org-b');
   expect(updateMany).toHaveBeenCalledWith({ where: { id: '123e4567-e89b-42d3-a456-426614174000', organizationId: 'org-a', status: 'DRAFT' }, data: { status: 'SUBMITTED' } });
+  expect(offerNext).toHaveBeenCalledWith(tx, '123e4567-e89b-42d3-a456-426614174000');
  });
 });

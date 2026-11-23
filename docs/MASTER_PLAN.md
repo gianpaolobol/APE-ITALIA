@@ -117,3 +117,6 @@ PR #9 (impilata su #8). Upload multipart con verifica del tipo dal contenuto, li
 
 ## 28. Sprint 2/4 — wizard mobile collegato a bozza, evidenze e invio (Claude, 23/11/2026)
 PR #10 (impilata su #9). Il wizard crea la pratica in bozza dopo il login, raccoglie consenso e fotografie/documenti per voce e invia la pratica (`DRAFT → SUBMITTED`, nuovo endpoint auditato). Le transizioni successive restano riservate al workflow certificatori (da implementare). Nessun test su dispositivo reale.
+
+## 29. Sprint 4 — matching e workflow certificatori (Claude, 23/11/2026)
+PR #11 (impilata su #10). Profili certificatore verificati solo da operatore (CLI, verifica umana sull'elenco regionale), matching con filtri obbligatori (attivo, verificato, regione, indipendenza dall'organizzazione richiedente, nessuna riproposta, capacità) e ranking per carico/anzianità, offerta automatica all'invio con scadenza 48 h, accettazione/rifiuto con fallback, minimizzazione dei dati prima dell'accettazione, accesso alle evidenze solo con incarico accettato. Dettagli: `docs/CERTIFIER_WORKFLOW.md`. Sopralluogo, verbale, firma e deposito non ancora implementati.

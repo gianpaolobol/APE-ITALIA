@@ -34,3 +34,28 @@ export function parseArgs(argv: string[]): Record<string, string> {
  }
  return out;
 }
+
+export type RegisterCertifierInput = { subject: string; displayName: string; registrationId: string; regions: string[]; operator: string; maxActiveAssignments?: number };
+
+/**
+ * Registers a certifier as verified. The operator must have checked the regional register of accredited
+ * certifiers beforehand; this function records who did it and when, it does not perform the check.
+ */
+export async function registerVerifiedCertifier(db: PrismaClient, input: RegisterCertifierInput) {
+ const subject = input.subject.trim();
+ if (!/^[\x21-\x7e]{1,255}$/.test(subject)) throw new Error('Subject must be the OIDC "sub" claim');
+ const displayName = input.displayName.trim();
+ if (displayName.length < 2 || displayName.length > 200) throw new Error('Display name must be 2-200 characters');
+ const registrationId = input.registrationId.trim();
+ if (!/^[A-Za-z0-9/._-]{2,64}$/.test(registrationId)) throw new Error('Registration identifier required (as shown in the regional register)');
+ const regions = [...new Set(input.regions.map(r => r.trim()).filter(Boolean))];
+ if (!regions.length) throw new Error('At least one region required');
+ if (!/^[A-Za-z0-9._@-]{2,100}$/.test(input.operator)) throw new Error('Operator identifier required for the audit trail');
+ const max = input.maxActiveAssignments ?? 5;
+ if (!Number.isInteger(max) || max < 1 || max > 100) throw new Error('maxActiveAssignments must be 1-100');
+ return db.certifier.upsert({
+  where: { userSubject: subject },
+  create: { userSubject: subject, displayName, registrationId, regions, maxActiveAssignments: max, verifiedAt: new Date(), verifiedBy: input.operator },
+  update: { displayName, registrationId, regions, maxActiveAssignments: max, active: true, verifiedAt: new Date(), verifiedBy: input.operator },
+ });
+}

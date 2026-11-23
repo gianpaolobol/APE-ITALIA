@@ -1,6 +1,6 @@
 import {
  BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, HttpException, HttpStatus,
- Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post, ServiceUnavailableException, StreamableFile, UnprocessableEntityException,
+ Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post, ServiceUnavailableException, UnprocessableEntityException,
  UploadedFile, UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -11,12 +11,12 @@ import { canWrite } from '../tenant-policy';
 import { evidenceStorageKey, type ObjectStorage } from './storage';
 import { EVIDENCE_KINDS, MAX_EVIDENCE_BYTES, isAllowedForKind, notConfiguredScanner, sniffMimeType, stripJpegMetadata, type EvidenceKind, type MalwareScanner } from './file-policy';
 import { CURRENT_NOTICES, UPLOAD_OPEN_STATUSES, isCurrentNotice } from './consent-policy';
+import { EVIDENCE_PUBLIC_FIELDS, evidenceFile } from './read';
 
 export const EVIDENCE_STORAGE = Symbol('EVIDENCE_STORAGE');
 export const MALWARE_SCANNER = Symbol('MALWARE_SCANNER');
 type UploadedBlob = { buffer: Buffer; size: number };
 
-const EXTENSION: Record<string, string> = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'application/pdf': 'pdf' };
 
 @Controller('v1')
 export class EvidenceController {
@@ -91,7 +91,7 @@ export class EvidenceController {
    return await this.db.$transaction(async tx => {
     const ev = await tx.evidence.create({
      data: { id, caseId, organizationId: s.organizationId, kind, storageKey, mimeType: mime, sizeBytes: content.length, sha256, uploadedBy: s.actorId, scanStatus },
-     select: { id: true, caseId: true, kind: true, mimeType: true, sizeBytes: true, sha256: true, scanStatus: true, createdAt: true },
+     select: EVIDENCE_PUBLIC_FIELDS,
     });
     await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'evidence.upload', resourceId: id } });
     return ev;
@@ -109,7 +109,7 @@ export class EvidenceController {
   await this.tenantCase(caseId, s.organizationId);
   return this.db.evidence.findMany({
    where: { caseId, organizationId: s.organizationId },
-   select: { id: true, caseId: true, kind: true, mimeType: true, sizeBytes: true, sha256: true, scanStatus: true, createdAt: true },
+   select: EVIDENCE_PUBLIC_FIELDS,
    orderBy: { createdAt: 'asc' },
   });
  }
@@ -119,13 +119,10 @@ export class EvidenceController {
  @Header('X-Content-Type-Options', 'nosniff')
  async content(@Param('id', new ParseUUIDPipe()) id: string, @Headers('authorization') token?: string, @Headers('x-organization-id') org?: string) {
   const s = await this.auth.authorize(token, org);
-  if (!this.storage) throw new ServiceUnavailableException('Evidence storage not configured');
   const ev = await this.db.evidence.findFirst({ where: { id, organizationId: s.organizationId } });
   if (!ev) throw new NotFoundException('Evidence not found');
-  if (ev.scanStatus === 'infected') throw new HttpException('Evidence quarantined', HttpStatus.GONE);
-  if (ev.scanStatus !== 'clean' && process.env.EVIDENCE_ALLOW_UNSCANNED !== '1') throw new HttpException('Evidence awaiting malware scan', HttpStatus.LOCKED);
-  const data = await this.storage.get(ev.storageKey);
+  const file = await evidenceFile(this.storage, ev);
   await this.db.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'evidence.read', resourceId: ev.id } });
-  return new StreamableFile(data, { type: ev.mimeType, length: data.length, disposition: `attachment; filename="evidence-${ev.id}.${EXTENSION[ev.mimeType] ?? 'bin'}"` });
+  return file;
  }
 }

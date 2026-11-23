@@ -47,3 +47,8 @@ Mancano: informativa definitiva, antivirus, storage cloud, UI mobile (iterazione
 ## Iterazione 4 — PR #10 `feat/sprint-4-mobile-evidence` (base: `feat/sprint-4-evidence-upload`)
 Implementato: `POST /v1/cases/:id/submit` (solo DRAFT→SUBMITTED, tenant, audit); client mobile per notices/consenso/upload multipart/lista/invio; componente `EvidenceStep` con fotocamera, galleria e documenti; permessi in `app.json`.
 Test locali: API 76 superati + 22 saltati (DB); mobile typecheck OK, 82 test; `expo config` OK; bundle Android/iOS OK.
+CI Run #85 su `d489a81` (PR #10): **verde**; API 98 test, mobile 82.
+
+## Iterazione 5 — PR #11 `feat/sprint-4-certifier-workflow` (base: `feat/sprint-4-mobile-evidence`)
+Implementato: modelli `Certifier`/`Assignment`, matching puro con filtri obbligatori e ranking, offerta automatica all'invio, endpoint certificatore (me, lista, accetta, rifiuta, evidenze), sweep scadenze via CLI, CLI `register-certifier`, refactor download evidenze condiviso. Dettagli `docs/CERTIFIER_WORKFLOW.md`.
+Test locali: API typecheck OK; 84 superati + 30 saltati (DB, inclusi 8 nuovi del ciclo certificatore).

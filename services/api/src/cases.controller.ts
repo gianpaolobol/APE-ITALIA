@@ -2,6 +2,7 @@ import { Body, Controller, Inject, Get, Headers, Param, ParseUUIDPipe, Post, Con
 import { PrismaService } from './prisma.service';
 import { AuthService } from './auth.service';
 import { canWrite } from './tenant-policy';
+import { offerNext } from './certifiers/assignment.service';
 import { IsNotEmpty, IsString, IsUUID, IsOptional, IsNumber, Min, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
@@ -69,6 +70,7 @@ export class CasesController {
     throw new ConflictException('Only draft cases can be submitted');
    }
    await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.submit',resourceId:id}});
+   await offerNext(tx,id); // automatic matching; null leaves the case SUBMITTED for manual follow-up
    return tx.apeCase.findFirstOrThrow({where:{id,organizationId:s.organizationId}});
   });
  }

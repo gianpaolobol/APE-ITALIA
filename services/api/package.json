@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "build": "tsc -p tsconfig.build.json",
-    "admin:create-org": "node dist/admin/provision-cli.js create-organization"
+    "admin:create-org": "node dist/admin/provision-cli.js create-organization",
+    "admin": "node dist/admin/provision-cli.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",
