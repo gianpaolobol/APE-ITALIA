@@ -2,6 +2,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import type { Answers, PhotoRef, Photos } from './questions';
 import type { ProRegistration } from '../pro/registration';
+import type { Job } from '../job';
 
 export type Draft = {
  id: string;
@@ -15,6 +16,8 @@ export type Draft = {
  remoteCaseId?: string;
  /** Local photo URIs already uploaded to remoteCaseId. */
  uploaded?: string[];
+ /** Certifier side (local demo until the server is online). */
+ job?: Job;
 };
 
 export type AppState = { version: 1; drafts: Draft[]; pro?: { data: ProRegistration; submittedAt: string; status: 'in_verifica' | 'inviata_al_server' } };

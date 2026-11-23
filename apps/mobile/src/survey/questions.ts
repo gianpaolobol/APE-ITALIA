@@ -88,7 +88,6 @@ export const STEPS: Step[] = [
    { id: 'municipality', kind: 'text', label: 'Comune', required: true, placeholder: 'Es. Bologna', autoCapitalize: 'words', maxLength: 80 },
    { id: 'street', kind: 'text', label: 'Via e numero civico', required: true, placeholder: 'Es. Via Rialto 12', autoCapitalize: 'words', maxLength: 120 },
    { id: 'unit', kind: 'text', label: 'Scala / interno (facoltativo)', placeholder: 'Es. Scala B, int. 7', maxLength: 40 },
-   { id: 'cadastral', kind: 'text', label: 'Dati catastali (facoltativo)', help: 'Foglio, particella, subalterno: li trovi sulla visura o sul rogito.', placeholder: 'Fg. 123, Part. 456, Sub. 7', maxLength: 80 },
   ],
  },
  {
@@ -130,8 +129,20 @@ export const STEPS: Step[] = [
  {
   id: 'documenti', title: 'Documenti', subtitle: 'Bastano le foto: le leggiamo noi', icon: 'document-text-outline',
   questions: [
-   { id: 'cadastralPlan', kind: 'photo', label: 'Planimetria catastale', required: true, allowDocuments: true, max: 4, extract: 'cadastral_plan',
-    guide: 'Foto o PDF della planimetria (in visura, rogito o dal tuo tecnico). Tutta la pagina, ben dritta.' },
+   { id: 'hasPlan', kind: 'choice', label: 'Hai la planimetria catastale?', required: true, layout: 'cards', options: [
+    { value: 'si', label: 'Sì, ce l’ho', hint: 'Foto o PDF: la trovi nel rogito o dal notaio', icon: 'document-attach-outline' },
+    { value: 'no', label: 'No', hint: 'Indichi i dati catastali e la recuperiamo noi', icon: 'search-outline' },
+   ] },
+   { id: 'cadastralPlan', kind: 'photo', label: 'Planimetria catastale', required: true, allowDocuments: true, max: 4, extract: 'cadastral_plan', visible: a => a.hasPlan === 'si',
+    guide: 'Foto o PDF della planimetria. Inquadra tutta la pagina, ben dritta e leggibile.' },
+   { id: 'cadastralTown', kind: 'text', label: 'Comune catastale', required: true, autoCapitalize: 'words', maxLength: 60, placeholder: 'Es. Bologna', visible: a => a.hasPlan === 'no',
+    help: 'I dati catastali sono nel rogito, nel contratto di affitto, nella visura o nel modello F24 dell’IMU.' },
+   { id: 'cadastralSection', kind: 'text', label: 'Sezione (se presente)', maxLength: 10, autoCapitalize: 'none', visible: a => a.hasPlan === 'no' },
+   { id: 'cadastralSheet', kind: 'text', label: 'Foglio', required: true, keyboard: 'numeric', maxLength: 6, placeholder: '123', pattern: /^\d{1,5}[A-Za-z]?$/, patternMessage: 'Solo numeri', visible: a => a.hasPlan === 'no' },
+   { id: 'cadastralParcel', kind: 'text', label: 'Particella / mappale', required: true, maxLength: 10, placeholder: '456', pattern: /^[0-9A-Za-z/]{1,9}$/, patternMessage: 'Formato non valido', visible: a => a.hasPlan === 'no' },
+   { id: 'cadastralSub', kind: 'text', label: 'Subalterno', required: true, keyboard: 'numeric', maxLength: 6, placeholder: '7', pattern: /^\d{1,5}$/, patternMessage: 'Solo numeri', visible: a => a.hasPlan === 'no' },
+   { id: 'cadastralDelegation', kind: 'toggle', required: true, visible: a => a.hasPlan === 'no',
+    label: 'Delego il certificatore a richiedere visura e planimetria catastale per mio conto (costo aggiunto al preventivo)' },
    { id: 'heatingLogbook', kind: 'photo', label: 'Libretto di impianto', allowDocuments: true, max: 6,
     guide: 'Le pagine con i dati dell’impianto (in Emilia-Romagna registrato su CRITER). Se non lo trovi, salta: lo verifica il certificatore.' },
    { id: 'previousApe', kind: 'photo', label: 'APE precedente (se esiste)', allowDocuments: true, max: 4, guide: 'Utile ma non indispensabile.' },

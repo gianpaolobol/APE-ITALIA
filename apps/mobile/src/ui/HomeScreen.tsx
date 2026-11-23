@@ -82,7 +82,7 @@ function DraftCard({ d, onOpen, onDelete }: { d: Draft; onOpen: () => void; onDe
      <Text style={F.h3} numberOfLines={1}>{title}</Text>
      <Text style={F.small}>{[est ? `classe indicativa ${est.energyClass}` : null, prov, typeof d.answers.floorArea === 'number' ? `${d.answers.floorArea} m²` : null].filter(Boolean).join(' · ') || 'Da completare'}</Text>
     </View>
-    {d.status === 'inviata' ? <Pill text="Inviata" icon="paper-plane" /> : d.status === 'pronta' ? <Pill tone="warn" text="Pronta" /> : <Pill tone="muted" text={`${p.done}/${p.total}`} />}
+    {d.job?.status === 'consegnata' ? <Pill text="APE pronto" icon="ribbon-outline" /> : d.job?.status === 'accettata' ? <Pill text="Assegnata" icon="person-outline" /> : d.status === 'inviata' ? <Pill text="Inviata" icon="paper-plane" /> : d.status === 'pronta' ? <Pill tone="warn" text="Pronta" /> : <Pill tone="muted" text={`${p.done}/${p.total}`} />}
    </View>
    {d.status === 'bozza' ? <View style={{ marginTop: 12 }}><ProgressBar ratio={p.ratio} /></View> : null}
   </Pressable>

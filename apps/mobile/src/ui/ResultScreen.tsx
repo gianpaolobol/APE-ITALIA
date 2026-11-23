@@ -1,5 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Sharing from 'expo-sharing';
+import { fmtWhen } from '../job';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, F, R, S } from './theme';
@@ -53,6 +55,34 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
    </View>
    <ScrollView contentContainerStyle={{ padding: S.m, paddingBottom: 180 }}>
     {where ? <Text style={[F.small, { marginBottom: 6 }]}>{where}</Text> : null}
+    {draft.job && draft.job.status !== 'rifiutata' && draft.job.status !== 'nuova' ? (
+     <Card style={{ marginBottom: S.m, borderWidth: 1.5, borderColor: C.brand }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+       <IconCircle name="person-circle-outline" />
+       <View style={{ flex: 1, marginLeft: 12 }}>
+        <Text style={F.label}>Il tuo certificatore</Text>
+        <Text style={F.h3}>{draft.job.certifier.name}</Text>
+        <Text style={F.small}>Accreditato SACE n. {draft.job.certifier.sace}</Text>
+       </View>
+      </View>
+      {draft.job.call ? (
+       <View style={st.step}>
+        <Ionicons name="videocam-outline" size={20} color={C.brand} />
+        <Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Videochiamata di pre-sopralluogo · {fmtWhen(draft.job.call.at)}</Text>
+        <Pressable onPress={() => Linking.openURL(draft.job!.call!.url)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Partecipa</Text></Pressable>
+       </View>
+      ) : null}
+      {draft.job.visit ? <View style={st.step}><Ionicons name="calendar-outline" size={20} color={C.brand} /><Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Sopralluogo · {fmtWhen(draft.job.visit.at)}</Text></View> : null}
+      {draft.job.verbale ? <View style={st.step}><Ionicons name="checkmark-done-outline" size={20} color={C.accent} /><Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink }]}>Sopralluogo eseguito il {draft.job.verbale.date}</Text></View> : null}
+      {draft.job.ape ? (
+       <View style={[st.step, { borderBottomWidth: 0 }]}>
+        <ClassBadge value={draft.job.ape.energyClass as never} size={36} />
+        <View style={{ flex: 1, marginLeft: 10 }}><Text style={F.h3}>APE pronto · classe {draft.job.ape.energyClass}</Text><Text style={F.small}>Codice {draft.job.ape.code}</Text></View>
+        {draft.job.ape.pdf ? <Pressable onPress={() => Sharing.shareAsync(draft.job!.ape!.pdf!.uri).catch(() => undefined)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable> : null}
+       </View>
+      ) : null}
+     </Card>
+    ) : null}
     {est ? (
      <Card style={{ padding: S.l }}>
       <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -165,6 +195,7 @@ const st = StyleSheet.create({
  item: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
  bullet: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 7 },
  priceRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6 },
+ step: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
  bottom: { position: 'absolute', left: 0, right: 0, bottom: 0, paddingHorizontal: S.m, paddingTop: 10, backgroundColor: 'rgba(245,246,242,0.97)', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
  hint: { textAlign: 'center', color: C.muted, fontSize: 13, marginBottom: 8, fontWeight: '600' },
 });

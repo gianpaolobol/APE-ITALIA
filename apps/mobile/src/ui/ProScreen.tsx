@@ -14,7 +14,7 @@ const PROFESSIONS = [
 ];
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
 
-export function ProScreen({ state, onBack, onSaved }: { state: AppState; onBack: () => void; onSaved: (pro: NonNullable<AppState['pro']>) => void }) {
+export function ProScreen({ state, onBack, onSaved, onInbox }: { state: AppState; onBack: () => void; onSaved: (pro: NonNullable<AppState['pro']>) => void; onInbox: () => void }) {
  const insets = useSafeAreaInsets();
  const [r, setR] = useState<Partial<ProRegistration>>(state.pro?.data ?? { region: 'Emilia-Romagna', provinces: [], maxMonthlyJobs: 10 });
  const [errors, setErrors] = useState<FieldErrors>({});
@@ -30,6 +30,7 @@ export function ProScreen({ state, onBack, onSaved }: { state: AppState; onBack:
      <Text style={[F.title, { marginTop: S.m, textAlign: 'center' }]}>Candidatura in verifica</Text>
      <Text style={[F.body, { textAlign: 'center', marginTop: 6 }]}>Controlliamo il numero di accreditamento <Text style={{ fontWeight: '800', color: C.ink }}>{state.pro.data.saceNumber}</Text> sull’elenco pubblico dei certificatori dell’Emilia-Romagna. Ti avvisiamo via email a {state.pro.data.email}.</Text>
      <View style={{ marginTop: S.m }}><Pill tone={state.pro.status === 'inviata_al_server' ? 'brand' : 'warn'} text={state.pro.status === 'inviata_al_server' ? 'Ricevuta' : 'Salvata sul telefono (versione di prova)'} /></View>
+     <Button title="Apri le richieste in arrivo" icon="file-tray-full-outline" style={{ marginTop: S.l, alignSelf: 'stretch' }} onPress={onInbox} />
      {state.pro.status !== 'inviata_al_server' ? <Button title="Riprova l’invio" kind="secondary" icon="refresh" style={{ marginTop: S.m, alignSelf: 'stretch' }} busy={busy} onPress={() => send(state.pro!.data)} /> : null}
     </Card>
    </Shell>
