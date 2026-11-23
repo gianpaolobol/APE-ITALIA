@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Headers, Param, Post, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { AuthService } from './auth.service';
+import { canWrite } from './tenant-policy';
 import { IsNotEmpty, IsString, IsUUID, IsOptional, IsNumber, Min, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
@@ -29,6 +30,7 @@ export class CasesController {
  @Post('properties')
  async createProperty(@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
   const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
   const dto=validated(CreatePropertyDto,body);
   return this.db.$transaction(async tx=>{
    const item=await tx.property.create({data:{...dto,organizationId:s.organizationId}});
@@ -44,6 +46,7 @@ export class CasesController {
  @Post('cases')
  async createCase(@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
   const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
   const dto=validated(CreateCaseDto,body);
   return this.db.$transaction(async tx=>{
    const property=await tx.property.findFirst({where:{id:dto.propertyId,organizationId:s.organizationId}});
