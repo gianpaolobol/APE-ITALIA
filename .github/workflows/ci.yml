@@ -55,3 +55,8 @@ jobs:
       - run: npm run bundle:check -w @ape/mobile
       - run: npm run test -w @ape/web
       - run: npm run build -w @ape/web
+      - name: Web portal end-to-end in Chrome (fake OIDC + stub API)
+        run: npm run test -w @ape/web -- e2e
+        env:
+          RUN_WEB_E2E: '1'
+          CHROME_PATH: /usr/bin/google-chrome

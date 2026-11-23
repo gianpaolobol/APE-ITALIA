@@ -1,0 +1,151 @@
+/**
+ * Browser end-to-end test of the web portal (BFF): real Chrome, real `next start`, a fake OIDC provider
+ * that enforces PKCE S256 and signs ID tokens, and a stub API that checks the bearer token. HTTPS with a
+ * throwaway self-signed certificate. Synthetic data only. Requires `next build`; run with RUN_WEB_E2E=1.
+ */
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { createServer, type Server } from 'node:https';
+import type { AddressInfo } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { SignJWT, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
+import { chromium, type Browser } from 'playwright-core';
+
+const enabled = process.env.RUN_WEB_E2E === '1';
+const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
+
+describe.skipIf(!enabled)('web portal in a real browser', () => {
+ const dir = enabled ? mkdtempSync(join(tmpdir(), 'ape-web-e2e-')) : '';
+ const ASSIGNMENT = randomUUID(), CASE = randomUUID();
+ const ACCESS_TOKEN = 'synthetic-access-' + randomBytes(12).toString('hex');
+ const state = { accepted: false, tokenRequests: 0, pkceFailures: 0, apiAuthFailures: 0 };
+ let idp: Server, api: Server, next: ChildProcess, browser: Browser, key: CryptoKey, issuer = '', apiBase = '', web = '';
+ const codes = new Map<string, { challenge: string; nonce: string; redirectUri: string }>();
+
+ const readBody = (req: import('node:http').IncomingMessage) => new Promise<string>(r => { let b = ''; req.on('data', c => (b += c)); req.on('end', () => r(b)); });
+
+ beforeAll(async () => {
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(dir, 'k.pem'), '-out', join(dir, 'c.pem'), '-subj', '/CN=localhost', '-days', '1', '-addext', 'subjectAltName=DNS:localhost,IP:127.0.0.1'], { stdio: 'ignore' });
+  const tls = { key: readFileSync(join(dir, 'k.pem')), cert: readFileSync(join(dir, 'c.pem')) };
+  const pair = await generateKeyPair('RS256');
+  key = pair.privateKey;
+  const jwks = JSON.stringify({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: 'web-e2e', alg: 'RS256', use: 'sig' }] });
+
+  idp = createServer(tls, async (req, res) => {
+   const url = new URL(req.url!, issuer);
+   const send = (code: number, body: unknown, headers: Record<string, string> = {}) => { res.writeHead(code, { 'Content-Type': 'application/json', ...headers }); res.end(typeof body === 'string' ? body : JSON.stringify(body)); };
+   if (url.pathname === '/.well-known/openid-configuration') return send(200, { issuer, authorization_endpoint: issuer + 'authorize', token_endpoint: issuer + 'token', jwks_uri: issuer + 'jwks', code_challenge_methods_supported: ['S256'] });
+   if (url.pathname === '/jwks') return send(200, jwks);
+   if (url.pathname === '/authorize') {
+    const p = url.searchParams;
+    if (p.get('code_challenge_method') !== 'S256' || p.get('response_type') !== 'code') return send(400, { error: 'invalid_request' });
+    const code = randomBytes(16).toString('hex');
+    codes.set(code, { challenge: p.get('code_challenge')!, nonce: p.get('nonce')!, redirectUri: p.get('redirect_uri')! });
+    const back = new URL(p.get('redirect_uri')!);
+    back.searchParams.set('code', code); back.searchParams.set('state', p.get('state')!); back.searchParams.set('iss', issuer);
+    res.writeHead(302, { Location: back.toString() }); return res.end();
+   }
+   if (url.pathname === '/token' && req.method === 'POST') {
+    state.tokenRequests++;
+    const f = new URLSearchParams(await readBody(req));
+    const pending = codes.get(f.get('code') ?? '');
+    codes.delete(f.get('code') ?? '');
+    if (!pending || createHash('sha256').update(f.get('code_verifier') ?? '').digest('base64url') !== pending.challenge || f.get('redirect_uri') !== pending.redirectUri) { state.pkceFailures++; return send(400, { error: 'invalid_grant' }); }
+    const idToken = await new SignJWT({ nonce: pending.nonce }).setProtectedHeader({ alg: 'RS256', kid: 'web-e2e' }).setIssuer(issuer).setAudience('ape-web-e2e')
+     .setSubject('synthetic-certifier').setIssuedAt().setExpirationTime('5m').sign(key);
+    return send(200, { access_token: ACCESS_TOKEN, token_type: 'Bearer', expires_in: 600, id_token: idToken });
+   }
+   send(404, {});
+  });
+  await new Promise<void>(r => idp.listen(0, '127.0.0.1', () => r()));
+  issuer = `https://localhost:${(idp.address() as AddressInfo).port}/`;
+
+  api = createServer(tls, async (req, res) => {
+   const send = (code: number, body: unknown) => { res.writeHead(code, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(body)); };
+   if (req.headers.authorization !== 'Bearer ' + ACCESS_TOKEN) { state.apiAuthFailures++; return send(401, {}); }
+   const path = req.url!.split('?')[0];
+   const property = { city: 'Comune Test', region: 'Emilia-Romagna', ...(state.accepted ? { address: 'Via Sintetica 9', floorAreaM2: 80 } : {}) };
+   if (path === '/v1/certifier/assignments') return send(200, [{ id: ASSIGNMENT, status: state.accepted ? 'ACCEPTED' : 'OFFERED', offeredAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 86400_000).toISOString(), caseId: CASE, caseStatus: state.accepted ? 'ASSIGNED' : 'SUBMITTED', property }]);
+   if (path === `/v1/certifier/assignments/${ASSIGNMENT}/accept` && req.method === 'POST') { state.accepted = true; return send(201, { id: ASSIGNMENT, status: 'ACCEPTED', caseId: CASE }); }
+   if (path === `/v1/certifier/assignments/${ASSIGNMENT}/evidence`) return send(200, []);
+   if (path === `/v1/certifier/assignments/${ASSIGNMENT}/inspection`) return send(200, { inspection: null });
+   if (path === `/v1/certifier/assignments/${ASSIGNMENT}/extracted-fields`) return send(200, []);
+   if (path === '/v1/certifier/inspection-schema') return send(200, { fields: { 'windows.glazing': { label: 'Vetro serramenti', kind: 'enum', values: ['singolo', 'doppio'] } }, statuses: ['verified', 'to_verify', 'undeterminable'], sources: ['inspection'] });
+   send(404, {});
+  });
+  await new Promise<void>(r => api.listen(0, '127.0.0.1', () => r()));
+  apiBase = `https://localhost:${(api.address() as AddressInfo).port}`;
+
+  const port = 3200 + Math.floor(Math.random() * 500);
+  web = `http://localhost:${port}`;
+  next = spawn(process.execPath, [resolve(__dirname, '../../../node_modules/next/dist/bin/next'), 'start', '-p', String(port)], {
+   cwd: resolve(__dirname, '..'),
+   env: { ...process.env, NODE_EXTRA_CA_CERTS: join(dir, 'c.pem'), OIDC_ISSUER: issuer, WEB_OIDC_CLIENT_ID: 'ape-web-e2e', WEB_BASE_URL: web, API_BASE_URL: apiBase, WEB_SESSION_KEY: randomBytes(32).toString('base64'), NEXT_TELEMETRY_DISABLED: '1' },
+   stdio: ['ignore', 'inherit', 'inherit'],
+  });
+  for (let i = 0; i < 80; i++) { try { if ((await fetch(web + '/')).ok) break; } catch { /* starting */ } await new Promise(r => setTimeout(r, 250)); }
+  browser = await chromium.launch({ executablePath: CHROME, args: ['--no-sandbox'] });
+ }, 90_000);
+
+ afterAll(async () => {
+  await browser?.close();
+  next?.kill('SIGTERM');
+  idp?.close(); api?.close();
+ });
+
+ it('logs in through the system flow, keeps tokens out of the browser, accepts an offer and logs out', async () => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true }); // only the fake IdP uses the throwaway certificate
+  const page = await ctx.newPage();
+  await page.goto(web + '/');
+  await page.getByText('Accedi come certificatore').click();
+  await page.waitForURL(web + '/certifier');
+  await expect(page.getByText('Offerte (1)').isVisible()).resolves.toBe(true);
+  await expect(page.getByText('Comune Test (Emilia-Romagna)').isVisible()).resolves.toBe(true);
+  expect(await page.content()).not.toContain('Via Sintetica 9'); // address hidden before acceptance
+
+  // Tokens: one PKCE-verified exchange, session cookie HttpOnly, nothing readable by page scripts.
+  expect(state).toMatchObject({ tokenRequests: 1, pkceFailures: 0, apiAuthFailures: 0 });
+  const cookies = await ctx.cookies();
+  const session = cookies.find(c => c.name === '__Host-ape_session')!;
+  expect(session).toMatchObject({ httpOnly: true, secure: true, sameSite: 'Lax', path: '/' });
+  expect(cookies.find(c => c.name === '__Host-ape_login')).toBeUndefined(); // single-use login state removed
+  expect(await page.evaluate(() => document.cookie)).toBe('');
+  expect(await page.content()).not.toContain(ACCESS_TOKEN);
+  expect(Buffer.from(session.value, 'base64url').toString('latin1')).not.toContain(ACCESS_TOKEN);
+
+  await page.getByRole('button', { name: 'Accetta' }).click(); // Server Action
+  await page.waitForURL(web + `/certifier/${ASSIGNMENT}`);
+  await expect(page.getByText('Via Sintetica 9, Comune Test').isVisible()).resolves.toBe(true);
+  await expect(page.getByText('Sopralluogo').first().isVisible()).resolves.toBe(true);
+  expect(state.accepted).toBe(true);
+
+  await page.goto(web + '/certifier');
+  await page.getByRole('button', { name: 'Esci' }).click();
+  await page.waitForURL(web + '/');
+  expect((await ctx.cookies()).find(c => c.name === '__Host-ape_session')).toBeUndefined();
+  await page.goto(web + '/certifier');
+  await page.waitForURL(u => u.toString().startsWith(issuer) || u.toString().startsWith(web + '/certifier'));
+  await ctx.close();
+ }, 60_000);
+
+ it('rejects a forged callback (state mismatch) without creating a session', async () => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true });
+  const page = await ctx.newPage();
+  const before = state.tokenRequests;
+  await page.goto(web + '/auth/callback?code=forged&state=attacker');
+  await page.waitForURL(web + '/?login=failed');
+  expect((await ctx.cookies()).find(c => c.name === '__Host-ape_session')).toBeUndefined();
+  expect(state.tokenRequests).toBe(before);
+  await ctx.close();
+ });
+
+ it('serves security headers on pages', async () => {
+  const res = await fetch(web + '/');
+  expect(res.headers.get('x-frame-options')).toBe('DENY');
+  expect(res.headers.get('referrer-policy')).toBe('no-referrer');
+  expect(res.headers.get('x-powered-by')).toBeNull();
+ });
+});

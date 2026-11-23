@@ -36,3 +36,8 @@ Refresh token lato server, logout RP-initiated presso il provider, pagine per pr
 - `/org`: scelta dell'organizzazione (preferenza in cookie `__Host-ape_org`, sempre riconvalidata con `GET /v1/me`: non è un'autorizzazione), riepilogo per stato, elenco pratiche con immobile.
 - `/org/cases/[id]`: stato, sopralluogo (data, certificatore), elenco file caricati; nessun contenuto tecnico del verbale.
 - `/org/members` (owner/admin): ruoli e revoca/riattivazione con gli stessi vincoli dell'API (ultimo owner protetto, admin non modifica owner/admin), creazione inviti con **codice mostrato una sola volta** in un componente client (`useActionState`), elenco e revoca inviti. Nessun invio email.
+
+## Test end-to-end in browser (iterazione 17)
+`apps/web/e2e/portal.e2e.spec.ts`: Chrome reale (playwright-core, nessun download di browser), `next start` sulla build, provider OIDC fittizio in HTTPS che **verifica PKCE S256** e firma l'ID token, API fittizia che controlla il bearer. Verifica: login completo, un solo scambio di token, cookie di sessione `HttpOnly`/`Secure`/`SameSite=Lax`, `document.cookie` vuoto, token assente da HTML e cookie, indirizzo nascosto prima dell'accettazione, Server Action "Accetta", logout che rimuove la sessione, callback contraffatto rifiutato senza contattare il token endpoint, header di sicurezza.
+
+**Difetto trovato e corretto**: `cookies().delete()` non cancellava i cookie `__Host-` (il browser ignora il `Set-Cookie` senza `Secure` e `Path=/`), quindi lo stato di login restava riutilizzabile per 10 minuti e il logout non eliminava la sessione. Ora la cancellazione ripete gli attributi del cookie.

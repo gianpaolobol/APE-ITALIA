@@ -153,3 +153,6 @@ PR #21 (impilata su #20). Richieste di integrazione del certificatore con sospen
 
 ## 40. Diritti degli interessati e conservazione (Claude, 23/11/2026)
 PR #22 (impilata su #21). CLI operatore per esportare i dati collegati a un soggetto (art. 15/20) e per la purga delle evidenze scadute (simulazione predefinita; APE, verbale, consensi e audit conservati). Tempi di conservazione predefiniti da validare legalmente. Dettagli: `docs/PRIVACY_OPERATIONS.md`.
+
+## 41. Test in browser del portale e correzione logout (Claude, 23/11/2026)
+PR #23 (impilata su #22). E2E in Chrome reale del login BFF con provider OIDC fittizio che verifica PKCE; ha rivelato che i cookie `__Host-` non venivano cancellati (stato di login riutilizzabile, logout inefficace): corretto e coperto dal test, eseguito anche in CI.

@@ -106,3 +106,7 @@ CI Run #101 su `2580d32` (PR #21): **verde**; API 153 + E2E 3, mobile 84.
 Implementato: `exportSubjectData`, `purgeExpiredEvidence` (dry run predefinito), policy da ambiente, comandi CLI.
 Test locali: API typecheck OK, 106 + 54 saltati (1 unitario, 3 PostgreSQL nuovi).
 CI Run #103 su `a6dcd07` (PR #22): **verde**.
+
+## Iterazione 17 — PR #23 `test/web-browser-e2e` (base: `feat/gdpr-retention`)
+E2E del portale in Chrome reale. **Bug reale trovato**: cancellazione dei cookie `__Host-` inefficace (login state riutilizzabile, logout senza effetto) — corretto in `lib/session.ts`.
+Test locali: E2E browser 3/3 (prima della correzione 1 fallito, dopo 3/3); web unit 19.
