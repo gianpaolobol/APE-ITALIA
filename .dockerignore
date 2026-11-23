@@ -1,0 +1,12 @@
+**/node_modules
+**/.next
+**/dist
+**/.expo
+**/.expo-export-check
+**/coverage
+**/*.tsbuildinfo
+.git
+.github
+**/.env
+**/.env.*
+!**/.env.example

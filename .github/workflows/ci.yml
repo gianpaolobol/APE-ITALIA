@@ -60,3 +60,32 @@ jobs:
         env:
           RUN_WEB_E2E: '1'
           CHROME_PATH: /usr/bin/google-chrome
+  containers:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images and smoke-test the staging stack (synthetic secrets)
+        run: |
+          gen() { node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"; }
+          {
+            echo "POSTGRES_PASSWORD=ci_only_$(openssl rand -hex 8)"
+            echo "EVIDENCE_ENCRYPTION_KEY=$(gen)"
+            echo "WEB_SESSION_KEY=$(gen)"
+          } > deploy/.env
+          docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build
+          for i in $(seq 1 60); do curl -fs http://127.0.0.1:3001/health >/dev/null && break; sleep 2; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/health)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/v1/me)" = 401
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:3000/ >/dev/null && break; sleep 2; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/auth/login)" = 503
+          docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env ps
+          test "$(docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^migrate ' | cut -d' ' -f2)" = 0
+          docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env logs worker | grep -q '\[worker\] expire-offers ok'
+          docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec -T api id -u | grep -vq '^0$'
+      - name: Logs on failure
+        if: failure()
+        run: docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env logs --no-color | tail -200
+      - name: Tear down
+        if: always()
+        run: docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env down -v

@@ -165,3 +165,6 @@ PR #26 (impilata su #25). Il cliente scarica l'APE consegnato nella cache privat
 
 ## 44. Chiusura sessione notturna Claude (23/11/2026, ~05:00)
 21 iterazioni nelle PR #7–#27, tutte con CI verde, **non integrate** in `main` (merge non consentito alla sessione). Stato, blocchi umani e ordine di integrazione: `docs/CLAUDE_PROGRESS.md`. Restano esclusi: pagamenti, notifiche, integrazioni regionali, fornitore AI, test su dispositivi e provider OIDC reale.
+
+## 45. Integrazione in main e container per lo staging (Claude, 23/11/2026)
+Su autorizzazione del titolare, `main` è stato portato con fast-forward a `a3550e0` (PR #7 risultata integrata, #8–#27 chiuse con riferimento). Aggiunte immagini Docker per API/worker/migrazione e portale (Next standalone), compose di staging e job CI di smoke test. Dettagli: `docs/DEPLOYMENT.md`.

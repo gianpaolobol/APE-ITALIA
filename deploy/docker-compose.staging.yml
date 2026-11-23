@@ -1,0 +1,62 @@
+# Full stack for a pilot/staging host. Secrets come from deploy/.env (never committed; see .env.example).
+#   docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build
+# TLS termination (HTTPS) must be provided by a reverse proxy in front of api and web.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ape
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ape_italia
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U ape -d ape_italia"], interval: 5s, retries: 20 }
+    restart: unless-stopped
+  migrate:
+    build: { context: .., dockerfile: services/api/Dockerfile }
+    image: ape-italia-api
+    command: ["npx", "prisma", "migrate", "deploy"]
+    environment: &db { DATABASE_URL: "postgresql://ape:${POSTGRES_PASSWORD}@postgres:5432/ape_italia?schema=public" }
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+  api:
+    image: ape-italia-api
+    environment:
+      <<: *db
+      PORT: "3001"
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ape-italia-api}
+      OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
+      EVIDENCE_STORAGE_DIR: /var/lib/ape-italia/evidence
+      EVIDENCE_ENCRYPTION_KEY: ${EVIDENCE_ENCRYPTION_KEY:-}
+    volumes: [evidence:/var/lib/ape-italia/evidence]
+    ports: ["127.0.0.1:3001:3001"]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: unless-stopped
+  worker:
+    image: ape-italia-api
+    command: ["node", "dist/worker.js"]
+    environment:
+      <<: *db
+      EVIDENCE_STORAGE_DIR: /var/lib/ape-italia/evidence
+      EVIDENCE_ENCRYPTION_KEY: ${EVIDENCE_ENCRYPTION_KEY:-}
+      RETENTION_APPLY: ${RETENTION_APPLY:-0}
+    volumes: [evidence:/var/lib/ape-italia/evidence]
+    depends_on: { migrate: { condition: service_completed_successfully } }
+    restart: unless-stopped
+  web:
+    build: { context: .., dockerfile: apps/web/Dockerfile }
+    image: ape-italia-web
+    environment:
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-ape-italia-api}
+      WEB_OIDC_CLIENT_ID: ${WEB_OIDC_CLIENT_ID:-}
+      WEB_OIDC_CLIENT_SECRET: ${WEB_OIDC_CLIENT_SECRET:-}
+      WEB_BASE_URL: ${WEB_BASE_URL:-}
+      API_BASE_URL: ${API_BASE_URL:-}
+      WEB_SESSION_KEY: ${WEB_SESSION_KEY:-}
+    ports: ["127.0.0.1:3000:3000"]
+    restart: unless-stopped
+volumes:
+  pgdata:
+  evidence:

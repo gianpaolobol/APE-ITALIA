@@ -8,6 +8,9 @@ const securityHeaders = [
 ];
 export default {
  poweredByHeader: false,
+ // Self-contained server bundle for the container image (apps/web/Dockerfile).
+ output: 'standalone',
+ outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
  // Certificate PDFs (max 15 MB at the API) are forwarded through a Server Action.
  experimental: { serverActions: { bodySizeLimit: '16mb' } },
  async headers() { return [{ source: '/:path*', headers: securityHeaders }]; },
