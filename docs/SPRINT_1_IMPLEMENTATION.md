@@ -32,3 +32,6 @@ Aggiunta policy di isolamento tenant e autorizzazione scrittura per ruoli owner/
 
 ## Iterazione migrazioni e CI — 23/11/2026
 Aggiunta migrazione SQL iniziale `20261123010000_init/migration.sql` (redatta manualmente da schema Prisma; **da confrontare con Prisma migrate diff**). La pipeline GitHub Actions avvia PostgreSQL 16, valida schema Prisma, genera client, applica migrazione, esegue typecheck API, test unitari e build web. Alla verifica del commit `3acda4c` non risultavano workflow PR restituiti dal connettore: **nessun test di CI attestato**. Non eseguire merge prima di confermare tutti i gate, verificare compatibilità Prisma e correggere gli eventuali errori.
+
+## Iterazione successiva — 23/11/2026
+Corretto il controllo di nullabilità della membership nell'autenticazione e aggiunti quattro test unitari del controller per filtro tenant, permessi viewer e rifiuto di immobili non appartenenti all'organizzazione. Il totale dei casi unitari definiti sale a dieci. Sono test con mock, **non** prove end-to-end di isolamento su PostgreSQL. Il controllo workflow sul commit `670d5b8` non ha restituito esecuzioni: esito CI ancora non verificato. Rimangono da fare migrazione effettiva, provider OIDC, test DB reale, verifica build e controlli su dati reali.
