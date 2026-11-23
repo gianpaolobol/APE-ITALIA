@@ -15,7 +15,7 @@ const RULES = [
  ['Stripe live key', /\b[sr]k_live_[0-9A-Za-z]{20,}\b/],
  ['Anthropic/OpenAI key', /\bsk-(?:ant-)?[A-Za-z0-9_-]{32,}\b/],
  ['signed JWT', /\beyJ[A-Za-z0-9_-]{10,}\.eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{20,}\b/],
- ['credential in URL', /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:(?!ci_only_password@|local_dev_only@)[^\s@/]{6,}@/i],
+ ['credential in URL', /\b[a-z][a-z0-9+.-]*:\/\/[^\s:/@]+:(?!ci_only_password@|local_dev_only@|\$\{[A-Z0-9_]+\}@|\$[A-Z0-9_]+@)[^\s@/]{6,}@/i],
 ];
 const ALLOWED_FILES = [/^package-lock\.json$/];
 const FORBIDDEN_PATHS = [/(^|\/)\.env(?!\.example$)(\.|$)/, /\.(pem|p12|pfx|key)$/i, /(^|\/)credentials\.json$/];
