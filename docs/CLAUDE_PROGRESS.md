@@ -1,46 +1,35 @@
 # Registro di avanzamento Claude — APE Italia
 
-## Riepilogo consolidato (aggiornato alle 05:00 del 23/11/2026)
-**Stato**: 21 iterazioni, PR #7–#27 aperte e **impilate** (ognuna ha come base la precedente). Tutte con CI verde sull'ultimo commit verificato. **Nessuna è stata integrata in `main`**: il merge è stato negato dai permessi della sessione Claude.
+## Riepilogo consolidato (aggiornato al 23/11/2026, ~11:50)
+**Stato**: tutto il lavoro è in `main` (ultimo commit verificato `140b4ff`). Nella notte le PR #7–#27 erano impilate e il merge era negato alla sessione; alle 10:20 il titolare ha autorizzato il push diretto su `main`: fast-forward a `a3550e0` (PR #7 *merged*, #8–#27 chiuse con riferimento). Da allora: branch → PR → CI verde (4 job) → fast-forward di `main` (PR #28–#35 risultano *merged*).
 
-### Come integrare
-1. Rivedere e unire **#7** in `main` (squash o merge).
-2. Per ciascuna successiva (#8, #9, … #27) cambiare la base in `main` (GitHub lo fa da solo se si elimina il branch della PR appena unita), attendere la CI e unire.
-In alternativa si può rivedere il diff complessivo `main...docs/readme-status` e unire le PR in sequenza senza review intermedie.
-**Attenzione**: #12 (portale) ha un difetto sul logout corretto in #23: integrare il portale solo insieme a #23.
+### CI (ogni commit su `main`)
+| Job | Contenuto |
+|---|---|
+| `verify` | `npm ci`, scansione segreti, audit dipendenze, Prisma + controllo deriva migrazioni, typecheck/build, ~180 test API (unitari, HTTP, PostgreSQL), E2E API compilata con JWKS HTTPS, test e bundle mobile, test web, E2E portale in Chrome |
+| `containers` | build immagini, stack di staging con compose, smoke test, backup → distruzione → ripristino |
+| `keycloak-e2e` | login reale su Keycloak 26 in HTTPS → portale → API → PostgreSQL in Chrome |
+| `clamav` | ClamAV reale: EICAR rilevato, file pulito accettato |
 
-### Funzionalità (codice + test; nulla è in produzione)
-| Area | Stato | Prove |
-|---|---|---|
-| Login OIDC + PKCE mobile | completo nel codice | 72→84 test mobile, bundle Hermes; **nessun provider/dispositivo reale** |
-| Login web (BFF) | completo | 19 unit + 3 E2E in Chrome (CI) |
-| JWT API, tenant, ruoli, provisioning, inviti | completo | unit + PostgreSQL + E2E |
-| Upload evidenze (cifratura, EXIF, consenso) | completo; antivirus non configurato | HTTP multer + PostgreSQL + E2E |
-| Matching certificatori, offerte, rinuncia, riassegnazione | completo | PostgreSQL + E2E |
-| Sopralluogo e verbale strutturato | completo | PostgreSQL + E2E |
-| Estrazione AI con revisione | infrastruttura; **fornitore disattivato** | PostgreSQL (test double) |
-| Esportazione per il calcolo | formato neutro JSON/CSV | unit + E2E |
-| Caricamento/consegna APE | completo (nessuna integrazione regionale) | E2E |
-| Integrazioni, annullamento | completo | PostgreSQL |
-| Portale certificatori e organizzazioni | completo | build + 4 E2E in Chrome (CI) |
-| App: richiesta, evidenze, pratiche, download APE | completo nel codice | 87 test + bundle; **non provata su dispositivo** |
-| Privacy: export soggetto, purga; worker periodico con lock | CLI + worker | PostgreSQL |
-| Hardening (rate limit, helmet, npm ci, secret scan, audit) | completo | CI |
-| Pagamenti, notifiche, preventivi | **non iniziati** (richiedono contratti/compliance e autorizzazione a invii esterni) | — |
+### Funzionalità
+| Area | Stato |
+|---|---|
+| Login OIDC + PKCE (app, portale BFF, API) | completo; **verificato con provider reale (Keycloak)** |
+| Tenant, ruoli, provisioning, inviti, CRUD bozze | completo |
+| Evidenze: cifratura, EXIF, consenso, **antivirus ClamAV fail-closed** | completo |
+| Certificatori: matching, offerte, sopralluogo, verbale, esportazione, APE, integrazioni, rinuncia | completo |
+| AI con revisione | infrastruttura; fornitore disattivato |
+| Portale web: certificatori e organizzazioni (anche creazione/invio pratiche) | completo, E2E in browser |
+| App: richiesta, evidenze, pratiche, download APE; config build EAS | completo nel codice; **non provata su dispositivo** |
+| Privacy, worker, rate limit condiviso, backup/ripristino, container | completo |
+| Pagamenti, notifiche, integrazioni regionali | non iniziati (richiedono contratti/autorizzazioni) |
 
-### Blocchi che richiedono decisioni o azioni umane
-1. Merge delle PR (permesso negato alla sessione).
-2. Provider OIDC: scelta, tenant, client mobile e web, redirect URI, MFA per certificatori.
-3. Ambiente di deploy: database gestito, storage privato, chiavi in secret manager, dominio HTTPS.
-4. Antivirus per gli upload; fornitore AI (con DPA/DPIA) se desiderato.
-5. Testi legali: informativa (oggi in bozza), tempi di conservazione, contratti con certificatori.
-6. Software di calcolo conforme da integrare; eventuale accesso a portali regionali.
-7. Test su iPhone/Android reali (build EAS o Xcode/Android Studio).
-
-### Prossime azioni suggerite
-Creazione pratiche dal web per professionisti; notifiche (dopo autorizzazione); preventivi e pagamenti (dopo contratti e compliance); aggiornamenti major (Expo 58, Next 16, Prisma 7) in PR dedicate; build EAS e prove su dispositivi; ambiente di staging.
-
-Sessione avviata: 23/11/2026, ~02:55 (Europe/Rome). Ambiente: container cloud Claude con accesso push alla repo `gianpaolobol/APE-ITALIA`. La sessione **non è garantita persistente**: il lavoro procede finché resta attiva; ogni iterazione è salvata su GitHub.
+### Bloccanti che richiedono il titolare
+1. Provider OIDC di produzione (Keycloak self-hosted o servizio gestito) e **MFA** per certificatori/amministratori.
+2. Account Expo/Apple e prove su iPhone/Android (`docs/DEVICE_BUILDS.md`).
+3. Hosting di staging, dominio HTTPS, secret manager, backup fuori sede (`docs/DEPLOYMENT.md`).
+4. Testi legali (informativa, conservazione), DPA/DPIA; eventuale fornitore AI.
+5. Software di calcolo conforme; branding (icona attuale provvisoria).
 
 ## Limiti dell'ambiente (valgono per tutte le iterazioni)
 - `binaries.prisma.sh` è bloccato dal proxy: il motore Prisma non è scaricabile qui. Localmente il client è generato con `prisma generate --no-engine` (solo tipi): typecheck e test unitari sì, **test PostgreSQL no** (girano solo in GitHub Actions).
@@ -181,3 +170,4 @@ Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distrib
 - Iterazione 27 (`test/keycloak-e2e`): E2E con Keycloak reale in CI (Run #130 verde); corretto il realm (scope predefiniti) grazie al test.
 - Iterazione 28 (`feat/clamav`): antivirus ClamAV fail-closed, rescan nel worker, job CI `clamav` con EICAR.
 - Iterazione 29 (`feat/shared-rate-limit`): rate limit condiviso su PostgreSQL; SQL verificato anche via psql locale.
+- Iterazioni 22–29 integrate in `main` (PR #28–#35): container, creazione pratiche web, backup/ripristino, CRUD + indice API, build dispositivi, Keycloak E2E, ClamAV, rate limit condiviso.
