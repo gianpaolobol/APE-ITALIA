@@ -93,3 +93,6 @@ Il file `docs/MASTER_PLAN.md` è la fonte primaria. Ogni PR deve riportare: obie
 
 ## 20. Avanzamento 23/11/2026 — Sprint 1
 Branch di lavoro `feat/sprint-1-persistence`: schema Prisma, Docker PostgreSQL locale, servizio database, endpoint API volutamente bloccati (403) in attesa di autenticazione. Nessun CRUD funzionante o migrazione verificata. Dettagli: `docs/SPRINT_1_IMPLEMENTATION.md`. Il rilascio richiede test reali e controllo isolamento tenant.
+
+## 21. Avanzamento Sprint 2 — 23/11/2026
+La PR #4 dello Sprint 1 è stata integrata in main (commit `aa0d6b2`) dopo CI verde Run #56. Resta aperta la issue #5 per autenticazione reale e hardening prima della produzione. Il branch `feat/sprint-2-mobile-api` introduce un client API TypeScript per immobili/pratiche, controlli HTTPS e gestione errori, oltre a validazione iniziale del workflow. **Non è ancora collegato alla UI Expo** e non esiste login OIDC operativo. Stato dettagliato: `docs/SPRINT_2_IMPLEMENTATION.md`.
