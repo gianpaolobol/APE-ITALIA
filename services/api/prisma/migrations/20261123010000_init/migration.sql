@@ -1,0 +1,20 @@
+-- Initial schema for Sprint 1. Generated manually from prisma/schema.prisma;
+-- verify with prisma migrate diff before production use.
+CREATE TYPE "CaseStatus" AS ENUM ('DRAFT','SUBMITTED','AWAITING_EVIDENCE','ASSIGNED','INSPECTION_SCHEDULED','INSPECTION_DONE','UNDER_REVIEW','DEPOSITED','DELIVERED','CANCELLED');
+CREATE TABLE "Organization" ("id" TEXT NOT NULL,"name" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Organization_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "Property" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"address" TEXT NOT NULL,"city" TEXT NOT NULL,"region" TEXT NOT NULL,"floorAreaM2" DOUBLE PRECISION,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Property_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "ApeCase" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"propertyId" TEXT NOT NULL,"status" "CaseStatus" NOT NULL DEFAULT 'DRAFT',"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,"updatedAt" TIMESTAMP(3) NOT NULL,CONSTRAINT "ApeCase_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "Evidence" ("id" TEXT NOT NULL,"caseId" TEXT NOT NULL,"kind" TEXT NOT NULL,"storageKey" TEXT NOT NULL,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Evidence_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "AuditEvent" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"actorId" TEXT NOT NULL,"action" TEXT NOT NULL,"resourceId" TEXT NOT NULL,"occurredAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "AuditEvent_pkey" PRIMARY KEY ("id"));
+CREATE TABLE "Membership" ("id" TEXT NOT NULL,"organizationId" TEXT NOT NULL,"userSubject" TEXT NOT NULL,"role" TEXT NOT NULL DEFAULT 'member',"active" BOOLEAN NOT NULL DEFAULT true,"createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,CONSTRAINT "Membership_pkey" PRIMARY KEY ("id"));
+CREATE INDEX "Property_organizationId_idx" ON "Property"("organizationId");
+CREATE INDEX "ApeCase_organizationId_status_idx" ON "ApeCase"("organizationId","status");
+CREATE INDEX "Evidence_caseId_idx" ON "Evidence"("caseId");
+CREATE INDEX "AuditEvent_organizationId_occurredAt_idx" ON "AuditEvent"("organizationId","occurredAt");
+CREATE UNIQUE INDEX "Membership_organizationId_userSubject_key" ON "Membership"("organizationId","userSubject");
+CREATE INDEX "Membership_userSubject_idx" ON "Membership"("userSubject");
+ALTER TABLE "Property" ADD CONSTRAINT "Property_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ApeCase" ADD CONSTRAINT "ApeCase_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "ApeCase" ADD CONSTRAINT "ApeCase_propertyId_fkey" FOREIGN KEY ("propertyId") REFERENCES "Property"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Evidence" ADD CONSTRAINT "Evidence_caseId_fkey" FOREIGN KEY ("caseId") REFERENCES "ApeCase"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
+ALTER TABLE "Membership" ADD CONSTRAINT "Membership_organizationId_fkey" FOREIGN KEY ("organizationId") REFERENCES "Organization"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
