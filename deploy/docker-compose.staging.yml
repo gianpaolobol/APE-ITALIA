@@ -11,6 +11,10 @@ services:
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U ape -d ape_italia"], interval: 5s, retries: 20 }
     restart: unless-stopped
+  clamav:
+    image: clamav/clamav:stable
+    healthcheck: { test: ["CMD", "clamdcheck.sh"], interval: 15s, retries: 40, start_period: 120s }
+    restart: unless-stopped
   migrate:
     build: { context: .., dockerfile: services/api/Dockerfile }
     image: ape-italia-api
@@ -29,6 +33,7 @@ services:
       OIDC_JWKS_URL: ${OIDC_JWKS_URL:-}
       EVIDENCE_STORAGE_DIR: /var/lib/ape-italia/evidence
       EVIDENCE_ENCRYPTION_KEY: ${EVIDENCE_ENCRYPTION_KEY:-}
+      CLAMAV_HOST: clamav
     volumes: [evidence:/var/lib/ape-italia/evidence]
     ports: ["127.0.0.1:3001:3001"]
     depends_on: { migrate: { condition: service_completed_successfully } }
@@ -41,6 +46,7 @@ services:
       EVIDENCE_STORAGE_DIR: /var/lib/ape-italia/evidence
       EVIDENCE_ENCRYPTION_KEY: ${EVIDENCE_ENCRYPTION_KEY:-}
       RETENTION_APPLY: ${RETENTION_APPLY:-0}
+      CLAMAV_HOST: clamav
     volumes: [evidence:/var/lib/ape-italia/evidence]
     depends_on: { migrate: { condition: service_completed_successfully } }
     restart: unless-stopped

@@ -19,7 +19,7 @@ Questa è una specifica, non una dichiarazione di controlli già implementati.
 | Isolamento tenant e RBAC owner/admin/member/viewer | implementato | integrazione PostgreSQL in CI |
 | Provisioning senza endpoint pubblici, inviti monouso hashati | implementato | `docs/PROVISIONING.md` |
 | Upload: tipo da contenuto, 15 MB, rimozione EXIF JPEG, cifratura AES-256-GCM | implementato | `docs/EVIDENCE_UPLOAD.md` |
-| Scansione malware | **porta pronta, scanner non configurato**; download bloccati se non scansionati | |
+| Scansione malware | ClamAV (`clamd`) fail-closed su upload, ri-scansione periodica, quarantena auditata | job CI `clamav` (EICAR), test protocollo |
 | Audit log di creazioni, modifiche membership, letture evidenze, incarichi | implementato | test PostgreSQL |
 | Rate limiting | implementato in memoria, per rotta e IP (120/min; accettazione inviti 10/min; upload 30/min) — **serve store condiviso con più istanze** | `rate-limit.http.spec.ts` |
 | Header HTTP (helmet: CSP `default-src 'none'`, nosniff, no-referrer; niente `X-Powered-By`; CORS disattivato) | implementato | `app.http.spec.ts` |

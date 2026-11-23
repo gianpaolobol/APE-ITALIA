@@ -183,3 +183,6 @@ Dettaglio di immobili e pratiche, modifica dei dati dichiarati finché nessuna p
 
 ## 50. Verifica con provider OIDC reale (Claude, 23/11/2026)
 Realm Keycloak di riferimento versionato (`deploy/keycloak/`) e job CI che esegue login reale in Chrome, BFF, API compilata con JWKS del provider e PostgreSQL. Decisione sul provider di produzione e MFA restano al titolare. Dettagli: `docs/OIDC_KEYCLOAK.md`.
+
+## 51. Antivirus ClamAV (Claude, 23/11/2026)
+Adattatore `clamd` INSTREAM con comportamento fail-closed sugli upload, ri-scansione periodica dei file pendenti nel worker con quarantena auditata, servizio nel compose di staging; verificato in CI contro ClamAV reale con il file di prova EICAR. Toglie uno dei bloccanti della issue #5.

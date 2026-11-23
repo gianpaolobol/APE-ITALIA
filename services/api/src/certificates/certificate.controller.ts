@@ -50,7 +50,9 @@ export class CertificateController {
   }
   if (!file?.buffer?.length) throw new BadRequestException('PDF file required');
   if (sniffMimeType(file.buffer) !== 'application/pdf') throw new HttpException('The certificate must be a PDF', HttpStatus.UNSUPPORTED_MEDIA_TYPE);
-  const scanStatus = await this.scanner.scan(file.buffer);
+  let scanStatus: Awaited<ReturnType<MalwareScanner['scan']>>;
+  try { scanStatus = await this.scanner.scan(file.buffer); }
+  catch { throw new ServiceUnavailableException('Malware scanner unavailable: upload refused'); }
   if (scanStatus === 'infected') throw new UnprocessableEntityException('File rejected by malware scan');
   const apeCase = await this.db.apeCase.findUniqueOrThrow({ where: { id: a.caseId } });
   if (apeCase.status !== 'INSPECTION_DONE') throw new ConflictException('The inspection report must be submitted first');

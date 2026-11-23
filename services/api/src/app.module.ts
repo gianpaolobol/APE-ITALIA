@@ -14,6 +14,7 @@ import { CertificateController } from './certificates/certificate.controller';
 import { LifecycleController } from './lifecycle/lifecycle.controller';
 import { EXTRACTION_PROVIDER } from './extraction/provider';
 import { notConfiguredScanner } from './evidence/file-policy';
+import { scannerFromEnv } from './evidence/clamav';
 
 @Controller()
 class HealthController { @Get('health') health() { return { status: 'ok', service: 'ape-italia-api', mode: 'development' }; } }
@@ -25,7 +26,7 @@ class HealthController { @Get('health') health() { return { status: 'ok', servic
   PrismaService,
   AuthService,
   { provide: EVIDENCE_STORAGE, useFactory: () => storageFromEnv() },
-  { provide: MALWARE_SCANNER, useValue: notConfiguredScanner },
+  { provide: MALWARE_SCANNER, useFactory: () => scannerFromEnv() ?? notConfiguredScanner },
   // No AI provider until a DPA and explicit authorization exist: extraction endpoints answer 503.
   { provide: EXTRACTION_PROVIDER, useValue: null },
   { provide: APP_GUARD, useClass: ThrottlerGuard },

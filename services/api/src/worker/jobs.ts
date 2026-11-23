@@ -2,9 +2,11 @@ import type { PrismaClient } from '@prisma/client';
 import { expireStaleOffers } from '../certifiers/assignment.service';
 import { purgeExpiredEvidence, retentionPolicyFromEnv } from '../privacy/privacy';
 import type { ObjectStorage } from '../evidence/storage';
+import type { MalwareScanner } from '../evidence/file-policy';
+import { rescanPending } from '../evidence/rescan';
 
 /** Fixed advisory-lock keys: one runner per job across all worker instances. */
-export const LOCKS = { expireOffers: 72_001, retention: 72_002 } as const;
+export const LOCKS = { expireOffers: 72_001, retention: 72_002, rescan: 72_003 } as const;
 type Tx = Parameters<Parameters<PrismaClient['$transaction']>[0]>[0];
 
 /**
@@ -27,6 +29,10 @@ export async function runExpireOffers(db: PrismaClient, now = new Date()) {
 export async function runRetention(db: PrismaClient, storage: ObjectStorage | null, env = process.env) {
  const apply = env.RETENTION_APPLY === '1';
  return withLock(db, LOCKS.retention, async () => purgeExpiredEvidence(db, storage, retentionPolicyFromEnv(env), { apply }));
+}
+
+export async function runRescan(db: PrismaClient, storage: ObjectStorage, scanner: MalwareScanner) {
+ return withLock(db, LOCKS.rescan, () => rescanPending(db, storage, scanner));
 }
 
 export type Schedule = { name: string; everyMs: number; run: () => Promise<unknown> };
@@ -53,6 +59,7 @@ function summary(r: unknown) {
   const x = r as { ran: boolean; result?: unknown };
   if (!x.ran) return { skipped: 'locked by another instance' };
   if (typeof x.result === 'number') return { count: x.result };
+  if (x.result && typeof x.result === 'object' && 'clean' in x.result) return x.result;
   if (x.result && typeof x.result === 'object' && 'cases' in x.result) {
    const p = x.result as { applied: boolean; cases: unknown[] };
    return { applied: p.applied, cases: p.cases.length };

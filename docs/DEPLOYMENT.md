@@ -27,3 +27,6 @@ deploy/restore.sh /percorso/backup STAMP --yes   # verifica gli hash, ferma api/
 - Il ripristino è distruttivo e richiede `--yes`.
 - **Provato in CI** a ogni esecuzione: dati sintetici → backup → `down -v` (volumi distrutti) → stack vuoto → ripristino senza `--yes` rifiutato → ripristino → organizzazione, eventi di audit e file presenti, API operativa.
 - Da definire: frequenza (es. giornaliera), conservazione dei backup, prova periodica di ripristino su un host separato, RPO/RTO.
+
+## Antivirus
+Il compose include `clamav/clamav:stable` (scarica le firme all'avvio: alcuni minuti). API e worker usano `CLAMAV_HOST=clamav`. Se ClamAV non risponde, gli upload vengono rifiutati (503) invece di salvare file non controllati.

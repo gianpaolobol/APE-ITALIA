@@ -19,7 +19,7 @@
 7. Tipo determinato dal **contenuto** (JPEG, PNG, HEIC, PDF): Content-Type e nome file ignorati (415). PDF solo per planimetrie e documenti.
 8. JPEG: rimozione segmenti APP1 (EXIF/XMP, inclusa posizione GPS) e APP13 (IPTC); struttura non valida ⇒ 422. *PNG/HEIC/PDF non vengono ancora ripuliti dai metadati.*
 9. SHA-256 del contenuto ripulito; duplicato nella stessa pratica ⇒ 409.
-10. Scansione malware tramite porta `MalwareScanner`: **nessuno scanner è ancora configurato** (stato `unscanned`); `infected` ⇒ 422.
+10. Scansione malware: con `CLAMAV_HOST` impostato l'API interroga ClamAV (`clamd`, protocollo INSTREAM); `infected` ⇒ 422; scanner configurato ma irraggiungibile o risposta anomala ⇒ **503 e nessun salvataggio** (fail closed). Senza `CLAMAV_HOST` il file è salvato come `unscanned` e il worker lo scansiona appena lo scanner è disponibile (`rescan`, ogni 5 minuti): i file infetti diventano `infected` (download 410) con evento `evidence.quarantine`.
 11. Cifratura AES-256-GCM con IV casuale e chiave di archiviazione come AAD; chiave dell'oggetto generata dal server (`org/<org>/case/<case>/<uuid>`); scrittura atomica con permessi 0600; riga DB + audit in transazione, oggetto eliminato se la transazione fallisce.
 
 ## Download
@@ -27,7 +27,6 @@ Solo nella stessa organizzazione (404 altrimenti); `infected` ⇒ 410; `unscanne
 
 ## Da completare prima della produzione
 - Testo dell'informativa (versione `2026-11-23-draft`) da redigere/validare con consulente privacy; il codice gestisce solo versioni e prova del consenso.
-- Scanner antivirus (es. ClamAV in un worker isolato) e quarantena.
 - Storage gestito (bucket privato con cifratura lato server e chiavi in KMS); l'implementazione su disco serve a sviluppo/self-hosting.
 - Rotazione della chiave master, retention e cancellazione su richiesta dell'interessato.
 - Ripulitura metadati per PNG/HEIC/PDF; limiti di frequenza.

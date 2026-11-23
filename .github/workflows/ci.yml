@@ -160,3 +160,23 @@ jobs:
       - name: Keycloak logs on failure
         if: failure()
         run: docker logs kc 2>&1 | tail -80
+  clamav:
+    runs-on: ubuntu-latest
+    services:
+      clamav:
+        image: clamav/clamav:stable
+        ports:
+          - 3310:3310
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --no-audit --no-fund
+      - name: Wait for clamd (signature download can take a few minutes)
+        run: for i in $(seq 1 120); do (printf 'zPING\0'; sleep 1) | nc -q 2 127.0.0.1 3310 2>/dev/null | grep -q PONG && exit 0; sleep 3; done; exit 1
+      - run: npm run test -w @ape/api -- clamav-live
+        env:
+          RUN_CLAMAV: '1'
+          CLAMAV_HOST: 127.0.0.1
+

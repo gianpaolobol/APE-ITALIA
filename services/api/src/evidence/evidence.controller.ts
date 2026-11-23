@@ -84,7 +84,9 @@ export class EvidenceController {
   }
   const sha256 = createHash('sha256').update(content).digest('hex');
   if (await this.db.evidence.findUnique({ where: { caseId_sha256: { caseId, sha256 } } })) throw new ConflictException('Duplicate file for this case');
-  const scanStatus = await this.scanner.scan(content);
+  let scanStatus: Awaited<ReturnType<MalwareScanner['scan']>>;
+  try { scanStatus = await this.scanner.scan(content); }
+  catch { throw new ServiceUnavailableException('Malware scanner unavailable: upload refused'); }
   if (scanStatus === 'infected') throw new UnprocessableEntityException('File rejected by malware scan');
   const id = randomUUID();
   const storageKey = evidenceStorageKey(s.organizationId, caseId, id);
