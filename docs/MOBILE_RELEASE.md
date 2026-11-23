@@ -1,6 +1,15 @@
 # Distribuzione di prova: TestFlight, Firebase App Distribution e Google Play con GitHub Actions
 
 ## Android con Firebase App Distribution (scelta attuale per le prove)
+
+### Configurazione dal telefono, senza chiavi (consigliata)
+Workflow **Firebase bootstrap** (`.github/workflows/firebase-bootstrap.yml`), una sola volta:
+1. Viene avviato (da Claude o da Actions → Run workflow) e apre una issue con un link di accesso Google.
+2. Il titolare apre il link dall'iPhone, accede e copia il codice mostrato da Google; lo consegna a Claude in chat (Claude lo pubblica nella issue **cifrato** con la chiave pubblica effimera del runner) oppure lo scrive lui stesso nella issue come `CODE: <codice>`. L'accesso usa PKCE: il codice è inutile senza il segreto che resta nel runner. Sono accettati solo commenti del proprietario del repository.
+3. Il runner esegue `deploy/firebase/bootstrap.sh`: progetto Google Cloud `ape-italia-*` (riusato se esiste), Firebase, API necessarie, app Android `it.apeitalia.app`, gruppo tester `interni` con l'account del titolare, account di servizio con il solo ruolo *Firebase App Distribution Admin* e **Workload Identity Federation** che accetta solo token OIDC di questo repository. Nessuna chiave viene creata o salvata.
+4. Le credenziali temporanee vengono revocate e cancellate; gli identificativi (non segreti) sono pubblicati nella issue e salvati in `deploy/firebase/config.json`, letto da "Mobile release".
+
+### Alternativa con chiave di account di servizio
 Il workflow compila un APK di rilascio e, se trova il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, **registra da solo l'app Android** (`it.apeitalia.app`) nel progetto Firebase della chiave (solo la prima volta) e la **distribuisce ai tester**. Nessun caricamento manuale.
 
 Passi una tantum del titolare (fattibili anche da browser del telefono, in modalità desktop):

@@ -1,0 +1,89 @@
+name: Firebase bootstrap (one-time, interactive)
+
+# One-time setup driven from a phone. The runner starts a temporary Google sign-in (gcloud, PKCE S256),
+# publishes the sign-in link and an ephemeral RSA public key in an issue, and waits for the owner's
+# authorization code, posted encrypted (ENC:) or plain (CODE:) by the repository owner only.
+# It then runs deploy/firebase/bootstrap.sh (Workload Identity Federation: no keys are created) and
+# revokes the temporary credentials. See docs/MOBILE_RELEASE.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: firebase-bootstrap
+  cancel-in-progress: true
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      OWNER: ${{ github.repository_owner }}
+      CLOUDSDK_CONFIG: ${{ runner.temp }}/gcloud
+    steps:
+      - uses: actions/checkout@v4
+      - name: Temporary Google sign-in via the owner's phone
+        run: |
+          set -euo pipefail
+          mkdir -p "$CLOUDSDK_CONFIG"
+          openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:3072 -out "$RUNNER_TEMP/k.pem" 2>/dev/null
+          chmod 600 "$RUNNER_TEMP/k.pem"
+          PUB=$(openssl pkey -in "$RUNNER_TEMP/k.pem" -pubout)
+          mkfifo "$RUNNER_TEMP/in"
+          gcloud auth login --no-launch-browser < "$RUNNER_TEMP/in" > "$RUNNER_TEMP/out.log" 2>&1 &
+          GPID=$!
+          exec 3> "$RUNNER_TEMP/in"
+          URL=""
+          for i in $(seq 1 60); do
+            URL=$(grep -o 'https://accounts.google.com/o/oauth2/auth[^[:space:]]*' "$RUNNER_TEMP/out.log" | head -1 || true)
+            [ -n "$URL" ] && break; sleep 1
+          done
+          [ -n "$URL" ] || { cat "$RUNNER_TEMP/out.log"; exit 1; }
+          BODY=$(printf '%s\n' \
+            "## Configurazione Firebase — accesso Google temporaneo" "" \
+            "1. Apri questo link dall'iPhone e accedi con il tuo account Google:" "" "$URL" "" \
+            "2. Copia il codice che Google ti mostra e **incollalo nella chat con Claude** (Claude lo pubblica qui cifrato)." "" \
+            "Il runner accetta solo commenti di @$OWNER e attende al massimo 30 minuti; alla fine l'accesso viene revocato." "" \
+            "<details><summary>Chiave pubblica effimera del runner (RSA-OAEP SHA-256)</summary>" "" '```' "$PUB" '```' "</details>")
+          ISSUE_URL=$(gh issue create --repo "$REPO" --title "Configurazione Firebase (esecuzione ${{ github.run_number }})" --body "$BODY")
+          ISSUE=${ISSUE_URL##*/}
+          echo "ISSUE=$ISSUE" >> "$GITHUB_ENV"
+          echo "Sign-in issue: $ISSUE_URL"
+          CODE=""
+          for i in $(seq 1 180); do
+            sleep 10
+            LAST=$(gh api "repos/$REPO/issues/$ISSUE/comments" --jq "[.[] | select(.user.login == \"$OWNER\") | .body] | last // \"\"")
+            if printf '%s' "$LAST" | grep -q '^ENC:'; then
+              CODE=$(printf '%s' "$LAST" | sed -n 's/^ENC:\s*//p' | tr -d '[:space:]' | base64 -d \
+                | openssl pkeyutl -decrypt -inkey "$RUNNER_TEMP/k.pem" -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256)
+              break
+            elif printf '%s' "$LAST" | grep -q '^CODE:'; then
+              CODE=$(printf '%s' "$LAST" | sed -n 's/^CODE:\s*//p' | tr -d '[:space:]'); break
+            fi
+          done
+          [ -n "$CODE" ] || { gh issue comment "$ISSUE" --repo "$REPO" --body "Tempo scaduto: nessun codice ricevuto. Rilancia il workflow."; exit 1; }
+          printf '%s' "$CODE" | grep -Eq '^[A-Za-z0-9/._~-]{10,300}$' || { gh issue comment "$ISSUE" --repo "$REPO" --body "Codice non valido."; exit 1; }
+          printf '%s\n' "$CODE" >&3
+          exec 3>&-
+          if ! wait "$GPID"; then grep -v -i 'code' "$RUNNER_TEMP/out.log" | tail -5; gh issue comment "$ISSUE" --repo "$REPO" --body "Accesso Google non riuscito (codice scaduto o già usato?). Rilancia il workflow."; exit 1; fi
+          gh issue comment "$ISSUE" --repo "$REPO" --body "Accesso riuscito. Configurazione di Firebase in corso…"
+      - name: Configure Firebase and keyless access for this repository
+        run: |
+          set -euo pipefail
+          OUT=$(bash deploy/firebase/bootstrap.sh)
+          echo "$OUT"
+          gh issue comment "$ISSUE" --repo "$REPO" --body "$(printf 'Configurazione completata. Identificativi (non segreti):\n\n```json\n%s\n```' "$OUT")"
+      - name: Revoke temporary credentials
+        if: always()
+        run: |
+          gcloud auth revoke --all --quiet 2>/dev/null || true
+          rm -rf "$CLOUDSDK_CONFIG" "$RUNNER_TEMP/k.pem" "$RUNNER_TEMP/in" "$RUNNER_TEMP/out.log"
+          if [ -n "${ISSUE:-}" ]; then
+            gh issue comment "$ISSUE" --repo "$REPO" --body "Credenziali temporanee revocate e cancellate dal runner (esito job: ${{ job.status }})." || true
+            gh issue close "$ISSUE" --repo "$REPO" || true
+          fi

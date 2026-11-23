@@ -39,6 +39,9 @@ jobs:
     if: github.event_name == 'push' || inputs.platform != 'ios'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    permissions:
+      contents: read
+      id-token: write   # keyless Google auth (Workload Identity Federation)
     env:
       HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
       HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
@@ -81,8 +84,33 @@ jobs:
           name: android-apk-${{ github.run_number }}
           path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 14
-      - name: Distribute APK with Firebase App Distribution
-        if: env.HAS_FIREBASE == 'true'
+      - name: Firebase configuration (keyless)
+        run: |
+          if [ -f deploy/firebase/config.json ]; then
+            {
+              echo "FB_PROJECT=$(jq -r .projectId deploy/firebase/config.json)"
+              echo "FB_APP=$(jq -r .androidAppId deploy/firebase/config.json)"
+              echo "FB_SA=$(jq -r .serviceAccount deploy/firebase/config.json)"
+              echo "FB_PROVIDER=$(jq -r .workloadIdentityProvider deploy/firebase/config.json)"
+              echo "FB_GROUP=$(jq -r .testerGroup deploy/firebase/config.json)"
+            } >> "$GITHUB_ENV"
+          fi
+      - name: Google authentication via Workload Identity Federation
+        if: env.FB_PROVIDER != ''
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.FB_PROVIDER }}
+          service_account: ${{ env.FB_SA }}
+      - name: Distribute APK with Firebase App Distribution (keyless)
+        if: env.FB_PROVIDER != ''
+        run: |
+          NOTES="APE Italia build ${BUILD_NUMBER} ($(git rev-parse --short HEAD)) — prova interna, dati solo sintetici."
+          npx --yes firebase-tools@14 --non-interactive --project "$FB_PROJECT" appdistribution:distribute \
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk --app "$FB_APP" --groups "$FB_GROUP" --release-notes "$NOTES"
+          echo "FIREBASE_APP_ID=$FB_APP" >> "$GITHUB_ENV"
+          echo "HAS_FIREBASE=true" >> "$GITHUB_ENV"
+      - name: Distribute APK with Firebase App Distribution (service account key)
+        if: env.HAS_FIREBASE == 'true' && env.FB_PROVIDER == ''
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TESTERS: ${{ vars.FIREBASE_TESTERS }}
