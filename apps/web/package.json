@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "start": "next start"
   },
   "dependencies": {
     "jose": "^6.2.18",

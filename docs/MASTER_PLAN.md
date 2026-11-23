@@ -162,3 +162,6 @@ PR #24 (impilata su #23). Processo `dist/worker.js` con pianificazione senza sov
 
 ## 43. Download dell'APE nell'app (Claude, 23/11/2026)
 PR #26 (impilata su #25). Il cliente scarica l'APE consegnato nella cache privata dell'app e lo apre con il foglio di sistema. Non verificato su dispositivo.
+
+## 44. Chiusura sessione notturna Claude (23/11/2026, ~05:00)
+21 iterazioni nelle PR #7–#27, tutte con CI verde, **non integrate** in `main` (merge non consentito alla sessione). Stato, blocchi umani e ordine di integrazione: `docs/CLAUDE_PROGRESS.md`. Restano esclusi: pagamenti, notifiche, integrazioni regionali, fornitore AI, test su dispositivi e provider OIDC reale.

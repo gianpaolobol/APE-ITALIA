@@ -1,12 +1,12 @@
 # Registro di avanzamento Claude — APE Italia
 
-## Riepilogo consolidato (aggiornato alle 04:50 del 23/11/2026)
-**Stato**: 17 iterazioni, PR #7–#23 aperte e **impilate** (ognuna ha come base la precedente). Tutte con CI verde sull'ultimo commit verificato. **Nessuna è stata integrata in `main`**: il merge è stato negato dai permessi della sessione Claude.
+## Riepilogo consolidato (aggiornato alle 05:00 del 23/11/2026)
+**Stato**: 21 iterazioni, PR #7–#27 aperte e **impilate** (ognuna ha come base la precedente). Tutte con CI verde sull'ultimo commit verificato. **Nessuna è stata integrata in `main`**: il merge è stato negato dai permessi della sessione Claude.
 
 ### Come integrare
 1. Rivedere e unire **#7** in `main` (squash o merge).
-2. Per ciascuna successiva (#8, #9, … #23) cambiare la base in `main` (GitHub lo fa da solo se si elimina il branch della PR appena unita), attendere la CI e unire.
-In alternativa si può rivedere il diff complessivo `main...test/web-browser-e2e` e unire le PR in sequenza senza review intermedie.
+2. Per ciascuna successiva (#8, #9, … #27) cambiare la base in `main` (GitHub lo fa da solo se si elimina il branch della PR appena unita), attendere la CI e unire.
+In alternativa si può rivedere il diff complessivo `main...docs/readme-status` e unire le PR in sequenza senza review intermedie.
 **Attenzione**: #12 (portale) ha un difetto sul logout corretto in #23: integrare il portale solo insieme a #23.
 
 ### Funzionalità (codice + test; nulla è in produzione)
@@ -22,9 +22,9 @@ In alternativa si può rivedere il diff complessivo `main...test/web-browser-e2e
 | Esportazione per il calcolo | formato neutro JSON/CSV | unit + E2E |
 | Caricamento/consegna APE | completo (nessuna integrazione regionale) | E2E |
 | Integrazioni, annullamento | completo | PostgreSQL |
-| Portale certificatori e organizzazioni | completo | build + E2E browser (certificatori) |
-| App: richiesta, evidenze, pratiche | completo nel codice | test + bundle; **non provata su dispositivo** |
-| Privacy: export soggetto, purga | CLI operatore | PostgreSQL |
+| Portale certificatori e organizzazioni | completo | build + 4 E2E in Chrome (CI) |
+| App: richiesta, evidenze, pratiche, download APE | completo nel codice | 87 test + bundle; **non provata su dispositivo** |
+| Privacy: export soggetto, purga; worker periodico con lock | CLI + worker | PostgreSQL |
 | Hardening (rate limit, helmet, npm ci, secret scan, audit) | completo | CI |
 | Pagamenti, notifiche, preventivi | **non iniziati** (richiedono contratti/compliance e autorizzazione a invii esterni) | — |
 
@@ -38,7 +38,7 @@ In alternativa si può rivedere il diff complessivo `main...test/web-browser-e2e
 7. Test su iPhone/Android reali (build EAS o Xcode/Android Studio).
 
 ### Prossime azioni suggerite
-Pianificatore per `expire-offers` e `purge-expired-evidence`; download dell'APE nell'app; creazione pratiche dal web per professionisti; notifiche (dopo autorizzazione); aggiornamenti major (Expo 58, Next 16, Prisma 7) in PR dedicate; E2E browser dell'area organizzazioni.
+Creazione pratiche dal web per professionisti; notifiche (dopo autorizzazione); preventivi e pagamenti (dopo contratti e compliance); aggiornamenti major (Expo 58, Next 16, Prisma 7) in PR dedicate; build EAS e prove su dispositivi; ambiente di staging.
 
 Sessione avviata: 23/11/2026, ~02:55 (Europe/Rome). Ambiente: container cloud Claude con accesso push alla repo `gianpaolobol/APE-ITALIA`. La sessione **non è garantita persistente**: il lavoro procede finché resta attiva; ogni iterazione è salvata su GitHub.
 
@@ -161,3 +161,11 @@ E2E browser esteso all'area organizzazioni (4/4 test, eseguito 3 volte consecuti
 
 ## Iterazione 20 — PR #26 `feat/mobile-certificate-download` (base: `test/web-org-e2e`)
 Download APE su dispositivo (`expo-file-system` `File.downloadFileAsync` con intestazioni, `expo-sharing`). Test locali: mobile typecheck, 87 test, bundle Android/iOS. Evitato il conflitto Metro `.native.ts`.
+CI Run #109 su `ce9ca40` (PR #25): **verde**; E2E browser 4/4.
+CI Run #110 su `1341e60` (PR #26): **verde**; API 161 + E2E 3, mobile 87, web 19 + E2E browser 4.
+
+## Iterazione 21 — PR #27 `docs/readme-status` (base: `feat/mobile-certificate-download`)
+README aggiornato allo stato reale (componenti, avvio locale, configurazione, verifiche automatiche e limiti); script `start` per il web. Scansione segreti: 168 file, nessun riscontro.
+
+## Fine sessione notturna
+Sessione chiusa da Claude alle ~05:00 dopo 21 iterazioni. Nulla è stato distribuito in produzione, nessun invio esterno, nessuna spesa, nessuna configurazione di account. Riprendere dalla sezione "Come integrare" in cima a questo file.
