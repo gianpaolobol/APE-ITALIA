@@ -105,3 +105,4 @@ CI Run #101 su `2580d32` (PR #21): **verde**; API 153 + E2E 3, mobile 84.
 ## Iterazione 16 — PR #22 `feat/gdpr-retention` (base: `feat/case-lifecycle`)
 Implementato: `exportSubjectData`, `purgeExpiredEvidence` (dry run predefinito), policy da ambiente, comandi CLI.
 Test locali: API typecheck OK, 106 + 54 saltati (1 unitario, 3 PostgreSQL nuovi).
+CI Run #103 su `a6dcd07` (PR #22): **verde**.
