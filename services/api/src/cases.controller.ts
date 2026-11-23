@@ -1,15 +1,15 @@
 import { Body, Controller, Get, Headers, Param, Post, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
-import { IsNotEmpty, IsString, IsUUID, validateSync } from 'class-validator';
+import { AuthService } from './auth.service';
+import { IsNotEmpty, IsString, IsUUID, IsOptional, IsNumber, Min, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 
-class CreateCaseDto {
- @IsUUID() propertyId!: string;
-}
+class CreateCaseDto { @IsUUID() propertyId!: string; }
 class CreatePropertyDto {
  @IsString() @IsNotEmpty() address!: string;
  @IsString() @IsNotEmpty() city!: string;
  @IsString() @IsNotEmpty() region!: string;
+ @IsOptional() @IsNumber() @Min(1) floorAreaM2?: number;
 }
 function validated<T extends object>(cls: new()=>T, body: unknown): T {
  const dto=plainToInstance(cls,body);
@@ -19,15 +19,38 @@ function validated<T extends object>(cls: new()=>T, body: unknown): T {
 }
 @Controller('v1')
 export class CasesController {
- constructor(private readonly db:PrismaService){}
- // DEVELOPMENT ONLY: no tenant ID is accepted from a caller until authentication is implemented.
- // Intentionally disable endpoints to prevent impersonation or cross-tenant data access.
+ constructor(private readonly db:PrismaService,private readonly auth:AuthService){}
+ private session(auth?:string,org?:string){return this.auth.authorize(auth,org);}
  @Get('properties')
- listProperties(){throw new ForbiddenException('Authentication required: endpoint not enabled');}
+ async listProperties(@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  return this.db.property.findMany({where:{organizationId:s.organizationId},orderBy:{createdAt:'desc'}});
+ }
  @Post('properties')
- createProperty(@Body() body:unknown){validated(CreatePropertyDto,body);throw new ForbiddenException('Authentication required: endpoint not enabled');}
+ async createProperty(@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  const dto=validated(CreatePropertyDto,body);
+  return this.db.$transaction(async tx=>{
+   const item=await tx.property.create({data:{...dto,organizationId:s.organizationId}});
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'property.create',resourceId:item.id}});
+   return item;
+  });
+ }
  @Get('cases')
- listCases(){throw new ForbiddenException('Authentication required: endpoint not enabled');}
+ async listCases(@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  return this.db.apeCase.findMany({where:{organizationId:s.organizationId},orderBy:{createdAt:'desc'}});
+ }
  @Post('cases')
- createCase(@Body() body:unknown){validated(CreateCaseDto,body);throw new ForbiddenException('Authentication required: endpoint not enabled');}
+ async createCase(@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  const dto=validated(CreateCaseDto,body);
+  return this.db.$transaction(async tx=>{
+   const property=await tx.property.findFirst({where:{id:dto.propertyId,organizationId:s.organizationId}});
+   if(!property) throw new NotFoundException('Property not found');
+   const item=await tx.apeCase.create({data:{propertyId:property.id,organizationId:s.organizationId}});
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.create',resourceId:item.id}});
+   return item;
+  });
+ }
 }
