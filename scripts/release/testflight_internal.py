@@ -94,7 +94,20 @@ if not grp["attributes"].get("hasAccessToAllBuilds"):
 users = must("GET", "/v1/users?limit=200")["data"]
 targets = [u for u in users if "ACCOUNT_HOLDER" in u["attributes"].get("roles", [])] or \
           [u for u in users if "ADMIN" in u["attributes"].get("roles", [])]
-existing = {t["attributes"].get("email", "").lower() for t in must("GET", f"/v1/betaGroups/{gid}/betaTesters?limit=200")["data"]}
+def mask(e):
+    user, _, dom = e.partition("@")
+    return (user[:1] + "***@" + dom) if dom else "***"
+
+
+testers = must("GET", f"/v1/betaGroups/{gid}/betaTesters?limit=200")["data"]
+existing = {t["attributes"].get("email", "").lower() for t in testers}
+for t in testers:
+    a = t["attributes"]
+    log(f"tester {mask(a.get('email', ''))} state={a.get('state')} inviteType={a.get('inviteType')}")
+    if os.environ.get("RESEND") == "1":
+        code, data = call("POST", "/v1/betaTesterInvitations", {"data": {"type": "betaTesterInvitations", "relationships": {
+            "app": {"data": {"type": "apps", "id": app_id}}, "betaTester": {"data": {"type": "betaTesters", "id": t["id"]}}}}})
+        log(f"invitation re-sent ({code}) {data.get('_error', '')[:300]}")
 for u in targets:
     a = u["attributes"]; email = a["username"]
     if email.lower() in existing:

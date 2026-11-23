@@ -4,6 +4,11 @@ name: TestFlight internal testers
 # (internal group "Interni"). Runs automatically after "Mobile release"; can also be started by hand.
 on:
   workflow_dispatch:
+    inputs:
+      resend:
+        description: 'Re-send the TestFlight invitation email'
+        type: boolean
+        default: false
   workflow_run:
     workflows: ["Mobile release (TestFlight / Firebase App Distribution / Google Play)"]
     types: [completed]
@@ -27,6 +32,7 @@ jobs:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          RESEND: ${{ inputs.resend && '1' || '0' }}
         run: |
           pip install --quiet 'pyjwt[crypto]==2.10.1'
           python3 scripts/release/testflight_internal.py
