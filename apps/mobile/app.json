@@ -24,7 +24,7 @@
       ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#176344"
+        "backgroundColor": "#0D5B4A"
       }
     },
     "plugins": [
@@ -39,6 +39,8 @@
       "expo-secure-store",
       "expo-web-browser"
     ],
-    "icon": "./assets/icon.png"
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "backgroundColor": "#F5F6F2"
   }
 }

@@ -1,0 +1,105 @@
+import React from 'react';
+import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { C, F, R, S, shadow } from './theme';
+import { Button, Card, ClassBadge, IconCircle, Pill, ProgressBar, SectionTitle, tap } from './kit';
+import { estimate } from '../energy/estimate';
+import { progress } from '../survey/checklist';
+import { PROVINCES } from '../survey/questions';
+import { PRICE_LIST, euro } from '../pricing';
+import type { AppState, Draft } from '../survey/drafts';
+
+const STEPS_HOW = [
+ { icon: 'chatbubbles-outline', title: 'Rispondi e scatta', text: 'Domande semplici e qualche foto: caldaia, finestre, muri, planimetria.' },
+ { icon: 'analytics-outline', title: 'Stima immediata', text: 'Vedi subito la classe probabile e dove migliorare.' },
+ { icon: 'shield-checkmark-outline', title: 'Certificatore accreditato', text: 'Un professionista SACE fa il sopralluogo, firma e deposita l’APE.' },
+] as const;
+
+export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: AppState; onNew: () => void; onOpen: (d: Draft) => void; onDelete: (d: Draft) => void; onPro: () => void }) {
+ const insets = useSafeAreaInsets();
+ const minPrice = Math.min(...PRICE_LIST.tiers.map(t => t.price));
+ return (
+  <ScrollView style={{ flex: 1, backgroundColor: C.bg }} contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}>
+   <LinearGradient colors={[C.brandDeep, C.brand, '#14806A']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={[st.hero, { paddingTop: insets.top + 18 }]}>
+    <View style={st.brandRow}>
+     <View style={st.logo}><Ionicons name="leaf" size={18} color={C.brandDeep} /></View>
+     <Text style={st.brand}>APE Italia</Text>
+     <View style={st.region}><Text style={st.regionText}>Emilia-Romagna</Text></View>
+    </View>
+    <Text style={st.heroTitle}>Il tuo APE,{'\n'}senza pensieri.</Text>
+    <Text style={st.heroText}>Rispondi a poche domande, scatta le foto giuste e ricevi subito una stima della classe energetica. Al resto pensa un certificatore accreditato.</Text>
+    <View style={st.scaleRow}>
+     {(['A4', 'A1', 'B', 'C', 'D', 'E', 'F', 'G'] as const).map(c => <ClassBadge key={c} value={c} size={22} />)}
+    </View>
+    <Button title="Richiedi il tuo APE" icon="arrow-forward" onPress={onNew} style={{ backgroundColor: C.white, marginTop: S.l }} kind="secondary" />
+    <Text style={st.priceNote}>Prezzo fisso da {euro(minPrice)} · sopralluogo e deposito SACE inclusi</Text>
+   </LinearGradient>
+
+   <View style={{ paddingHorizontal: S.m }}>
+    {state.drafts.length ? (<>
+     <SectionTitle>Le tue richieste</SectionTitle>
+     {state.drafts.map(d => <DraftCard key={d.id} d={d} onOpen={() => onOpen(d)} onDelete={() => onDelete(d)} />)}
+    </>) : null}
+
+    <SectionTitle>Come funziona</SectionTitle>
+    <Card>
+     {STEPS_HOW.map((s, i) => (
+      <View key={s.title} style={[st.how, i < STEPS_HOW.length - 1 && { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }]}>
+       <IconCircle name={s.icon} />
+       <View style={{ flex: 1, marginLeft: 12 }}><Text style={F.h3}>{s.title}</Text><Text style={[F.small, { marginTop: 2 }]}>{s.text}</Text></View>
+      </View>
+     ))}
+    </Card>
+
+    <SectionTitle>Sei un certificatore energetico?</SectionTitle>
+    <Card onPress={onPro} style={{ flexDirection: 'row', alignItems: 'center' }}>
+     <IconCircle name="briefcase-outline" bg={C.warnSoft} color="#8A5A00" />
+     <View style={{ flex: 1, marginLeft: 12 }}>
+      <Text style={F.h3}>Ricevi incarichi nella tua zona</Text>
+      <Text style={[F.small, { marginTop: 2 }]}>{state.pro ? 'Candidatura inviata: in verifica sul registro SACE' : 'Fascicoli già pronti, sopralluoghi mirati. Serve l’accreditamento SACE.'}</Text>
+     </View>
+     <Ionicons name="chevron-forward" size={20} color={C.muted} />
+    </Card>
+    <Text style={[F.small, { textAlign: 'center', marginTop: S.l }]}>La stima dell’app non sostituisce l’APE: l’attestato è redatto e firmato solo da un certificatore accreditato dopo il sopralluogo.</Text>
+   </View>
+  </ScrollView>
+ );
+}
+
+function DraftCard({ d, onOpen, onDelete }: { d: Draft; onOpen: () => void; onDelete: () => void }) {
+ const est = estimate(d.answers);
+ const p = progress(d.answers, d.photos);
+ const prov = PROVINCES.find(x => x.value === d.answers.province)?.label;
+ const title = [d.answers.street, d.answers.municipality].filter(Boolean).join(', ') || 'Nuova richiesta';
+ return (
+  <Pressable onPress={() => { tap(); onOpen(); }} onLongPress={() => Alert.alert('Eliminare la richiesta?', 'Foto e risposte verranno cancellate dal telefono.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Elimina', style: 'destructive', onPress: onDelete }])}
+   style={({ pressed }) => [st.draft, pressed && { opacity: 0.92 }]}>
+   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+    {est ? <ClassBadge value={est.energyClass} size={40} /> : <IconCircle name="home-outline" size={44} />}
+    <View style={{ flex: 1, marginLeft: 12 }}>
+     <Text style={F.h3} numberOfLines={1}>{title}</Text>
+     <Text style={F.small}>{[prov, typeof d.answers.floorArea === 'number' ? `${d.answers.floorArea} m²` : null].filter(Boolean).join(' · ') || 'Da completare'}</Text>
+    </View>
+    {d.status === 'inviata' ? <Pill text="Inviata" icon="paper-plane" /> : <Pill tone="muted" text={`${p.done}/${p.total}`} />}
+   </View>
+   {d.status !== 'inviata' ? <View style={{ marginTop: 12 }}><ProgressBar ratio={p.ratio} /></View> : null}
+  </Pressable>
+ );
+}
+
+const st = StyleSheet.create({
+ hero: { paddingHorizontal: S.m, paddingBottom: S.l, borderBottomLeftRadius: R.xl, borderBottomRightRadius: R.xl },
+ brandRow: { flexDirection: 'row', alignItems: 'center', marginBottom: S.l },
+ logo: { width: 32, height: 32, borderRadius: 10, backgroundColor: '#B8F0D3', alignItems: 'center', justifyContent: 'center' },
+ brand: { color: C.white, fontSize: 18, fontWeight: '800', marginLeft: 8, flex: 1 },
+ region: { backgroundColor: 'rgba(255,255,255,0.16)', borderRadius: R.pill, paddingHorizontal: 10, paddingVertical: 5 },
+ regionText: { color: C.white, fontSize: 12, fontWeight: '700' },
+ heroTitle: { color: C.white, fontSize: 36, lineHeight: 41, fontWeight: '800', letterSpacing: -0.8 },
+ heroText: { color: 'rgba(255,255,255,0.86)', fontSize: 15, lineHeight: 21, marginTop: 10 },
+ scaleRow: { flexDirection: 'row', gap: 6, marginTop: S.l },
+ priceNote: { color: 'rgba(255,255,255,0.8)', fontSize: 12, textAlign: 'center', marginTop: 10, fontWeight: '600' },
+ how: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12 },
+ draft: { backgroundColor: C.surface, borderRadius: R.l, padding: S.m, marginBottom: 10, ...shadow },
+});
