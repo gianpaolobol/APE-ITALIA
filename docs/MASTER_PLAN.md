@@ -174,3 +174,6 @@ Professionisti e agenzie creano, documentano e inviano le pratiche anche dal por
 
 ## 47. Backup e ripristino provati (Claude, 23/11/2026)
 Script `deploy/backup.sh` e `deploy/restore.sh` (dump PostgreSQL + volume evidenze cifrate, hash di integrità, ripristino solo con conferma esplicita), verificati in CI con distruzione e ricostruzione dello stack. Contribuisce al gate §16 "backup/restore"; restano da definire frequenza, conservazione e cifratura dei backup fuori sede.
+
+## 48. CRUD bozze e indice API generato (Claude, 23/11/2026)
+Dettaglio di immobili e pratiche, modifica dei dati dichiarati finché nessuna pratica dell'immobile è stata inviata, eliminazione solo di bozze vuote e di immobili senza pratiche (altrimenti annullamento, per conservare la traccia). `docs/API.md` generato dai metadati dei controller (47 rotte, classe di accesso, limiti); un test fallisce se non è aggiornato e garantisce che solo `/health` e `/v1/notices` siano pubbliche.

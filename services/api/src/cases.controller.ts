@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Get, Headers, Param, ParseUUIDPipe, Post, ConflictException, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Body, Controller, Delete, HttpCode, Inject, Get, Headers, Param, ParseUUIDPipe, Patch, Post, ConflictException, BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from './prisma.service';
 import { AuthService } from './auth.service';
 import { canWrite } from './tenant-policy';
@@ -7,6 +7,12 @@ import { IsNotEmpty, IsString, IsUUID, IsOptional, IsNumber, Min, validateSync }
 import { plainToInstance } from 'class-transformer';
 
 class CreateCaseDto { @IsUUID() propertyId!: string; }
+class UpdatePropertyDto {
+ @IsOptional() @IsString() @IsNotEmpty() address?: string;
+ @IsOptional() @IsString() @IsNotEmpty() city?: string;
+ @IsOptional() @IsString() @IsNotEmpty() region?: string;
+ @IsOptional() @IsNumber() @Min(1) floorAreaM2?: number;
+}
 class CreatePropertyDto {
  @IsString() @IsNotEmpty() address!: string;
  @IsString() @IsNotEmpty() city!: string;
@@ -102,5 +108,69 @@ export class CasesController {
    certificate:c.certificate,
    openEvidenceRequests:c._count.evidenceRequests,
   }));
+ }
+ @Get('properties/:id')
+ async getProperty(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  const p=await this.db.property.findFirst({where:{id,organizationId:s.organizationId}});
+  if(!p) throw new NotFoundException('Property not found');
+  return p;
+ }
+
+ /** Declared data can change only while no case on the property has been submitted to a certifier. */
+ @Patch('properties/:id')
+ async updateProperty(@Param('id', new ParseUUIDPipe()) id:string,@Body() body:unknown,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
+  const dto=validated(UpdatePropertyDto,body);
+  if(!Object.keys(dto).length) throw new BadRequestException('Nothing to update');
+  return this.db.$transaction(async tx=>{
+   const p=await tx.property.findFirst({where:{id,organizationId:s.organizationId}});
+   if(!p) throw new NotFoundException('Property not found');
+   const locked=await tx.apeCase.count({where:{propertyId:id,status:{notIn:['DRAFT','CANCELLED']}}});
+   if(locked) throw new ConflictException('Property data is locked once a case has been submitted');
+   const updated=await tx.property.update({where:{id},data:dto});
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'property.update',resourceId:id}});
+   return updated;
+  });
+ }
+
+ @Get('cases/:id')
+ async getCase(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  const c=await this.db.apeCase.findFirst({where:{id,organizationId:s.organizationId},include:{property:true}});
+  if(!c) throw new NotFoundException('Case not found');
+  return c;
+ }
+
+ /** Deletes a draft without uploads or consents; anything else must be cancelled (kept for the audit trail). */
+ @Delete('cases/:id')
+ @HttpCode(204)
+ async deleteCase(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
+  await this.db.$transaction(async tx=>{
+   const c=await tx.apeCase.findFirst({where:{id,organizationId:s.organizationId},include:{_count:{select:{evidence:true,consents:true,assignments:true}}}});
+   if(!c) throw new NotFoundException('Case not found');
+   if(c.status!=='DRAFT'||c._count.evidence||c._count.consents||c._count.assignments) throw new ConflictException('Only empty drafts can be deleted; cancel the case instead');
+   const res=await tx.apeCase.deleteMany({where:{id,status:'DRAFT'}});
+   if(res.count!==1) throw new ConflictException('Case state changed');
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.delete',resourceId:id}});
+  });
+ }
+
+ /** A property can be removed only when it has no cases left. */
+ @Delete('properties/:id')
+ @HttpCode(204)
+ async deleteProperty(@Param('id', new ParseUUIDPipe()) id:string,@Headers('authorization') token?:string,@Headers('x-organization-id') org?:string){
+  const s=await this.session(token,org);
+  if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
+  await this.db.$transaction(async tx=>{
+   const p=await tx.property.findFirst({where:{id,organizationId:s.organizationId},include:{_count:{select:{cases:true}}}});
+   if(!p) throw new NotFoundException('Property not found');
+   if(p._count.cases) throw new ConflictException('Property still has cases');
+   await tx.property.delete({where:{id}});
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'property.delete',resourceId:id}});
+  });
  }
 }

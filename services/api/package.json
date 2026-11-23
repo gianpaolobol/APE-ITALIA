@@ -12,7 +12,8 @@
     "build": "tsc -p tsconfig.build.json",
     "admin:create-org": "node dist/admin/provision-cli.js create-organization",
     "admin": "node dist/admin/provision-cli.js",
-    "worker": "node dist/worker.js"
+    "worker": "node dist/worker.js",
+    "docs:api": "npm run build && node dist/tools/api-index-cli.js"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.0",

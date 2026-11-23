@@ -21,7 +21,7 @@ Altri documenti: [Sprint](docs/SPRINTS.md) · [Sicurezza](docs/SECURITY.md).
 - `services/api` — NestJS + Prisma/PostgreSQL: JWT/JWKS, tenant e ruoli, inviti, evidenze cifrate, matching certificatori, sopralluogo, esportazione, consegna APE, ciclo di vita, privacy; CLI operatore (`dist/admin/provision-cli.js`) e worker (`dist/worker.js`)
 - `packages/shared` — tipi TypeScript condivisi
 
-Stato dettagliato, blocchi e guida all'integrazione delle PR: [docs/CLAUDE_PROGRESS.md](docs/CLAUDE_PROGRESS.md). Specifiche: [provisioning](docs/PROVISIONING.md) · [evidenze](docs/EVIDENCE_UPLOAD.md) · [certificatori](docs/CERTIFIER_WORKFLOW.md) · [AI](docs/AI_EXTRACTION.md) · [esportazione](docs/CALCULATION_EXPORT.md) · [portale](docs/WEB_PORTAL.md) · [privacy](docs/PRIVACY_OPERATIONS.md) · [sicurezza](docs/SECURITY.md).
+Stato dettagliato, blocchi e guida all'integrazione delle PR: [docs/CLAUDE_PROGRESS.md](docs/CLAUDE_PROGRESS.md). Specifiche: [indice API](docs/API.md) · [provisioning](docs/PROVISIONING.md) · [evidenze](docs/EVIDENCE_UPLOAD.md) · [certificatori](docs/CERTIFIER_WORKFLOW.md) · [AI](docs/AI_EXTRACTION.md) · [esportazione](docs/CALCULATION_EXPORT.md) · [portale](docs/WEB_PORTAL.md) · [privacy](docs/PRIVACY_OPERATIONS.md) · [sicurezza](docs/SECURITY.md).
 
 ## Avvio locale
 
