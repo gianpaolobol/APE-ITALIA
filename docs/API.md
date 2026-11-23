@@ -2,7 +2,7 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-52 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+53 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
@@ -34,6 +34,7 @@
 | POST | `/v1/certifier/assignments/:id/decline` | certificatore verificato | 201 | predefinito | `CertifierController.decline` |
 | GET | `/v1/certifier/assignments/:id/evidence` | certificatore verificato | 200 | predefinito | `CertifierController.evidence` |
 | POST | `/v1/certifier/assignments/:id/evidence-requests` | certificatore verificato | 201 | predefinito | `LifecycleController.requestEvidence` |
+| POST | `/v1/certifier/assignments/:id/evidence/:evidenceId/analyze-video` | certificatore verificato | 201 | predefinito | `CertifierController.analyzeVideo` |
 | GET | `/v1/certifier/assignments/:id/evidence/:evidenceId/content` | certificatore verificato | 200 | predefinito | `CertifierController.content` |
 | GET | `/v1/certifier/assignments/:id/export` | certificatore verificato | 200 | predefinito | `CertifierController.export` |
 | GET | `/v1/certifier/assignments/:id/inspection` | certificatore verificato | 200 | predefinito | `CertifierController.inspection` |

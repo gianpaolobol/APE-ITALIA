@@ -1,5 +1,5 @@
 import {
- BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post, Query, StreamableFile,
+ BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post, Query, ServiceUnavailableException, StreamableFile,
 } from '@nestjs/common';
 import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../prisma.service';
@@ -8,6 +8,7 @@ import { EVIDENCE_STORAGE } from '../evidence/evidence.controller';
 import { EVIDENCE_PUBLIC_FIELDS, evidenceFile } from '../evidence/read';
 import type { ObjectStorage } from '../evidence/storage';
 import { offerNext } from './assignment.service';
+import { VIDEO_ANALYZER, type VideoAnalyzer } from '../survey/video-analysis';
 import { buildCaseExport, findingsCsv } from '../export/case-export';
 import type { InspectionReport } from '../inspections/report';
 import { FINDING_FIELDS, FINDING_SOURCES, VERIFICATION_STATUSES, validateReport, validateSchedule } from '../inspections/report';
@@ -22,6 +23,7 @@ export class CertifierController {
   @Inject(PrismaService) private readonly db: PrismaService,
   @Inject(AuthService) private readonly auth: AuthService,
   @Optional() @Inject(EVIDENCE_STORAGE) private readonly storage: ObjectStorage | null = null,
+  @Optional() @Inject(VIDEO_ANALYZER) private readonly videoAnalyzer: VideoAnalyzer | null = null,
  ) {}
 
  private async certifier(token?: string) {
@@ -114,6 +116,21 @@ export class CertifierController {
   await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'evidence.read', resourceId: ev.id } });
   return file;
  }
+ /** AI pre-survey of a walkthrough video, cached on the evidence. Draft only: to be confirmed on site. */
+ @Post('assignments/:id/evidence/:evidenceId/analyze-video')
+ async analyzeVideo(@Param('id', new ParseUUIDPipe()) id: string, @Param('evidenceId', new ParseUUIDPipe()) evidenceId: string, @Headers('authorization') token?: string) {
+  const { c, a } = await this.accepted(token, id);
+  const ev = await this.db.evidence.findFirst({ where: { id: evidenceId, caseId: a.caseId, organizationId: a.organizationId, kind: 'video' } });
+  if (!ev) throw new NotFoundException('Video not found');
+  if (ev.analysis) return ev.analysis;
+  if (!this.videoAnalyzer || !this.storage) throw new ServiceUnavailableException('Video analysis not enabled');
+  if (ev.scanStatus !== 'clean') throw new ConflictException('Video must be malware-scanned first');
+  const analysis = await this.videoAnalyzer.analyze(await this.storage.get(ev.storageKey));
+  await this.db.evidence.update({ where: { id: ev.id }, data: { analysis: analysis as unknown as object } });
+  await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'ai.video', resourceId: ev.id } });
+  return analysis;
+ }
+
  /** Schedules the optional pre-inspection video call (Jitsi room with an unguessable name). */
  @Post('assignments/:id/call')
  async scheduleCall(@Param('id', new ParseUUIDPipe()) id: string, @Body() body: { at?: unknown } | undefined, @Headers('authorization') token?: string) {

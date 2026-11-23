@@ -71,6 +71,8 @@ model Evidence {
  sha256 String
  uploadedBy String
  scanStatus String @default("unscanned")
+ /// AI pre-survey of a walkthrough video (draft for the certifier, never a measurement).
+ analysis Json?
  createdAt DateTime @default(now())
  extractedFields ExtractedField[]
  @@unique([caseId, sha256])

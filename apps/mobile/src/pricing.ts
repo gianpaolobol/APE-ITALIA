@@ -18,7 +18,7 @@ export const PRICE_LIST = {
  houseExtraPer100m2: 50,
  urgent: 49,
  /** Visura + planimetria retrieved by the certifier when the owner has no floor plan (see docs/research/VISURA_CATASTALE_ER.md). */
- cadastralRetrieval: 20,
+ cadastralRetrieval: 14.9,
  /** Platform fee on the taxable amount; the 15 € regional SACE fee always goes to the certifier. */
  platformShare: 0.15,
  regionalFee: 15,
@@ -43,9 +43,9 @@ export function quote(a: Answers): Quote | null {
  if (tier.id === 'house' && area > 250) items.push({ label: 'Superficie oltre 250 m²', amount: Math.ceil((area - 250) / 100) * PRICE_LIST.houseExtraPer100m2 });
  if (a.hasPlan === 'no') items.push({ label: 'Recupero visura e planimetria catastale', amount: PRICE_LIST.cadastralRetrieval });
  if (a.urgency === 'urgente') items.push({ label: 'Consegna urgente (48 ore dal sopralluogo)', amount: PRICE_LIST.urgent });
- const total = items.reduce((s, i) => s + i.amount, 0);
+ const total = Math.round(items.reduce((s, i) => s + i.amount, 0) * 100) / 100;
  const taxable = (total - PRICE_LIST.regionalFee) / 1.22;
  return { total, items, certifierPayout: Math.round(taxable * (1 - PRICE_LIST.platformShare) + PRICE_LIST.regionalFee), note: 'Prezzo fisso in tutta l’Emilia-Romagna: IVA, cassa previdenziale del professionista e contributo regionale SACE inclusi. Paghi solo dopo il sopralluogo.' };
 }
 
-export const euro = (n: number) => `${n.toLocaleString('it-IT', { maximumFractionDigits: 0 })} €`;
+export const euro = (n: number) => `${n.toLocaleString('it-IT', Number.isInteger(n) ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`;

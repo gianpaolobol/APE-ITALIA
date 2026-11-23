@@ -12,7 +12,7 @@ export const serverConfigured = (): boolean => !!appAuthConfig && !!oidcClient;
 const KIND: Record<string, EvidenceKind> = {
  cadastralPlan: 'floorplan', heatingLogbook: 'document', previousApe: 'document', generatorManual: 'document',
  generatorPlate: 'boiler', dhwPlate: 'boiler', coolingPlate: 'heating', emitterPhotos: 'heating', renewablePhotos: 'heating',
- wallPhotos: 'envelope', windowPhotos: 'window', walkthrough: 'video',
+ wallPhotos: 'envelope', windowPhotos: 'window', walkthrough: 'video', idDocument: 'document',
 };
 
 export type SubmitProgress = (label: string, ratio: number) => void;

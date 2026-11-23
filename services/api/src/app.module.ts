@@ -17,6 +17,7 @@ import { LifecycleController } from './lifecycle/lifecycle.controller';
 import { EXTRACTION_PROVIDER } from './extraction/provider';
 import { SurveyController } from './survey/survey.controller';
 import { PHOTO_READER, photoReaderFromEnv } from './survey/photo-reader';
+import { VIDEO_ANALYZER, videoAnalyzerFromEnv } from './survey/video-analysis';
 import { ApplicationsController } from './applications/applications.controller';
 import { notConfiguredScanner } from './evidence/file-policy';
 import { scannerFromEnv } from './evidence/clamav';
@@ -39,6 +40,7 @@ const sharedStorage = process.env.RATE_LIMIT_STORE === 'postgres' ? new PgThrott
   { provide: EXTRACTION_PROVIDER, useValue: null },
   // Survey photo reader: off unless SURVEY_PHOTO_READER=anthropic and ANTHROPIC_API_KEY are set.
   { provide: PHOTO_READER, useFactory: () => photoReaderFromEnv() },
+  { provide: VIDEO_ANALYZER, useFactory: () => videoAnalyzerFromEnv() },
   { provide: APP_GUARD, useClass: ThrottlerGuard },
  ] })
 export class AppModule {}
