@@ -26,3 +26,8 @@ Test eseguiti localmente in questa sessione:
 Esito CI: vedere sezione aggiornamenti sotto.
 
 Blocchi umani: scelta e configurazione provider OIDC, registrazione redirect URI, variabili pubbliche, test su dispositivi.
+
+### Aggiornamento iterazione 1
+- CI Run #79 su `443c685`: **verde**. API 41 test superati (inclusi 8 PostgreSQL), mobile 72, bundle Expo Android (588 moduli) e iOS (592), build web.
+- PR #7 marcata pronta per la review. **Merge in `main` non eseguito**: l'azione di merge è stata negata dai permessi della sessione Claude. Serve merge manuale dell'utente dopo review.
+- Le iterazioni successive sono su branch impilati sopra `feat/sprint-3-auth-foundation` (PR con base quel branch), da riallineare a `main` dopo il merge di #7.
