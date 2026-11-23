@@ -25,3 +25,6 @@ Run 45091423666 fallita al comando `npm run typecheck -w @ape/mobile` perché la
 
 ## Iterazione trasporto API — 23/11/2026
 Aggiunti quattro test unitari del client mobile per rifiuto HTTP non cifrato, intestazioni bearer/organizzazione, gestione 401 e invio del payload immobile. Si usano fetch mock e credenziali sintetiche, nessun servizio remoto. Il commit `d9b46fb` è in attesa di esito CI; la Run #66 del commit precedente era ancora in corso all'ultima lettura. Nessun login reale attivato.
+
+## Iterazione flusso richieste — 23/11/2026
+Aggiunti due test con fetch simulato: creazione immobile seguita dalla creazione della pratica con ID corretto; interruzione del flusso quando la creazione dell'immobile restituisce 403. Non costituiscono test con provider OIDC o database reale e non rendono attivo l'invio dall'app, poiché `getVerifiedSession` restituisce null. Il codice attende esito CI del commit e review.
