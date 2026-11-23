@@ -15,6 +15,7 @@ export function InspectionPanel({ assignmentId, inspection, schema }: { assignme
    <table cellPadding={6} style={{ borderCollapse: 'collapse' }}><thead><tr><th align="left">Voce</th><th align="left">Stato</th><th align="left">Valore</th><th align="left">Fonte</th><th align="left">Note</th></tr></thead>
     <tbody>{inspection.report.findings.map(f => <tr key={f.field}><td>{schema.fields[f.field]?.label ?? f.field}</td><td>{STATUS_LABEL[f.status]}</td><td>{f.value ?? '—'}{(() => { const s = schema.fields[f.field]; return s && s.kind === 'number' && f.value !== undefined ? ' ' + s.unit : ''; })()}</td><td>{SOURCE_LABEL[f.source]}</td><td>{f.note ?? ''}</td></tr>)}</tbody></table>
    {inspection.report.generalNotes ? <p>Note: {inspection.report.generalNotes}</p> : null}
+   <p>Esporta i dati per il software di calcolo conforme: <a href={`/certifier/${assignmentId}/export?format=json`}>JSON</a> · <a href={`/certifier/${assignmentId}/export?format=csv`}>CSV</a>. L'esportazione non è un APE.</p>
   </section>;
  }
  return <>

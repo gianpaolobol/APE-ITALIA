@@ -30,7 +30,7 @@
 ## Sprint 4: workflow APE
 - [x] Matching certificatori (filtri obbligatori + fallback; distanza/costo/qualità non disponibili)
 - [x] Agenda e verbale sopralluogo (API + portale web; annullamento/riassegnazione da fare)
-- [ ] Export verso software energetico conforme
+- [x] Export neutro (JSON/CSV) verso software energetico conforme; adattatore specifico da fare
 - [ ] Gestione deposito e consegna
 
 Regola: non segnare completato ciò che non è stato effettivamente testato. Aggiornare MASTER_PLAN.md a ogni decisione significativa.

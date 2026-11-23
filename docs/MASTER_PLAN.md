@@ -132,3 +132,6 @@ PR #14 (impilata su #13). Programmazione/riprogrammazione del sopralluogo da par
 
 ## 33. AI documentale con revisione professionale (Claude, 23/11/2026)
 PR #15 (impilata su #14). Porta `ExtractionProvider` isolata e **disattivata** (nessun fornitore autorizzato), proposte con provenienza/modello/confidenza in stato `needs_review`, revisione obbligatoria del certificatore (accetta/correggi/respingi) con storico append-only, scarto degli output fuori vocabolario (nessuna classe energetica), blocco dell'invio di file non scansionati, metriche di correzione per campo e modello, pannello di revisione nel portale. Dettagli: `docs/AI_EXTRACTION.md`.
+
+## 34. Esportazione per il calcolo (Claude, 23/11/2026)
+PR #16 (impilata su #15). Documento JSON versionato `ape-italia/case-export` v1.0 e CSV dei rilievi, disponibili al certificatore solo dopo il verbale; provenienza (hash evidenze), stato di verifica per voce, completezza sul vocabolario, nessuna classe energetica. Adattatore al software scelto da realizzare quando il fornitore sarà deciso. Dettagli: `docs/CALCULATION_EXPORT.md`.

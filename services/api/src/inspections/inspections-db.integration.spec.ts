@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException, StreamableFile } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
 import { AuthService } from '../auth.service';
@@ -70,6 +70,9 @@ describe.skipIf(!enabled)('PostgreSQL: inspection scheduling and immutable repor
   expect(i.scheduledAt.toISOString()).toBe(when);
   expect(await db.auditEvent.count({ where: { organizationId: org, action: 'inspection.reschedule' } })).toBe(1);
  });
+ it('export is refused before the report exists', async () => {
+  await expect(cert.export(assignmentId, undefined, await bearer(certSub))).rejects.toBeInstanceOf(ConflictException);
+ });
  it('rejects invalid reports without changing state', async () => {
   await expect(cert.report(assignmentId, { ...report(new Date().toISOString()), declaration: false }, await bearer(certSub))).rejects.toBeInstanceOf(BadRequestException);
   expect((await db.inspection.findUniqueOrThrow({ where: { assignmentId } })).status).toBe('SCHEDULED');
@@ -89,5 +92,15 @@ describe.skipIf(!enabled)('PostgreSQL: inspection scheduling and immutable repor
   const stored = await db.inspection.findUniqueOrThrow({ where: { assignmentId } });
   expect((stored.report as { findings: unknown[] }).findings).toHaveLength(2);
   expect(await db.auditEvent.count({ where: { organizationId: org, action: 'inspection.report' } })).toBe(1);
+ });
+ it('exports JSON and CSV after the report, audited', async () => {
+  const doc = await cert.export(assignmentId, undefined, await bearer(certSub)) as { schema: string; inspection: { findings: unknown[] }; property: { address: string } };
+  expect(doc.schema).toBe('ape-italia/case-export');
+  expect(doc.inspection.findings).toHaveLength(2);
+  expect(doc.property.address).toBe('Via Sintetica 4');
+  const csv = await cert.export(assignmentId, 'csv', await bearer(certSub));
+  expect(csv).toBeInstanceOf(StreamableFile);
+  await expect(cert.export(assignmentId, 'xml', await bearer(certSub))).rejects.toBeInstanceOf(BadRequestException);
+  expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.export' } })).toBe(2);
  });
 });

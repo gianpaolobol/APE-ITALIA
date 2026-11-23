@@ -72,3 +72,8 @@ CI Run #90 su `4dc0a0a` (PR #14): **verde**; API 134 test (37 PostgreSQL), mobil
 ## Iterazione 9 — PR #15 `feat/ai-extraction-review` (base: `feat/inspections`)
 Implementato: `ExtractedField` + `ExtractedFieldRevision`, porta fornitore disattivata, sanificazione output, estrazione/revisione per certificatore, metriche CLI, pannello web. Refactor `validateFieldValue` condiviso con il verbale.
 Test locali: API typecheck e build OK, 100 superati + 43 saltati (DB, inclusi 6 nuovi); web typecheck e `next build` OK.
+CI Run #91 su `0c4765e` (PR #15): **verde**; API 143 test (43 PostgreSQL), mobile 82, web 19.
+
+## Iterazione 10 — PR #16 `feat/calculation-export` (base: `feat/ai-extraction-review`)
+Implementato: builder puro dell'esportazione, CSV con protezione formula injection, endpoint certificatore con audit, proxy e link nel portale.
+Test locali: API 105 superati + 45 saltati (5 unitari export, 2 nuovi casi DB); web typecheck e build OK.

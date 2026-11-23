@@ -1,5 +1,5 @@
 import {
- BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post,
+ BadRequestException, Body, ConflictException, Controller, ForbiddenException, Get, Header, Headers, Inject, NotFoundException, Optional, Param, ParseUUIDPipe, Post, Query, StreamableFile,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma.service';
 import { AuthService } from '../auth.service';
@@ -7,6 +7,8 @@ import { EVIDENCE_STORAGE } from '../evidence/evidence.controller';
 import { EVIDENCE_PUBLIC_FIELDS, evidenceFile } from '../evidence/read';
 import type { ObjectStorage } from '../evidence/storage';
 import { offerNext } from './assignment.service';
+import { buildCaseExport, findingsCsv } from '../export/case-export';
+import type { InspectionReport } from '../inspections/report';
 import { FINDING_FIELDS, FINDING_SOURCES, VERIFICATION_STATUSES, validateReport, validateSchedule } from '../inspections/report';
 
 /**
@@ -173,5 +175,30 @@ export class CertifierController {
    for (const f of res.report.findings) summary[f.status]++;
    return { id: insp.id, status: 'DONE', summary };
   });
+ }
+ /** Structured input for conformant calculation software; available once the inspection report exists. */
+ @Get('assignments/:id/export')
+ @Header('Cache-Control', 'no-store')
+ @Header('X-Content-Type-Options', 'nosniff')
+ async export(@Param('id', new ParseUUIDPipe()) id: string, @Query('format') format: string | undefined, @Headers('authorization') token?: string) {
+  const { c, a } = await this.accepted(token, id);
+  if (format !== undefined && format !== 'json' && format !== 'csv') throw new BadRequestException('format must be json or csv');
+  const [apeCase, insp, evidence, reviewed] = await Promise.all([
+   this.db.apeCase.findUniqueOrThrow({ where: { id: a.caseId }, include: { property: true } }),
+   this.db.inspection.findUnique({ where: { assignmentId: a.id } }),
+   this.db.evidence.findMany({ where: { caseId: a.caseId, organizationId: a.organizationId }, select: { id: true, kind: true, mimeType: true, sha256: true, sizeBytes: true }, orderBy: { createdAt: 'asc' } }),
+   this.db.extractedField.findMany({ where: { caseId: a.caseId, organizationId: a.organizationId }, select: { field: true, value: true, unit: true, status: true, modelId: true, evidenceId: true } }),
+  ]);
+  if (!insp || insp.status !== 'DONE' || !insp.report || !insp.performedAt) throw new ConflictException('Inspection report required before export');
+  const doc = buildCaseExport({
+   generatedBy: `certifier:${c.userSubject}`, now: new Date(),
+   apeCase: { id: apeCase.id, status: apeCase.status },
+   property: { address: apeCase.property.address, city: apeCase.property.city, region: apeCase.property.region, floorAreaM2: apeCase.property.floorAreaM2 },
+   inspection: { performedAt: insp.performedAt, report: insp.report as unknown as InspectionReport },
+   evidence, reviewed,
+  });
+  await this.db.auditEvent.create({ data: { organizationId: a.organizationId, actorId: `certifier:${c.userSubject}`, action: 'case.export', resourceId: a.caseId } });
+  if (format === 'csv') return new StreamableFile(Buffer.from('\ufeff' + findingsCsv(doc), 'utf8'), { type: 'text/csv; charset=utf-8', disposition: `attachment; filename="ape-italia-${a.caseId}-rilievi.csv"` });
+  return doc;
  }
 }
