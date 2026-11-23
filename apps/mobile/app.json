@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "APE Italia",
+    "slug": "ape-italia",
+    "scheme": "apeitalia",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "it.apeitalia.app"
+    }
+  }
+}
