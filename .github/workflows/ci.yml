@@ -14,6 +14,7 @@ jobs:
       - run: npm install --no-audit --no-fund
       - run: npm run db:generate -w @ape/api
       - run: npm run typecheck -w @ape/api
+      - run: npm run test -w @ape/api
       - run: npm run build -w @ape/web
         env:
           NEXT_TELEMETRY_DISABLED: '1'
