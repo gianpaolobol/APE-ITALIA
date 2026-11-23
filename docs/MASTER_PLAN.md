@@ -90,3 +90,6 @@ Stato iniziale: starter software, non prodotto funzionante; nessuna certificazio
 
 ## 19. Disciplina degli aggiornamenti
 Il file `docs/MASTER_PLAN.md` è la fonte primaria. Ogni PR deve riportare: obiettivo, file modificati, test realmente eseguiti, rischio, impatto su normativa/privacy, decisioni nuove, stato P0/P1/P2 e aggiornamento di questo documento quando necessario.
+
+## 20. Avanzamento 23/11/2026 — Sprint 1
+Branch di lavoro `feat/sprint-1-persistence`: schema Prisma, Docker PostgreSQL locale, servizio database, endpoint API volutamente bloccati (403) in attesa di autenticazione. Nessun CRUD funzionante o migrazione verificata. Dettagli: `docs/SPRINT_1_IMPLEMENTATION.md`. Il rilascio richiede test reali e controllo isolamento tenant.
