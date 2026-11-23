@@ -154,3 +154,4 @@ CI Run #105 su `b692bf1` (PR #23): **verde**; API 157 + E2E API 3, mobile 84, we
 
 ## Iterazione 18 — PR #24 `feat/worker` (base: `test/web-browser-e2e`)
 Worker con scheduler senza sovrapposizioni e lock consultivi. Test locali: API 109 + 55 saltati (3 unitari nuovi; 1 PostgreSQL sul lock in CI). Lock verificato anche via psql locale.
+CI Run #107 su `789e14e` (PR #24): **verde**.
