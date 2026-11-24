@@ -1,0 +1,24 @@
+name: Require validated main SHA
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Require successful main push CI on exact SHA
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/verify-release-ci.mjs
