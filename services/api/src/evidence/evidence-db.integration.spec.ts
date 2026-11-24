@@ -103,9 +103,18 @@ describe.skipIf(!enabled)('PostgreSQL: consent-gated encrypted evidence upload',
   await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userA), orgA);
   await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userA), orgA); // retry
   await expect(ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userB), orgB)).rejects.toBeInstanceOf(NotFoundException);
-  const ev = await ctrl.completeUpload(caseA, start.uploadId, await bearer(userA), orgA);
+  const token = await bearer(userA);
+  // Concurrent completion and a later retry must return the same committed receipt.
+  const [ev, concurrent] = await Promise.all([
+   ctrl.completeUpload(caseA, start.uploadId, token, orgA),
+   ctrl.completeUpload(caseA, start.uploadId, token, orgA),
+  ]);
   expect(ev.kind).toBe('boiler');
-  const again = await ctrl.completeUpload(caseA, start.uploadId, await bearer(userA), orgA);
+  expect(concurrent.id).toBe(ev.id);
+  const again = await ctrl.completeUpload(caseA, start.uploadId, token, orgA);
   expect(again.id).toBe(ev.id);
+  expect(await ctrl.uploadStatus(caseA, start.uploadId, token, orgA)).toMatchObject({ completed: true, evidenceId: ev.id });
+  expect(await db.auditEvent.count({ where: { organizationId: orgA, action: 'evidence.upload', resourceId: ev.id } })).toBe(1);
+  await expect(ctrl.completeUpload(caseA, start.uploadId, await bearer(userB), orgB)).rejects.toBeInstanceOf(NotFoundException);
  });
 });
