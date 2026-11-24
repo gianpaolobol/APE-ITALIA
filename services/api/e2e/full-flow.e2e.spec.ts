@@ -85,8 +85,12 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   const property = await json(await call(customer, '/v1/properties', { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ address: 'Via E2E 1', city: 'Comune E2E', region: REGION, floorAreaM2: 70 }) }));
   const apeCase = await json(await call(customer, '/v1/cases', { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ propertyId: property.id }) }));
   expect((await call(customer, `/v1/cases/${apeCase.id}/submit`, { org: true, method: 'POST' })).status).toBe(403);
+  const surveyRequest = { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ answers: { floorArea: 70 } }) };
+  expect((await call(customer, `/v1/cases/${apeCase.id}/survey`, surveyRequest)).status).toBe(403);
   const notices = await json(await call(customer, '/v1/notices', { org: true }));
   await json(await call(customer, `/v1/cases/${apeCase.id}/consents`, { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'evidence_processing', version: notices.evidence_processing }) }));
+
+  expect((await call(customer, `/v1/cases/${apeCase.id}/survey`, surveyRequest)).status).toBe(200);
 
   const form = new FormData();
   form.append('kind', 'boiler');

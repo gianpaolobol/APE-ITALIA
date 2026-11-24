@@ -125,14 +125,18 @@ export class CasesController {
   if(!body||typeof body!=='object'||Array.isArray(body)) throw new BadRequestException('survey object required');
   const json=JSON.stringify(body);
   if(json.length>64_000) throw new BadRequestException('survey too large');
-  const res=await this.db.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT'},data:{survey:JSON.parse(json)}});
-  if(res.count!==1){
-   const exists=await this.db.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true}});
-   if(!exists) throw new NotFoundException('Case not found');
-   throw new ConflictException('Survey can be changed only before submission');
-  }
-  await this.db.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.survey',resourceId:id}});
-  return {id};
+  return this.db.$transaction(async tx=>{
+   // Apply the same actor-scoped notice gate used for submission and evidence.
+   const res=await tx.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT',consents:{some:{organizationId:s.organizationId,subject:s.actorId,kind:'evidence_processing',version:CURRENT_NOTICES.evidence_processing}}},data:{survey:JSON.parse(json)}});
+   if(res.count!==1){
+    const exists=await tx.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{status:true}});
+    if(!exists) throw new NotFoundException('Case not found');
+    if(exists.status==='DRAFT') throw new ForbiddenException('Consent to the current evidence notice is required');
+    throw new ConflictException('Survey can be changed only before submission');
+   }
+   await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.survey',resourceId:id}});
+   return {id};
+  });
  }
  /** Customer view: date, status and certifier name only; the technical report stays with the certifier. */
  @Get('cases/:id/inspection')
