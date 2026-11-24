@@ -163,7 +163,7 @@ function clearRemoteCache(): void {
 }
 
 /** Always re-authorize at the server; never reuse a cached document from an earlier request/account. */
-export async function download(path: string, name: string, org = false, validate?: (file: File) => Promise<void>): Promise<string> {
+export async function download(path: string, name: string, org = false, validate?: (file: Pick<File, 'size' | 'bytes'>) => Promise<void>): Promise<string> {
  const expected = generation;
  const s = await freshSession();
  if (!s || generation !== expected) throw new ServerError(401, 'Accedi per continuare');
