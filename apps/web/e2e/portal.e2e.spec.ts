@@ -281,6 +281,7 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
    await page.goto(web + '/auth/login?returnTo=/org');
    await page.waitForURL(web + '/org');
    await page.locator('form', { hasText: 'Studio Alfa' }).getByRole('button', { name: 'Apri' }).click();
+   await page.getByText('Via Portafoglio 3, Bologna').first().waitFor({ state: 'visible', timeout: 15_000 });
    await page.goto(web + '/org/cases/' + CERT_CASE);
    const button = page.getByRole('button', { name: 'Scarica l’APE (PDF)' });
    await button.waitFor({ state: 'visible', timeout: 15_000 });
