@@ -70,7 +70,13 @@ export async function getSession(): Promise<Session | null> {
  let s: Session | null = null;
  try { const v = await SecureStore.getItemAsync(KEY); s = v ? (JSON.parse(v) as Session) : null; } catch { /* no stored session */ }
  if (generation === expected && cached === undefined) cached = s;
- return cached ?? null;
+ return generation === expected ? cached ?? null : null;
+}
+
+// Capture only the previous credentials for revocation; never restore them to the cache.
+async function previousSession(): Promise<Session | null> {
+ if (cached !== undefined) return cached;
+ try { const v = await SecureStore.getItemAsync(KEY); return v ? JSON.parse(v) as Session : null; } catch { return null; }
 }
 
 export async function startLogin(email: string): Promise<void> {
@@ -79,7 +85,7 @@ export async function startLogin(email: string): Promise<void> {
 
 export async function verifyLogin(email: string, code: string): Promise<Session> {
  // Explicit login is a new session even if the email/subject is the same.
- const previous = getSession();
+ const previous = previousSession();
  const cleared = invalidate();
  const expected = generation;
  const old = await previous;
@@ -92,7 +98,7 @@ export async function verifyLogin(email: string, code: string): Promise<Session>
 }
 
 export async function logout(): Promise<void> {
- const previous = getSession();
+ const previous = previousSession();
  const cleared = invalidate();
  const s = await previous;
  try { await cleared; }
