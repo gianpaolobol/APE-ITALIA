@@ -24,7 +24,7 @@ Passi una tantum del titolare (fattibili anche da browser del telefono, in modal
 Senza chiave di caricamento l'APK è firmato con la chiave di debug del progetto, sempre la stessa: va bene per i tester (gli aggiornamenti si installano sopra), non per Google Play.
 
 
-Workflow: `.github/workflows/mobile-release.yml` — **Actions → "Mobile release (TestFlight / Google Play internal)" → Run workflow** (scegli `both`, `android` o `ios`), oppure push di un tag `mobile-vX.Y.Z`.
+Workflow: `.github/workflows/mobile-release.yml` — **Actions → "Mobile release (TestFlight / Google Play internal)" → Run workflow** (scegli `both`, `android` o `ios`). Il dispatch è consentito solo su `main` corrente e dopo il successo della CI push sullo SHA esatto (tutti e quattro i job); i tag non avviano distribuzioni. Se una CI è fallita o mancano job nell'ultimo tentativo, rieseguire tutti i job e verificare il risultato. Il gate non sostituisce l'autorizzazione di spesa o la validazione fisica.
 Il numero di build è il numero dell'esecuzione (`github.run_number`), quindi sempre crescente. Senza secret il workflow compila comunque le app (verifica), senza firmarle né caricarle.
 
 ## 1. Apple (TestFlight) — una tantum

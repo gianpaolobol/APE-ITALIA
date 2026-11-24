@@ -38,7 +38,7 @@ Il compose include `clamav/clamav:stable` (scarica le firme all'avvio: alcuni mi
 3. **Segreti GitHub** (Settings → Secrets → Actions):
    - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (chiave privata della VM);
    - `DEPLOY_ENV_FILE`: il contenuto di `deploy/.env` compilato a partire da `deploy/.env.example` (password, chiavi casuali, `API_DOMAIN`, `PUBLIC_API_URL`, `PLATFORM_JWT_SECRET`, Brevo, eventualmente Anthropic e Stripe).
-4. **Avvio:** Actions → "Deploy staging server" → Run workflow. Il job aggiorna il codice sulla VM, scrive `.env`, avvia lo stack (Postgres, ClamAV, migrazioni, API, worker, web, Caddy con certificato TLS automatico) e controlla `/health`.
+4. **Avvio:** Actions → "Deploy staging server" → Run workflow su `main` corrente: richiede CI push verde sullo SHA esatto e tutti e quattro i job superati. Non usare credenziali o server di produzione. Il job aggiorna il codice sulla VM, scrive `.env`, avvia lo stack (Postgres, ClamAV, migrazioni, API, worker, web, Caddy con certificato TLS automatico) e controlla `/health`.
 5. **App:** imposta la variabile di repository `EXPO_PUBLIC_API_BASE_URL=https://api.…` e rilancia "Mobile release": la nuova build usa il server (login con codice email, invio vero, area certificatori).
 6. **Certificatori:** approva le candidature dopo il controllo sull'elenco SACE:
    `docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec api node dist/admin/provision-cli.js approve-application --id <id> --operator <tuo-id>`
