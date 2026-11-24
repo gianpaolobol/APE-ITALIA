@@ -24,7 +24,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { canViewDraft, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -128,5 +128,58 @@ describe('individual evidence removal', () => {
   fs.files.set(valid, 'remove');
   deleteDraftPhotoFile('a', photo(valid));
   expect(fs.files.has(valid)).toBe(false);
+ });
+});
+
+
+describe('account-scoped certifier profiles', () => {
+ const a = { subject: 'a', organizationId: 'org-a' };
+ const b = { subject: 'b', organizationId: 'org-a' };
+ const otherOrg = { subject: 'a', organizationId: 'org-b' };
+ const profile = (email: string): ProProfile => ({
+  submittedAt: '2026-11-24T00:00:00Z', status: 'in_verifica',
+  data: { firstName: 'Test', lastName: 'Synthetic', email, phone: '0000000000',
+   vatNumber: '00000000000', taxCode: '00000000000', profession: 'architetto',
+   professionalOrder: 'Test', orderNumber: '0', region: 'Emilia-Romagna', saceNumber: '00000',
+   provinces: ['BO'], maxMonthlyJobs: 10, acceptsTerms: true, declaresAccreditation: true },
+ });
+ it('does not expose the profile to another subject, organization or logout', () => {
+  const p = profile('a@example.test');
+  const s = storePro(state(), a, false, p);
+  expect(visiblePro(s, a, false)).toEqual(p);
+  for (const owner of [b, otherOrg, null]) expect(visiblePro(s, owner, false)).toBeUndefined();
+ });
+ it('retains each authorized profile across account switches and replaces only its own entry', async () => {
+  const pa = profile('a@example.test'), pb = profile('b@example.test');
+  let s = storePro(storePro(state(), a, false, pa), b, false, pb);
+  s = storePro(s, a, false, { ...pa, status: 'inviata_al_server' });
+  saveStateNow(s);
+  const loaded = await loadState();
+  expect(visiblePro(loaded, a, false)?.status).toBe('inviata_al_server');
+  expect(visiblePro(loaded, b, false)).toEqual(pb);
+  expect(loaded.proProfiles).toHaveLength(2);
+ });
+ it('quarantines an unattributed legacy profile without deleting it', () => {
+  const legacy = profile('legacy@example.test');
+  const s = { ...state(), pro: legacy };
+  expect(visiblePro(s, a, false)).toBeUndefined();
+  expect(visiblePro(s, null, true)).toBeUndefined();
+  expect(storePro(s, a, false, profile('a@example.test')).pro).toEqual(legacy);
+ });
+ it('does not persist anonymous online applications and isolates offline demo profiles', () => {
+  const p = profile('demo@example.test');
+  const s = state();
+  expect(storePro(s, null, false, p)).toBe(s);
+  const demo = storePro(s, null, true, p);
+  expect(visiblePro(demo, null, true)).toEqual(p);
+  expect(visiblePro(demo, null, false)).toBeUndefined();
+  expect(visiblePro(demo, a, true)).toBeUndefined();
+ });
+ it('stores only subject and organization, not extra session fields', () => {
+  const owner = { ...a, accessToken: 'synthetic-token', refreshToken: 'synthetic-refresh' };
+  const s = storePro(state(), owner, false, profile('a@example.test'));
+  expect(s.proProfiles?.[0].owner).toEqual(a);
+  expect(JSON.stringify(s)).not.toContain('synthetic-token');
+  expect(JSON.stringify(s)).not.toContain('synthetic-refresh');
  });
 });
