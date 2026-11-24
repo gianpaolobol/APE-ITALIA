@@ -1,6 +1,5 @@
 import { BadRequestException, Body, Controller, Delete, Get, Headers, HttpCode, Inject, Optional, Post, ServiceUnavailableException, UnauthorizedException } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma.service';
 import { AuthService, PLATFORM_AUTH } from '../auth.service';
 import { MAILER, type Mailer } from './mailer';
@@ -135,9 +134,9 @@ export class PlatformAuthController {
  }
 
  /**
-  * Account deletion (App Store guideline 5.1.1(v)). Sessions and login data are removed; requests not yet
-  * sent are deleted; requests already handled by a certifier are kept only as long as the certifier must
-  * keep the APE documentation, detached from the account.
+  * Revoke account access and remove login data. Cases belong to organizations, not individual accounts.
+  * Do not erase organization records based on membership alone; per-case erasure requires verified
+  * ownership and a retention decision. Full record erasure is a separate, outstanding workflow.
   */
  @Delete('account')
  @HttpCode(204)
@@ -147,10 +146,8 @@ export class PlatformAuthController {
   const userId = subject.slice(4);
   const u = await this.db.platformUser.findUniqueOrThrow({ where: { id: userId } });
   await this.db.$transaction(async tx => {
-   const orgs = await tx.membership.findMany({ where: { userSubject: subject, role: 'owner' }, select: { organizationId: true } });
+   const orgs = await tx.membership.findMany({ where: { userSubject: subject, active: true }, select: { organizationId: true } });
    for (const { organizationId } of orgs) {
-    const drafts = await tx.apeCase.findMany({ where: { organizationId, status: 'DRAFT' }, select: { id: true } });
-    for (const c of drafts) await tx.apeCase.update({ where: { id: c.id }, data: { survey: Prisma.DbNull } });
     await tx.auditEvent.create({ data: { organizationId, actorId: subject, action: 'account.delete', resourceId: userId } });
    }
    await tx.membership.updateMany({ where: { userSubject: subject }, data: { active: false } });

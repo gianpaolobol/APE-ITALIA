@@ -37,7 +37,7 @@ Se un fornitore tratta dati fuori dall’UE (es. servizi di intelligenza artific
 
 ## Per quanto tempo
 - Account: fino alla cancellazione, che puoi fare dall’app.
-- Richieste non inviate: cancellate con l’account.
+- Richieste non inviate: non cancellate automaticamente con la disattivazione dell’account, per evitare la perdita di dati di altri membri dell’organizzazione. La procedura di verifica della titolarità, cancellazione e conservazione delle singole pratiche deve essere definita e attuata prima della pubblicazione.
 - Video: 90 giorni dalla consegna dell’APE.
 - Foto, documenti e verbale collegati all’APE: per il tempo necessario agli obblighi del certificatore e ai controlli regionali (indicativamente la validità dell’APE, 10 anni).
 - Dati di pagamento e fatturazione: 10 anni (obblighi fiscali).

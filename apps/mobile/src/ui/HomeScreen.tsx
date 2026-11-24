@@ -26,7 +26,7 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
  const [login, setLogin] = useState(false);
  const [email, setEmail] = useState<string | null>(null);
  useEffect(() => { if (serverEnabled()) getSession().then(s => setEmail(s?.email ?? null)); }, [state]);
- const removeAccount = () => Alert.alert('Eliminare l’account?', 'Verranno cancellati accesso, dati di contatto e richieste non ancora inviate. Le pratiche già seguite da un certificatore restano solo per gli obblighi di legge, senza collegamento al tuo account.', [
+ const removeAccount = () => Alert.alert('Eliminare l’account?', 'L’accesso e i dati di login saranno rimossi. Le pratiche dell’organizzazione, anche non inviate, non vengono cancellate automaticamente: la rimozione dei dati delle pratiche richiede una verifica separata. Le copie locali possono restare sul dispositivo.', [
   { text: 'Annulla', style: 'cancel' },
   { text: 'Elimina', style: 'destructive', onPress: () => deleteAccount().then(() => { setEmail(null); Alert.alert('Account eliminato'); }).catch(() => Alert.alert('Errore', 'Riprova tra poco.')) },
  ]);

@@ -39,4 +39,32 @@ describe.skipIf(!enabled)('PostgreSQL: email-code login', () => {
   await ctrl.deleteAccount(`Bearer ${s.accessToken}`);
   await expect(auth.verify(`Bearer ${s.accessToken}`)).rejects.toBeInstanceOf(UnauthorizedException);
  });
+ it('account deletion preserves organization surveys and other members, and revokes the deleted account', async () => {
+  const ownerEmail = `delete-owner-${Date.now()}@example.test`;
+  const memberEmail = `delete-member-${Date.now()}@example.test`;
+  await ctrl.start({ email: ownerEmail });
+  const owner = await ctrl.verify({ email: ownerEmail, code: codeOf() });
+  await ctrl.start({ email: memberEmail });
+  const member = await ctrl.verify({ email: memberEmail, code: codeOf() });
+  const organizationId = owner.organizationId!;
+  await db.membership.create({ data: { organizationId, userSubject: member.user.subject, role: 'owner' } });
+  const property = await db.property.create({ data: { organizationId, address: 'Synthetic 1', city: 'Test', region: 'Test' } });
+  const draft = await db.apeCase.create({ data: { organizationId, propertyId: property.id, survey: { answer: 'shared draft' } } });
+  const submitted = await db.apeCase.create({ data: { organizationId, propertyId: property.id, status: 'SUBMITTED', survey: { answer: 'submitted' } } });
+  // Lack of another membership is not proof that every record belongs to the departing account.
+  const separate = await db.organization.create({ data: { name: 'Synthetic separate organization' } });
+  await db.membership.create({ data: { organizationId: separate.id, userSubject: owner.user.subject, role: 'owner' } });
+  const separateProperty = await db.property.create({ data: { organizationId: separate.id, address: 'Synthetic 2', city: 'Test', region: 'Test' } });
+  const unknown = await db.apeCase.create({ data: { organizationId: separate.id, propertyId: separateProperty.id, survey: { answer: 'unattributed' } } });
+  await ctrl.deleteAccount(`Bearer ${owner.accessToken}`);
+  await expect(auth.verify(`Bearer ${owner.accessToken}`)).rejects.toBeInstanceOf(UnauthorizedException);
+  await expect(ctrl.refresh({ refreshToken: owner.refreshToken })).rejects.toBeInstanceOf(UnauthorizedException);
+  expect((await auth.authorize(`Bearer ${member.accessToken}`, organizationId)).role).toBe('owner');
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: draft.id } })).survey).toEqual({ answer: 'shared draft' });
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: submitted.id } })).survey).toEqual({ answer: 'submitted' });
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: unknown.id } })).survey).toEqual({ answer: 'unattributed' });
+  expect(await db.membership.count({ where: { userSubject: owner.user.subject, active: true } })).toBe(0);
+  expect(await db.auditEvent.count({ where: { actorId: owner.user.subject, action: 'account.delete', organizationId } })).toBe(1);
+ });
+
 });
