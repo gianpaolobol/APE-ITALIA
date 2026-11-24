@@ -14,6 +14,9 @@ export type Draft = {
  sentAt?: string;
  /** Server case already created (retries reuse it instead of creating a new one). */
  remoteCaseId?: string;
+ remotePropertyId?: string;
+ remoteOwner?: { subject: string; organizationId: string };
+ videoUploads?: Record<string, string>;
  /** Local photo URIs already uploaded to remoteCaseId. */
  uploaded?: string[];
  /** Certifier side (local demo until the server is online). */
