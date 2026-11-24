@@ -24,7 +24,7 @@ export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undef
 }
 
 export async function downloadCertificate(caseId: string): Promise<string> {
- return download(`/v1/cases/${caseId}/certificate/content`, `ape-${caseId}.pdf`);
+ return download(`/v1/cases/${caseId}/certificate/content`, `ape-${caseId}.pdf`, true);
 }
 
 export type PaymentState = { enabled: boolean; payable: boolean; paid: boolean; amountCents: number | null };

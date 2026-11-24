@@ -53,6 +53,7 @@ export async function verifyLogin(email: string, code: string): Promise<Session>
 export async function logout(): Promise<void> {
  const s = await getSession();
  cached = null;
+ clearRemoteCache();
  await SecureStore.deleteItemAsync(KEY).catch(() => undefined);
  if (s) await raw('/v1/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: s.refreshToken }) }).catch(() => undefined);
 }
@@ -84,21 +85,38 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
  return raw<T>(path, { method: init.method ?? (body ? 'POST' : 'GET'), headers, ...(body ? { body } : {}) }, init.timeoutMs);
 }
 
-/** Downloads an authenticated file (evidence, certificate) into the app cache and returns its local URI. */
-export async function download(path: string, name: string): Promise<string> {
+let downloadSequence = 0;
+function clearRemoteCache(): void {
+ try { const dir = new Directory(Paths.cache, 'remote'); if (dir.exists) dir.delete(); } catch { /* best effort */ }
+}
+
+/** Always re-authorize at the server; never reuse a cached document from an earlier request/account. */
+export async function download(path: string, name: string, org = false): Promise<string> {
  const s = await freshSession();
  if (!s) throw new ServerError(401, 'Accedi per continuare');
- const dir = new Directory(Paths.cache, 'remote');
- if (!dir.exists) dir.create({ intermediates: true });
+ const headers: Record<string, string> = { Authorization: `Bearer ${s.accessToken}` };
+ if (org) {
+  if (!s.organizationId) throw new ServerError(403, 'Account senza organizzazione');
+  headers['x-organization-id'] = s.organizationId;
+ }
+ const dir = new Directory(Paths.cache, 'remote', `download-${Date.now()}-${++downloadSequence}`);
+ dir.create({ intermediates: true });
  const dest = new File(dir, name);
- if (dest.exists) return dest.uri;
- const f = await File.downloadFileAsync(`${API_BASE}${path}`, dest, { headers: { Authorization: `Bearer ${s.accessToken}` } });
- return f.uri;
+ try {
+  const f = await File.downloadFileAsync(`${API_BASE}${path}`, dest, { headers });
+  const current = await getSession();
+  if (!current || current.subject !== s.subject || current.organizationId !== s.organizationId) throw new ServerError(401, 'Sessione cambiata');
+  return f.uri;
+ } catch (e) {
+  try { if (dir.exists) dir.delete(); } catch { /* best effort */ }
+  throw e;
+ }
 }
 
 export async function deleteAccount(): Promise<void> {
  await api('/v1/auth/account', { method: 'DELETE' });
  cached = null;
+ clearRemoteCache();
  await SecureStore.deleteItemAsync(KEY).catch(() => undefined);
 }
 
