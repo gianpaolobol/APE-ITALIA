@@ -2,7 +2,8 @@ name: Deploy staging server
 
 # Deploys main to the staging VM over SSH: pulls the repository, writes deploy/.env from a secret and
 # runs the docker-compose stack (Postgres, ClamAV, migrations, API, worker, web, Caddy TLS).
-# Required secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY (private key), DEPLOY_ENV_FILE (deploy/.env content).
+# Staging environment secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_SSH_KNOWN_HOSTS, DEPLOY_ENV_FILE.
+# Required staging variable: STAGING_PUBLIC_API_URL (dedicated HTTPS staging origin).
 # Optional variable: DEPLOY_PATH (default /opt/ape-italia). See docs/DEPLOYMENT.md.
 on:
   workflow_dispatch:
@@ -22,25 +23,44 @@ jobs:
     uses: ./.github/workflows/release-ci-gate.yml
   deploy:
     needs: release-gate
+    environment: staging
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      HAS_SECRETS: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_ENV_FILE != '' }}
+      HAS_SECRETS: ${{ secrets.DEPLOY_HOST != '' && secrets.DEPLOY_USER != '' && secrets.DEPLOY_SSH_KEY != '' && secrets.DEPLOY_SSH_KNOWN_HOSTS != '' && secrets.DEPLOY_ENV_FILE != '' }}
     steps:
       - name: Check configuration
         if: env.HAS_SECRETS != 'true'
         run: |
-          echo "::error::Missing DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY / DEPLOY_ENV_FILE secrets (see docs/DEPLOYMENT.md)"
+          echo "::error::Missing staging deployment secrets (including pinned SSH known hosts) secrets (see docs/DEPLOYMENT.md)"
           exit 1
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate staging destination before SSH
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/ape-italia' }}
+          EXPECTED_URL: ${{ vars.STAGING_PUBLIC_API_URL }}
+          ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE }}
+        run: node scripts/verify-staging-config.mjs
       - name: SSH key
         env:
           KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
           HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
-          ssh-keyscan -T 15 "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/ape_staging_known_hosts
+          chmod 600 ~/.ssh/ape_staging_known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/ape_staging_known_hosts >/dev/null || { echo "::error::Pinned staging host key missing"; exit 1; }
       - name: Deploy
         env:
           HOST: ${{ secrets.DEPLOY_HOST }}
@@ -51,19 +71,20 @@ jobs:
           SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes $USER@$HOST"
-          $SSH "set -e; if [ ! -d '$DEPLOY_PATH/.git' ]; then sudo mkdir -p '$DEPLOY_PATH' && sudo chown \$(id -u):\$(id -g) '$DEPLOY_PATH' && git clone https://github.com/$REPO '$DEPLOY_PATH'; fi; cd '$DEPLOY_PATH' && git fetch --quiet origin && git checkout --quiet --force '$SHA'"
-          printf '%s\n' "$ENV_FILE" | $SSH "umask 077; cat > '$DEPLOY_PATH/deploy/.env'"
-          $SSH "cd '$DEPLOY_PATH' && docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build --remove-orphans && docker image prune -f >/dev/null"
-      - name: Health check
+          SSH=(ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/ape_staging_known_hosts" -o GlobalKnownHostsFile=/dev/null -- "$USER@$HOST")
+          "${SSH[@]}" "set -e; if [ ! -d '$DEPLOY_PATH/.git' ]; then sudo mkdir -p '$DEPLOY_PATH' && sudo chown \$(id -u):\$(id -g) '$DEPLOY_PATH' && git clone https://github.com/$REPO '$DEPLOY_PATH'; fi; cd '$DEPLOY_PATH' && git fetch --quiet origin && git checkout --quiet --force '$SHA'"
+          printf '%s\n' "$ENV_FILE" | "${SSH[@]}" "umask 077; cat > '$DEPLOY_PATH/deploy/.env'"
+          "${SSH[@]}" "cd '$DEPLOY_PATH' && docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build --remove-orphans"
+      - name: Mandatory public HTTPS health check
         env:
-          ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE }}
+          URL: ${{ vars.STAGING_PUBLIC_API_URL }}
         run: |
           set -euo pipefail
-          URL=$(printf '%s\n' "$ENV_FILE" | sed -n 's/^PUBLIC_API_URL=//p' | tr -d '\r')
-          [ -n "$URL" ] || { echo "PUBLIC_API_URL not set: skipping public check"; exit 0; }
-          for i in $(seq 1 30); do curl -fsS "$URL/health" && exit 0; sleep 10; done
-          echo "::error::API not healthy at $URL/health"; exit 1
+          for i in $(seq 1 30); do
+            if status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --proto '=https' --connect-timeout 5 --max-time 10 "$URL/health") && [ "$status" = 200 ]; then exit 0; fi
+            sleep 10
+          done
+          echo "::error::Staging API HTTPS health check failed"; exit 1
       - name: Cleanup
         if: always()
-        run: rm -f ~/.ssh/id_deploy
+        run: rm -f ~/.ssh/id_deploy ~/.ssh/ape_staging_known_hosts
