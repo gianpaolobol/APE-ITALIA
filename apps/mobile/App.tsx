@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, AppState as RNAppState, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState as RNAppState, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { C } from './src/ui/theme';
@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { logout } from './src/server';
-import { deleteMedia, deletePhotoFile, loadState, newDraft, persistPhoto, saveState, type AppState, type Draft } from './src/survey/drafts';
+import { deleteMedia, deletePhotoFile, loadState, newDraft, persistPhoto, saveState, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
@@ -47,12 +47,25 @@ export default function App() {
  const replace = (d: Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === d.id ? d : x)) }));
  const updateDraft = (id: string, fn: (d: Draft) => Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === id ? fn(x) : x)) }));
 
+ // Do not acknowledge a deletion while an older snapshot can still be restored.
+ const removeDraft = (id: string): boolean => {
+  const cur = latest.current;
+  if (!cur) return false;
+  const next = { ...cur, drafts: cur.drafts.filter(x => x.id !== id) };
+  try { saveStateNow(next); }
+  catch { Alert.alert('Eliminazione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return false; }
+  if (saveTimer.current) clearTimeout(saveTimer.current);
+  latest.current = next; setState(next);
+  deleteMedia(id);
+  return true;
+ };
+
  let screen: React.ReactNode = null;
  if (route.name === 'home') {
   screen = <HomeScreen state={state}
    onNew={() => { const d = newDraft(); upsert(d); setRoute({ name: 'wizard', id: d.id }); }}
    onOpen={d => setRoute(d.status !== 'bozza' || Object.keys(d.answers).length > 8 ? { name: 'result', id: d.id } : { name: 'wizard', id: d.id })}
-   onDelete={d => { deleteMedia(d.id); update(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== d.id) })); }}
+   onDelete={d => { removeDraft(d.id); }}
    onPro={() => setRoute({ name: 'pro' })} />;
  } else if (route.name === 'wizard' && draft(route.id)) {
   const d = draft(route.id)!;
@@ -75,7 +88,7 @@ export default function App() {
     latest.current = next; setState(next);
     await saveState(next);
    }}
-   onDelete={() => { deleteMedia(d.id); update(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== d.id) })); setRoute({ name: 'home' }); }} />;
+   onDelete={() => { if (removeDraft(d.id)) setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
   screen = <ProScreen state={state} onBack={() => setRoute({ name: 'home' })} onSaved={pro => update(s => ({ ...s, pro }))} onInbox={() => setRoute({ name: 'inbox' })} onRemote={me => setRoute({ name: 'remote', me })} />;
  } else if (route.name === 'remote') {
