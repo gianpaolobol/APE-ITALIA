@@ -5,7 +5,7 @@ import type { Job } from './job';
 
 type InspectionResp = { caseStatus: string; inspection: { status: string; scheduledAt: string; performedAt: string | null; certifierName: string } | null;
  certifier: { name: string; registrationId: string } | null; call: { at: string; url: string } | null };
-type CertResp = { certificate: { regionalId: string; energyClass: string | null; depositedAt: string; sha256: string; sizeBytes: number } | null };
+type CertResp = { certificate: { regionalId: string; energyClass: string | null; depositedAt: string; deliveredAt: string | null; sha256: string; sizeBytes: number } | null };
 
 export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undefined; caseStatus: string }> {
  const r = await api<InspectionResp>(`/v1/cases/${caseId}/inspection`, { org: true });
@@ -19,7 +19,7 @@ export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undef
  }
  if (['DEPOSITED', 'DELIVERED'].includes(r.caseStatus)) {
   const c = await api<CertResp>(`/v1/cases/${caseId}/certificate`, { org: true });
-  if (c.certificate) { job.status = 'consegnata'; job.ape = { code: c.certificate.regionalId, energyClass: c.certificate.energyClass ?? '—', deliveredAt: c.certificate.depositedAt }; }
+  if (c.certificate) { job.status = c.certificate.deliveredAt ? 'consegnata' : 'accettata'; job.ape = { code: c.certificate.regionalId, energyClass: c.certificate.energyClass ?? '—', deliveredAt: c.certificate.deliveredAt ?? '', depositedAt: c.certificate.depositedAt }; }
  }
  return { job, caseStatus: r.caseStatus };
 }
@@ -40,6 +40,8 @@ export async function downloadCertificate(caseId: string): Promise<string> {
   const hex = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
   guard();
   if (hex !== certificate.sha256) throw new ServerError(422, 'Integrità attestato non verificata');
+  await api(`/v1/cases/${caseId}/certificate/receipt`, { org: true, body: { sha256: hex, sizeBytes: bytes.length } });
+  guard();
  });
 }
 
