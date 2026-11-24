@@ -34,6 +34,7 @@ describe('mobile certificate integrity', () => {
   await expect(downloadCertificate('case')).resolves.toBe('file:///synthetic.pdf');
   expect(mock.api).toHaveBeenCalledWith('/v1/cases/case/certificate', { org: true });
   expect(mock.download).toHaveBeenCalledWith('/v1/cases/case/certificate/content', 'ape-case.pdf', true, expect.any(Function));
+  expect(mock.api).toHaveBeenLastCalledWith('/v1/cases/case/certificate/receipt', { org: true, body: { sha256, sizeBytes: pdf.length } });
  });
  it('rejects a truncated download', async () => {
   downloaded(pdf.subarray(0, pdf.length - 1));
@@ -43,6 +44,7 @@ describe('mobile certificate integrity', () => {
   const altered = pdf.slice(); altered[altered.length - 1] ^= 1;
   downloaded(altered);
   await expect(downloadCertificate('case')).rejects.toThrow('Integrità attestato non verificata');
+  expect(mock.api).toHaveBeenCalledTimes(1);
  });
  it('rejects malformed metadata before downloading', async () => {
   mock.api.mockResolvedValue({ certificate: { ...meta, sha256: 'bad' } });
@@ -57,5 +59,9 @@ describe('mobile certificate integrity', () => {
  it('does not expose a file after a session change during digest', async () => {
   mock.guard.mockImplementationOnce(() => {}).mockImplementationOnce(() => {}).mockImplementationOnce(() => { throw new Error('Sessione cambiata'); });
   await expect(downloadCertificate('case')).rejects.toThrow('Sessione cambiata');
+ });
+ it('does not expose a file if the receipt cannot be confirmed', async () => {
+  mock.api.mockResolvedValueOnce({ certificate: meta }).mockRejectedValueOnce(new Error('Network'));
+  await expect(downloadCertificate('case')).rejects.toThrow('Network');
  });
 });
