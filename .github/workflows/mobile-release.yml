@@ -1,6 +1,6 @@
 name: Mobile release (TestFlight / Firebase App Distribution / Google Play)
 
-# Manual run (Actions → "Mobile release" → Run workflow) or a tag like mobile-v0.1.0.
+# Manual run on current validated main only (Actions → "Mobile release" → Run workflow).
 # Without signing secrets the jobs still compile the native apps (unsigned) to verify the build;
 # with secrets they sign and upload. Required secrets and one-time setup: docs/MOBILE_RELEASE.md.
 on:
@@ -16,8 +16,6 @@ on:
         type: choice
         options: [completed, draft]
         default: completed
-  push:
-    tags: ['mobile-v*']
 
 permissions:
   contents: read
@@ -35,8 +33,14 @@ env:
   EXPO_PUBLIC_OIDC_AUDIENCE: ${{ vars.EXPO_PUBLIC_OIDC_AUDIENCE }}
 
 jobs:
+  release-gate:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/release-ci-gate.yml
   android:
-    if: github.event_name == 'push' || inputs.platform != 'ios'
+    needs: release-gate
+    if: inputs.platform != 'ios'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -162,7 +166,8 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
   ios:
-    if: github.event_name == 'push' || inputs.platform != 'android'
+    needs: release-gate
+    if: inputs.platform != 'android'
     runs-on: macos-15
     timeout-minutes: 90
     env:
