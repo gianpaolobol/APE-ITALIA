@@ -90,7 +90,7 @@ export class EvidenceController {
  }
 
  /** Content policy, sanitization, malware scan, encrypted storage and record. */
- private async ingest(s: { organizationId: string; actorId: string }, caseId: string, kind: EvidenceKind, input: Buffer) {
+ private async ingest(s: { organizationId: string; actorId: string }, caseId: string, kind: EvidenceKind, input: Buffer, uploadId?: string) {
   if (!this.storage) throw new ServiceUnavailableException('Evidence storage not configured');
   if (input.length > maxBytesFor(kind)) throw new HttpException('File too large for this evidence kind', HttpStatus.PAYLOAD_TOO_LARGE);
   let mime = sniffMimeType(input);
@@ -126,6 +126,12 @@ export class EvidenceController {
      data: { id, caseId, organizationId: s.organizationId, kind, storageKey, mimeType: mime, sizeBytes: content.length, sha256, uploadedBy: s.actorId, scanStatus },
      select: EVIDENCE_PUBLIC_FIELDS,
     });
+    // Persist the upload receipt in the same transaction as its evidence and audit event.
+    // A retry must never see a committed evidence row but an incomplete upload receipt.
+    if (uploadId) {
+     const updated = await tx.chunkedUpload.updateMany({ where: { id: uploadId, caseId, organizationId: s.organizationId, createdBy: s.actorId, completedAt: null }, data: { completedAt: new Date(), evidenceId: ev.id } });
+     if (updated.count !== 1) throw new ConflictException('Upload already completed');
+    }
     await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'evidence.upload', resourceId: id } });
     return ev;
    });
@@ -192,12 +198,19 @@ export class EvidenceController {
   const missing = Array.from({ length: parts }, (_, i) => i).filter(i => !up.receivedParts.includes(i));
   if (missing.length) throw new ConflictException(`Missing parts: ${missing.slice(0, 20).join(',')}`);
   const dir = join(uploadTmpDir(), up.id);
-  const buf = Buffer.concat(await Promise.all(Array.from({ length: parts }, (_, i) => readFile(join(dir, String(i))))));
-  if (buf.length !== up.totalBytes) throw new ConflictException('Assembled size mismatch');
-  const ev = await this.ingest(s, caseId, kind, buf);
-  await this.db.chunkedUpload.update({ where: { id: up.id }, data: { completedAt: new Date(), evidenceId: ev.id } });
-  await rm(dir, { recursive: true, force: true });
-  return ev;
+  try {
+   const buf = Buffer.concat(await Promise.all(Array.from({ length: parts }, (_, i) => readFile(join(dir, String(i))))));
+   if (buf.length !== up.totalBytes) throw new ConflictException('Assembled size mismatch');
+   const ev = await this.ingest(s, caseId, kind, buf, up.id);
+   await rm(dir, { recursive: true, force: true });
+   return ev;
+  } catch (error) {
+   // A concurrent completion may have committed and removed the temporary parts.
+   // Recover only the receipt for this exact upload, never an unrelated duplicate file.
+   const completed = await this.db.chunkedUpload.findFirst({ where: { id: up.id, caseId, organizationId: s.organizationId, createdBy: s.actorId, completedAt: { not: null } } });
+   if (!completed?.evidenceId) throw error;
+   return this.db.evidence.findUniqueOrThrow({ where: { id: completed.evidenceId }, select: EVIDENCE_PUBLIC_FIELDS });
+  }
  }
 
  @Get('cases/:caseId/evidence')
