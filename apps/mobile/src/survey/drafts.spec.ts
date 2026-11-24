@@ -24,7 +24,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { canViewDraft, loadState, newDraft, saveStateNow, type AppState } from './drafts';
+import { canViewDraft, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -90,5 +90,43 @@ describe('account-bound draft visibility', () => {
   expect(canViewDraft(draft, null)).toBe(true);
   expect(canViewDraft(draft, a)).toBe(true);
   expect(draft.remoteOwner).toBeUndefined();
+ });
+});
+
+
+describe('individual evidence removal', () => {
+ const photo = (uri: string) => ({ uri, name: 'photo.jpg', mimeType: 'image/jpeg', takenAt: '2026-11-24T00:00:00Z' });
+ it('removes only a reference present in the current draft and preserves shared references', () => {
+  const p = photo('/documents/ape/media/a/photo.jpg');
+  const draft = { ...newDraft(), photos: { wall: [p], window: [p] } };
+  expect(removeDraftPhoto(draft, 'missing', p.uri)).toBeNull();
+  expect(removeDraftPhoto(draft, 'wall', 'stale-uri')).toBeNull();
+  const result = removeDraftPhoto(draft, 'wall', p.uri)!;
+  expect(result.draft.photos.wall).toEqual([]);
+  expect(result.draft.photos.window).toEqual([p]);
+  expect(result.unreferenced).toBe(false);
+  expect(removeDraftPhoto(result.draft, 'window', p.uri)?.unreferenced).toBe(true);
+ });
+ it('commits removal in both snapshots before unlinking the file', async () => {
+  const draft = newDraft();
+  const uri = '/documents/ape/media/' + draft.id + '/photo.jpg';
+  const p = photo(uri);
+  const current = { ...draft, photos: { wall: [p] } };
+  fs.files.set(uri, 'image');
+  saveStateNow(state(current));
+  const result = removeDraftPhoto(current, 'wall', uri)!;
+  saveStateNow(state(result.draft));
+  deleteDraftPhotoFile(draft.id, p);
+  expect(fs.files.has(uri)).toBe(false);
+  fs.files.set(primary, 'corrupt');
+  expect((await loadState()).drafts[0].photos.wall).toEqual([]);
+ });
+ it('does not unlink another draft file, a nested path or the state snapshot', () => {
+  const foreign = ['/documents/ape/media/b/photo.jpg', '/documents/ape/media/a/../b/photo.jpg', primary];
+  for (const uri of foreign) { fs.files.set(uri, 'keep'); deleteDraftPhotoFile('a', photo(uri)); expect(fs.files.get(uri)).toBe('keep'); }
+  const valid = '/documents/ape/media/a/photo.jpg';
+  fs.files.set(valid, 'remove');
+  deleteDraftPhotoFile('a', photo(valid));
+  expect(fs.files.has(valid)).toBe(false);
  });
 });
