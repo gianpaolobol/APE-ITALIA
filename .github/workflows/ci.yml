@@ -53,6 +53,11 @@ jobs:
       - run: npm run typecheck -w @ape/mobile
       - run: npm run test -w @ape/mobile
       - run: npm run bundle:check -w @ape/mobile
+      - name: Verify generated Android backup policy
+        working-directory: apps/mobile
+        run: |
+          npx expo prebuild --platform android --no-install --clean
+          python3 ../../scripts/check-android-backup.py android/app/src/main
       - run: npm run test -w @ape/web
       - run: npm run build -w @ape/web
       - name: Web portal end-to-end in Chrome (fake OIDC + stub API)
