@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, type DraftOwner, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, persistPhoto, saveState, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, persistPhoto, saveState, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
@@ -59,7 +59,19 @@ export default function App() {
 
  if (!state || owner === undefined) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}><ActivityIndicator color={C.brand} /></View>;
 
- const visibleState = { ...state, drafts: state.drafts.filter(d => canViewDraft(d, owner)) };
+ const demo = !serverEnabled();
+ const scopeKey = JSON.stringify([owner?.subject ?? null, owner?.organizationId ?? null, demo]);
+ const visibleState: AppState = { version: 1, drafts: state.drafts.filter(d => canViewDraft(d, owner)), pro: visiblePro(state, owner, demo) };
+ const savePro = (profile: ProProfile): boolean => {
+  const cur = latest.current;
+  if (!cur || !sameOwner(owner, ownerRef.current) || (!owner && !demo)) return false;
+  const next = storePro(cur, owner, demo, profile);
+  try { saveStateNow(next); }
+  catch { Alert.alert('Salvataggio non riuscito', 'Non è stato possibile salvare la candidatura sul telefono.'); return false; }
+  if (saveTimer.current) clearTimeout(saveTimer.current);
+  latest.current = next; setState(next);
+  return true;
+ };
  const draft = (id: string) => visibleState.drafts.find(d => d.id === id);
  const permitted = (id: string) => latest.current?.drafts.some(d => d.id === id && canViewDraft(d, ownerRef.current)) ?? false;
  const upsert = (d: Draft) => update(s => ({ ...s, drafts: [d, ...s.drafts.filter(x => x.id !== d.id)] }));
@@ -121,14 +133,14 @@ export default function App() {
    }}
    onDelete={() => { if (removeDraft(d.id)) setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
-  screen = <ProScreen state={visibleState} onBack={() => setRoute({ name: 'home' })} onSaved={pro => update(s => ({ ...s, pro }))} onInbox={() => setRoute({ name: 'inbox' })} onRemote={me => setRoute({ name: 'remote', me })} />;
+  screen = <ProScreen key={scopeKey} state={visibleState} canSaveLocally={!!owner || demo} onBack={() => setRoute({ name: 'home' })} onSaved={savePro} onInbox={() => { if (demo && sameOwner(owner, ownerRef.current)) setRoute({ name: 'inbox' }); }} onRemote={me => { if (ownerRef.current) setRoute(r => r.name === 'pro' ? { name: 'remote', me } : r); }} />;
  } else if (route.name === 'remote') {
   screen = <RemoteCertifier me={route.me} onBack={() => setRoute({ name: 'pro' })} onLogout={() => { logout().finally(() => setRoute({ name: 'home' })); }} />;
- } else if (route.name === 'inbox' && state.pro) {
+ } else if (route.name === 'inbox' && demo && visibleState.pro) {
   screen = <InboxScreen state={visibleState} onBack={() => setRoute({ name: 'pro' })} onOpen={d => setRoute({ name: 'job', id: d.id })} />;
- } else if (route.name === 'job' && state.pro && draft(route.id)) {
+ } else if (route.name === 'job' && demo && visibleState.pro && draft(route.id)) {
   const d = draft(route.id)!;
-  screen = <JobScreen draft={d} pro={state.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)} />;
+  screen = <JobScreen draft={d} pro={visibleState.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)} />;
  } else {
   screen = <HomeScreen state={visibleState}
    onNew={() => { const d = { ...newDraft(), ...(ownerRef.current ? { localOwner: { subject: ownerRef.current.subject, organizationId: ownerRef.current.organizationId } } : {}) }; upsert(d); setRoute({ name: 'wizard', id: d.id }); }}

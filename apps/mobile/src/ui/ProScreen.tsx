@@ -8,7 +8,7 @@ import { PROVINCES } from '../survey/questions';
 import { normalizeSaceNumber, validateRegistration, type FieldErrors, type ProRegistration } from '../pro/registration';
 import type { AppState } from '../survey/drafts';
 import { LoginSheet } from './LoginSheet';
-import { api, serverEnabled } from '../server';
+import { api, serverEnabled, sessionBoundary } from '../server';
 
 const PROFESSIONS = [
  { value: 'architetto', label: 'Architetto' }, { value: 'ingegnere', label: 'Ingegnere' }, { value: 'geometra', label: 'Geometra' },
@@ -16,7 +16,7 @@ const PROFESSIONS = [
 ];
 const apiBase = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
 
-export function ProScreen({ state, onBack, onSaved, onInbox, onRemote }: { state: AppState; onBack: () => void; onSaved: (pro: NonNullable<AppState['pro']>) => void; onInbox: () => void; onRemote: (me: { name: string; sace: string }) => void }) {
+export function ProScreen({ state, canSaveLocally, onBack, onSaved, onInbox, onRemote }: { state: AppState; canSaveLocally: boolean; onBack: () => void; onSaved: (pro: NonNullable<AppState['pro']>) => boolean; onInbox: () => void; onRemote: (me: { name: string; sace: string }) => void }) {
  const insets = useSafeAreaInsets();
  const [r, setR] = useState<Partial<ProRegistration>>(state.pro?.data ?? { region: 'Emilia-Romagna', provinces: [], maxMonthlyJobs: 10 });
  const [errors, setErrors] = useState<FieldErrors>({});
@@ -24,8 +24,10 @@ export function ProScreen({ state, onBack, onSaved, onInbox, onRemote }: { state
  const [login, setLogin] = useState(false);
  const afterLogin = async () => {
   setLogin(false);
+  const guard = sessionBoundary();
   try {
    const s = await api<{ certifier: { name: string; registrationId: string } | null }>('/v1/auth/session');
+   guard();
    if (s.certifier) onRemote({ name: s.certifier.name, sace: s.certifier.registrationId });
    else Alert.alert('Profilo non ancora attivo', 'Il tuo profilo di certificatore è in verifica oppure l’email non corrisponde alla candidatura. Ti scriviamo appena è attivo.');
   } catch { Alert.alert('Errore', 'Non riesco a verificare il profilo. Riprova.'); }
@@ -48,7 +50,7 @@ export function ProScreen({ state, onBack, onSaved, onInbox, onRemote }: { state
      <IconCircle name="hourglass-outline" size={60} bg={C.warnSoft} color="#8A5A00" />
      <Text style={[F.title, { marginTop: S.m, textAlign: 'center' }]}>Candidatura in verifica</Text>
      <Text style={[F.body, { textAlign: 'center', marginTop: 6 }]}>Controlliamo il numero di accreditamento <Text style={{ fontWeight: '800', color: C.ink }}>{state.pro.data.saceNumber}</Text> sull’elenco pubblico dei certificatori dell’Emilia-Romagna. Ti avvisiamo via email a {state.pro.data.email}.</Text>
-     <View style={{ marginTop: S.m }}><Pill tone={state.pro.status === 'inviata_al_server' ? 'brand' : 'warn'} text={state.pro.status === 'inviata_al_server' ? 'Ricevuta' : 'Salvata sul telefono (versione di prova)'} /></View>
+     <View style={{ marginTop: S.m }}><Pill tone={state.pro.status === 'inviata_al_server' ? 'brand' : 'warn'} text={state.pro.status === 'inviata_al_server' ? 'Ricevuta' : serverEnabled() ? 'Salvata sul telefono · invio da riprovare' : 'Salvata sul telefono (versione di prova)'} /></View>
      {!serverEnabled() ? <Button title="Apri le richieste in arrivo (demo)" icon="file-tray-full-outline" style={{ marginTop: S.l, alignSelf: 'stretch' }} onPress={onInbox} /> : null}
      {state.pro.status !== 'inviata_al_server' ? <Button title="Riprova l’invio" kind="secondary" icon="refresh" style={{ marginTop: S.m, alignSelf: 'stretch' }} busy={busy} onPress={() => send(state.pro!.data)} /> : null}
     </Card>
@@ -64,17 +66,34 @@ export function ProScreen({ state, onBack, onSaved, onInbox, onRemote }: { state
  };
 
  async function send(data: ProRegistration) {
+  const guard = sessionBoundary();
   setBusy(true);
   let status: 'in_verifica' | 'inviata_al_server' = 'in_verifica';
   try {
    if (/^https:\/\//.test(apiBase)) {
     const res = await fetch(`${apiBase}/v1/certifier-applications`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    guard();
     if (res.ok) status = 'inviata_al_server';
     else if (res.status === 409) { Alert.alert('Già registrato', 'Esiste già una candidatura con questo numero SACE o email.'); setBusy(false); return; }
    }
-  } catch { /* offline: kept on the device */ }
+  } catch { /* a failed request may be saved only for the initiating account or offline demo */ }
   setBusy(false);
-  onSaved({ data, submittedAt: new Date().toISOString(), status });
+  try { guard(); } catch { return; }
+  if (!canSaveLocally) {
+   // Public online applications still work, but anonymous applicants must not leave
+   // their personal and fiscal data in a shared persistent profile on the device.
+   if (status === 'inviata_al_server') {
+    setR({ region: 'Emilia-Romagna', provinces: [], maxMonthlyJobs: 10 });
+    Alert.alert('Candidatura ricevuta', 'Ti avvisiamo via email dopo la verifica.');
+    onBack();
+   } else {
+    Alert.alert('Invio non riuscito', 'Riprova con una connessione attiva. I dati della candidatura non sono stati salvati sul telefono.');
+   }
+   return;
+  }
+  if (!onSaved({ data, submittedAt: new Date().toISOString(), status }) && status === 'inviata_al_server') {
+   Alert.alert('Candidatura ricevuta', 'Il server ha ricevuto la candidatura, ma il salvataggio locale non è riuscito.');
+  }
  }
 
  return (

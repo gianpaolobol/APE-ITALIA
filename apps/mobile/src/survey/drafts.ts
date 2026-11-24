@@ -25,9 +25,28 @@ export type Draft = {
  job?: Job;
 };
 
-export type AppState = { version: 1; drafts: Draft[]; pro?: { data: ProRegistration; submittedAt: string; status: 'in_verifica' | 'inviata_al_server' } };
-
+export type ProProfile = { data: ProRegistration; submittedAt: string; status: 'in_verifica' | 'inviata_al_server' };
 export type DraftOwner = { subject: string; organizationId: string | null };
+type ScopedProProfile = { owner: DraftOwner | null; profile: ProProfile };
+// Legacy pro is retained for recovery, but never attributed to an arbitrary account.
+export type AppState = { version: 1; drafts: Draft[]; pro?: ProProfile; proProfiles?: ScopedProProfile[] };
+
+export function sameOwner(a: DraftOwner | null, b: DraftOwner | null): boolean {
+ return a === null ? b === null : b !== null && a.subject === b.subject && a.organizationId === b.organizationId;
+}
+
+/** Anonymous profiles are only available in explicit offline demo mode. */
+export function visiblePro(state: AppState, owner: DraftOwner | null, demo: boolean): ProProfile | undefined {
+ if (!owner && !demo) return undefined;
+ return state.proProfiles?.find(p => sameOwner(p.owner, owner))?.profile;
+}
+
+export function storePro(state: AppState, owner: DraftOwner | null, demo: boolean, profile: ProProfile): AppState {
+ if (!owner && !demo) return state;
+ // Store only the scope, never the session tokens or other account details.
+ const scope = owner ? { subject: owner.subject, organizationId: owner.organizationId } : null;
+ return { ...state, proProfiles: [...(state.proProfiles ?? []).filter(p => !sameOwner(p.owner, scope)), { owner: scope, profile }] };
+}
 /** Unattributed legacy remote drafts are quarantined, not assigned to a new account. */
 export function canViewDraft(d: Draft, owner: DraftOwner | null): boolean {
  const matches = (bound: DraftOwner) => owner !== null && bound.subject === owner.subject && bound.organizationId === owner.organizationId;
