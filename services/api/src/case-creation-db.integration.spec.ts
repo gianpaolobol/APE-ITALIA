@@ -1,0 +1,41 @@
+import { afterAll, describe, expect, it, vi } from 'vitest';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
+import { CasesController } from './cases.controller';
+import type { PrismaService } from './prisma.service';
+import type { AuthService } from './auth.service';
+
+const enabled = process.env.RUN_DB_INTEGRATION === '1';
+describe.skipIf(!enabled)('PostgreSQL: scoped case creation idempotency', () => {
+ const db = enabled ? new PrismaClient() : (null as unknown as PrismaClient);
+ afterAll(async () => { await db.$disconnect(); });
+ it('serializes concurrent creation, isolates scope, rejects changed payloads and never recreates deleted resources', async () => {
+  const org = await db.organization.create({ data: { name: 'Synthetic receipt org' } });
+  const other = await db.organization.create({ data: { name: 'Synthetic receipt other' } });
+  const actorId = randomUUID();
+  const controller = (organizationId: string, actor: string, role = 'owner') => new CasesController(db as unknown as PrismaService, { authorize: vi.fn().mockResolvedValue({ organizationId, actorId: actor, role }) } as unknown as AuthService);
+  const ctrl = controller(org.id, actorId);
+  const key = randomUUID();
+  const body = { address: 'Synthetic', city: 'Test', region: 'Test', idempotencyKey: key };
+  const [p, p2] = await Promise.all([ctrl.createProperty(body), ctrl.createProperty(body)]);
+  expect(p.id).toBe(p2.id);
+  expect(await db.auditEvent.count({ where: { organizationId: org.id, action: 'property.create', resourceId: p.id } })).toBe(1);
+  await expect(ctrl.createProperty({ ...body, address: 'Changed' })).rejects.toBeInstanceOf(ConflictException);
+  const foreign = await controller(other.id, actorId).createProperty(body);
+  expect(foreign.id).not.toBe(p.id);
+  expect((await controller(org.id, randomUUID()).createProperty(body)).id).not.toBe(p.id);
+  await expect(controller(org.id, actorId, 'viewer').createProperty(body)).rejects.toBeInstanceOf(ForbiddenException);
+  const caseBody = { propertyId: p.id, idempotencyKey: key };
+  const [c, c2] = await Promise.all([ctrl.createCase(caseBody), ctrl.createCase(caseBody)]);
+  expect(c.id).toBe(c2.id);
+  expect(await db.auditEvent.count({ where: { organizationId: org.id, action: 'case.create', resourceId: c.id } })).toBe(1);
+  await expect(controller(other.id, actorId).createCase(caseBody)).rejects.toBeInstanceOf(NotFoundException);
+  expect(await db.creationReceipt.count({ where: { organizationId: other.id, actorId, operation: 'case.create', key } })).toBe(0);
+  await expect(ctrl.createCase({ ...caseBody, propertyId: foreign.id })).rejects.toBeInstanceOf(ConflictException);
+  await ctrl.deleteCase(c.id);
+  await expect(ctrl.createCase(caseBody)).rejects.toBeInstanceOf(ConflictException);
+  await ctrl.deleteProperty(p.id);
+  await expect(ctrl.createProperty(body)).rejects.toBeInstanceOf(ConflictException);
+ });
+});

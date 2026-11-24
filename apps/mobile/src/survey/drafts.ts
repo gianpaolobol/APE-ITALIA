@@ -14,6 +14,7 @@ export type Draft = {
  sentAt?: string;
  /** Server case already created (retries reuse it instead of creating a new one). */
  remoteCaseId?: string;
+ remoteCreationKey?: string;
  remotePropertyId?: string;
  remoteOwner?: { subject: string; organizationId: string };
  /** Account that created the local draft, when known. */
@@ -52,7 +53,7 @@ export function canViewDraft(d: Draft, owner: DraftOwner | null): boolean {
  const matches = (bound: DraftOwner) => owner !== null && bound.subject === owner.subject && bound.organizationId === owner.organizationId;
  if (d.localOwner && !matches(d.localOwner)) return false;
  if (d.remoteOwner) return matches(d.remoteOwner);
- if (d.remoteCaseId || d.remotePropertyId || Object.keys(d.videoUploads ?? {}).length || d.uploaded?.length) return false;
+ if (d.remoteCreationKey || d.remoteCaseId || d.remotePropertyId || Object.keys(d.videoUploads ?? {}).length || d.uploaded?.length) return false;
  return true;
 }
 

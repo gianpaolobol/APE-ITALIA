@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { submitToServer, type SubmitState } from './remote-submit';
 
 const m = vi.hoisted(() => ({ api: vi.fn(), fresh: vi.fn(), upload: vi.fn(), guard: vi.fn() }));
+vi.mock('expo-crypto', () => ({ randomUUID: () => '123e4567-e89b-42d3-a456-426614174000' }));
 vi.mock('./server', () => ({ api: m.api, freshSession: m.fresh, uploadResumable: m.upload, sessionBoundary: () => m.guard, serverEnabled: () => true }));
 vi.mock('./survey/questions', () => ({ PROVINCES: [], pruneHidden: (answers: unknown, photos: unknown) => ({ answers, photos }) }));
 vi.mock('./energy/estimate', () => ({ estimate: () => null }));
@@ -45,6 +46,21 @@ describe('remote submission retry', () => {
   m.api.mockClear();
   await expect(submitToServer({ answers, photos: {}, ...cp }, progress, checkpoint)).resolves.toEqual({ caseId: 'case-a' });
   expect(m.api.mock.calls.map(c => c[0])).toEqual(['/v1/cases/case-a', '/v1/notices', '/v1/cases/case-a/consents', '/v1/cases/case-a/survey', '/v1/cases/case-a/submit']);
+ });
+ it('persists the creation key before the first request and reuses it after a lost response', async () => {
+  let cp: SubmitState = {};
+  const checkpoint = (s: SubmitState) => { cp = s; };
+  m.api.mockImplementationOnce(async (_path, init) => {
+   expect(cp.remoteCreationKey).toBeTruthy();
+   expect(init.body.idempotencyKey).toBe(cp.remoteCreationKey);
+   throw new Error('lost creation response');
+  });
+  await expect(submitToServer({ answers, photos: {} }, progress, checkpoint)).rejects.toThrow('lost creation response');
+  const key = cp.remoteCreationKey;
+  m.api.mockClear();
+  await submitToServer({ answers, photos: {}, ...cp }, progress, checkpoint);
+  expect(m.api.mock.calls[0][1].body.idempotencyKey).toBe(key);
+  expect(m.api.mock.calls[1][1].body.idempotencyKey).toBe(key);
  });
  it('does not repeat writes after a submit response was lost', async () => {
   m.api.mockResolvedValueOnce({ status: 'ASSIGNED' });

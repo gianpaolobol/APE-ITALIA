@@ -7,8 +7,10 @@ import { canWrite } from './tenant-policy';
 import { offerNext } from './certifiers/assignment.service';
 import { IsNotEmpty, IsString, IsUUID, IsOptional, IsNumber, Min, validateSync } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
+import { createHash, randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 
-class CreateCaseDto { @IsUUID() propertyId!: string; }
+class CreateCaseDto { @IsUUID() propertyId!: string; @IsOptional() @IsUUID('4') idempotencyKey?: string; }
 class UpdatePropertyDto {
  @IsOptional() @IsString() @IsNotEmpty() address?: string;
  @IsOptional() @IsString() @IsNotEmpty() city?: string;
@@ -16,6 +18,7 @@ class UpdatePropertyDto {
  @IsOptional() @IsNumber() @Min(1) floorAreaM2?: number;
 }
 class CreatePropertyDto {
+ @IsOptional() @IsUUID('4') idempotencyKey?: string;
  @IsString() @IsNotEmpty() address!: string;
  @IsString() @IsNotEmpty() city!: string;
  @IsString() @IsNotEmpty() region!: string;
@@ -26,6 +29,19 @@ function validated<T extends object>(cls: new()=>T, body: unknown): T {
  const errors=validateSync(dto,{whitelist:true,forbidNonWhitelisted:true});
  if(errors.length) throw new BadRequestException(errors);
  return dto;
+}
+/** Reserve a receipt in the same transaction as the resource and audit. PostgreSQL's unique
+ * constraint serializes concurrent requests; rollback removes an uncommitted reservation. */
+async function reserveCreation(tx: Prisma.TransactionClient, s: { organizationId: string; actorId: string }, operation: string, key: string | undefined, payload: unknown) {
+ if (!key) return { id: randomUUID(), replay: false };
+ const scope = { organizationId: s.organizationId, actorId: s.actorId, operation, key };
+ const requestHash = createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+ const resourceId = randomUUID();
+ const inserted = await tx.creationReceipt.createMany({ data: { ...scope, requestHash, resourceId }, skipDuplicates: true });
+ if (inserted.count === 1) return { id: resourceId, replay: false };
+ const receipt = await tx.creationReceipt.findUniqueOrThrow({ where: { organizationId_actorId_operation_key: scope } });
+ if (receipt.requestHash !== requestHash) throw new ConflictException('Idempotency key reused with different data');
+ return { id: receipt.resourceId, replay: true };
 }
 @Controller('v1')
 export class CasesController {
@@ -42,7 +58,14 @@ export class CasesController {
   if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
   const dto=validated(CreatePropertyDto,body);
   return this.db.$transaction(async tx=>{
-   const item=await tx.property.create({data:{...dto,organizationId:s.organizationId}});
+   const { idempotencyKey, ...data } = dto;
+   const reservation = await reserveCreation(tx,s,'property.create',idempotencyKey,[data.address,data.city,data.region,data.floorAreaM2??null]);
+   if (reservation.replay) {
+    const existing = await tx.property.findFirst({where:{id:reservation.id,organizationId:s.organizationId}});
+    if (!existing) throw new ConflictException('Previously created property is no longer available');
+    return existing;
+   }
+   const item=await tx.property.create({data:{...data,id:reservation.id,organizationId:s.organizationId}});
    await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'property.create',resourceId:item.id}});
    return item;
   });
@@ -58,9 +81,15 @@ export class CasesController {
   if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
   const dto=validated(CreateCaseDto,body);
   return this.db.$transaction(async tx=>{
+   const reservation = await reserveCreation(tx,s,'case.create',dto.idempotencyKey,[dto.propertyId]);
+   if (reservation.replay) {
+    const existing = await tx.apeCase.findFirst({where:{id:reservation.id,organizationId:s.organizationId}});
+    if (!existing) throw new ConflictException('Previously created case is no longer available');
+    return existing;
+   }
    const property=await tx.property.findFirst({where:{id:dto.propertyId,organizationId:s.organizationId}});
    if(!property) throw new NotFoundException('Property not found');
-   const item=await tx.apeCase.create({data:{propertyId:property.id,organizationId:s.organizationId}});
+   const item=await tx.apeCase.create({data:{id:reservation.id,propertyId:property.id,organizationId:s.organizationId}});
    await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.create',resourceId:item.id}});
    return item;
   });

@@ -389,3 +389,15 @@ model Payment {
  paidAt          DateTime?
  @@index([caseId])
 }
+
+/// Durable creation receipt; survives deletion of the resource so a retry cannot recreate it.
+model CreationReceipt {
+ organizationId String
+ actorId String
+ operation String
+ key String
+ requestHash String
+ resourceId String
+ createdAt DateTime @default(now())
+ @@id([organizationId,actorId,operation,key])
+}

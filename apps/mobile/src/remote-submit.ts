@@ -1,4 +1,5 @@
 /** Sends a completed local request to the APE Italia API (only when the app is configured with a server). */
+import { randomUUID } from 'expo-crypto';
 import { api, freshSession, sessionBoundary, serverEnabled, uploadResumable } from './server';
 import { PROVINCES, pruneHidden, type Answers, type Photos } from './survey/questions';
 import { estimate } from './energy/estimate';
@@ -15,12 +16,12 @@ const KIND: Record<string, EvidenceKind> = {
 
 export type SubmitProgress = (label: string, ratio: number) => void;
 
-export type SubmitState = { remoteCaseId?: string; remotePropertyId?: string; uploaded?: string[]; videoUploads?: Record<string, string>; remoteOwner?: { subject: string; organizationId: string } };
+export type SubmitState = { remoteCreationKey?: string; remoteCaseId?: string; remotePropertyId?: string; uploaded?: string[]; videoUploads?: Record<string, string>; remoteOwner?: { subject: string; organizationId: string } };
 export type SubmitCheckpoint = (p: SubmitState) => void | Promise<void>;
 
 /**
- * Reuses acknowledged property/case/upload IDs and skips acknowledged files. A lost creation
- * response still requires server-side idempotency; do not claim exactly-once creation.
+ * Reuses acknowledged IDs and a durable scoped key for property/case creation. Upload
+ * initialization and other external operations have separate retry semantics.
  * Only answers and photos of visible questions are sent.
  */
 export async function submitToServer(input: { answers: Answers; photos: Photos } & SubmitState, onProgress: SubmitProgress, checkpoint: SubmitCheckpoint): Promise<{ caseId: string }> {
@@ -34,11 +35,12 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  const remoteOwner = { subject: session.subject, organizationId: session.organizationId };
  if (input.remoteOwner && (input.remoteOwner.subject !== remoteOwner.subject || input.remoteOwner.organizationId !== remoteOwner.organizationId)) throw new Error('La richiesta appartiene a un altro account.');
  const call = <T>(path: string, init?: Parameters<typeof api>[1]): Promise<T> => { guard(); return api<T>(path, init); };
+ const remoteCreationKey = input.remoteCreationKey ?? randomUUID();
  let caseId = input.remoteCaseId;
  let propertyId = input.remotePropertyId;
  const uploaded = [...(input.uploaded ?? [])];
  const videoUploads = { ...(input.videoUploads ?? {}) };
- const save = async () => { guard(); await checkpoint({ remoteOwner, remotePropertyId: propertyId, remoteCaseId: caseId, uploaded: [...uploaded], videoUploads: { ...videoUploads } }); guard(); };
+ const save = async () => { guard(); await checkpoint({ remoteCreationKey, remoteOwner, remotePropertyId: propertyId, remoteCaseId: caseId, uploaded: [...uploaded], videoUploads: { ...videoUploads } }); guard(); };
  // Resolve acknowledged cases before repeating writes, including a lost submit response.
  if (caseId) {
   const c = await call<{ status: string }>(`/v1/cases/${caseId}`, { org: true });
@@ -55,6 +57,7 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  const province = PROVINCES.find(p => p.value === answers.province)?.label ?? String(answers.province ?? '');
  if (!propertyId) {
  const property = await call<{ id: string }>('/v1/properties', { org: true, body: {
+  idempotencyKey: remoteCreationKey,
   address: [answers.street, answers.unit].filter(Boolean).join(', '),
   city: `${String(answers.municipality ?? '')} (${province})`,
   region: 'Emilia-Romagna',
@@ -63,7 +66,7 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  propertyId = property.id;
  await save();
  }
- const c = await call<{ id: string }>('/v1/cases', { org: true, body: { propertyId } });
+ const c = await call<{ id: string }>('/v1/cases', { org: true, body: { propertyId, idempotencyKey: remoteCreationKey } });
  caseId = c.id;
  await save();
  }
