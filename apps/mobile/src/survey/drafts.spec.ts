@@ -24,7 +24,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { loadState, newDraft, saveStateNow, type AppState } from './drafts';
+import { canViewDraft, loadState, newDraft, saveStateNow, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -61,5 +61,34 @@ describe('draft snapshots and deletion', () => {
   fs.files.set(primary, 'broken');
   fs.files.set(backup, JSON.stringify(state(a)));
   expect(await loadState()).toEqual(state(a));
+ });
+});
+
+
+describe('account-bound draft visibility', () => {
+ const a = { subject: 'a', organizationId: 'org-a' };
+ const b = { subject: 'b', organizationId: 'org-a' };
+ const otherOrg = { subject: 'a', organizationId: 'org-b' };
+ it('hides locally owned drafts at logout and for another member or tenant', () => {
+  const draft = { ...newDraft(), localOwner: a };
+  expect(canViewDraft(draft, a)).toBe(true);
+  for (const owner of [null, b, otherOrg]) expect(canViewDraft(draft, owner)).toBe(false);
+ });
+ it('hides remotely bound drafts even if they originated anonymously', () => {
+  const draft = { ...newDraft(), remoteOwner: a, remoteCaseId: 'case-a' };
+  expect(canViewDraft(draft, a)).toBe(true);
+  for (const owner of [null, b, otherOrg]) expect(canViewDraft(draft, owner)).toBe(false);
+ });
+ it('quarantines remote legacy checkpoints without a known owner', () => {
+  for (const checkpoint of [{ remoteCaseId: 'case' }, { remotePropertyId: 'property' }, { uploaded: ['uri'] }, { videoUploads: { uri: 'upload' } }]) {
+   expect(canViewDraft({ ...newDraft(), ...checkpoint }, a)).toBe(false);
+   expect(canViewDraft({ ...newDraft(), ...checkpoint }, null)).toBe(false);
+  }
+ });
+ it('does not delete anonymous drafts or assign them to an account', () => {
+  const draft = newDraft();
+  expect(canViewDraft(draft, null)).toBe(true);
+  expect(canViewDraft(draft, a)).toBe(true);
+  expect(draft.remoteOwner).toBeUndefined();
  });
 });

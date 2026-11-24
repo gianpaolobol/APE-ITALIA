@@ -14,6 +14,14 @@ let cached: Session | null | undefined;
 // A session boundary invalidates every in-flight read, refresh and login response.
 // Serialize Keychain/Keystore writes so logout cannot be followed by an older write.
 let generation = 0;
+const sessionListeners = new Set<(session: Session | null) => void>();
+export function subscribeSession(listener: (session: Session | null) => void): () => void {
+ sessionListeners.add(listener);
+ return () => { sessionListeners.delete(listener); };
+}
+function announceSession(session: Session | null): void {
+ for (const listener of sessionListeners) { try { listener(session); } catch { /* observer must not disrupt auth */ } }
+}
 let storageTail: Promise<void> = Promise.resolve();
 function persist(op: () => Promise<void>): Promise<void> {
  const result = storageTail.then(op);
@@ -23,6 +31,7 @@ function persist(op: () => Promise<void>): Promise<void> {
 function invalidate(): Promise<void> {
  generation++;
  cached = null;
+ announceSession(null);
  clearRemoteCache();
  return persist(() => SecureStore.deleteItemAsync(KEY));
 }
@@ -60,7 +69,7 @@ async function store(r: AuthResponse, expected: number): Promise<Session | null>
   await persist(async () => {
    if (generation !== expected) return;
    await SecureStore.setItemAsync(KEY, JSON.stringify(s));
-   if (generation === expected) cached = s;
+   if (generation === expected) { cached = s; announceSession(s); }
   });
  } catch (e) {
   await revoke(r.refreshToken);

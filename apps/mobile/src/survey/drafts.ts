@@ -16,6 +16,8 @@ export type Draft = {
  remoteCaseId?: string;
  remotePropertyId?: string;
  remoteOwner?: { subject: string; organizationId: string };
+ /** Account that created the local draft, when known. */
+ localOwner?: { subject: string; organizationId: string | null };
  videoUploads?: Record<string, string>;
  /** Local photo URIs already uploaded to remoteCaseId. */
  uploaded?: string[];
@@ -24,6 +26,16 @@ export type Draft = {
 };
 
 export type AppState = { version: 1; drafts: Draft[]; pro?: { data: ProRegistration; submittedAt: string; status: 'in_verifica' | 'inviata_al_server' } };
+
+export type DraftOwner = { subject: string; organizationId: string | null };
+/** Unattributed legacy remote drafts are quarantined, not assigned to a new account. */
+export function canViewDraft(d: Draft, owner: DraftOwner | null): boolean {
+ const matches = (bound: DraftOwner) => owner !== null && bound.subject === owner.subject && bound.organizationId === owner.organizationId;
+ if (d.localOwner && !matches(d.localOwner)) return false;
+ if (d.remoteOwner) return matches(d.remoteOwner);
+ if (d.remoteCaseId || d.remotePropertyId || Object.keys(d.videoUploads ?? {}).length || d.uploaded?.length) return false;
+ return true;
+}
 
 const EMPTY: AppState = { version: 1, drafts: [] };
 const dir = () => new Directory(Paths.document, 'ape');
