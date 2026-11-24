@@ -14,12 +14,12 @@ import { estimate } from '../energy/estimate';
 import { checklist, onSiteChecks, progress, readyToSend } from '../survey/checklist';
 import { PROVINCES } from '../survey/questions';
 import { euro, quote } from '../pricing';
-import { serverConfigured, submitToServer } from '../remote-submit';
+import { serverConfigured, submitToServer, type SubmitCheckpoint } from '../remote-submit';
 import type { Draft } from '../survey/drafts';
 
 const LOSS_LABEL = { muri: 'Muri', finestre: 'Finestre', tetto: 'Tetto', pavimento: 'Pavimento', ventilazione: 'Ricambi d’aria' } as const;
 
-export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void }) {
+export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint }) {
  const insets = useSafeAreaInsets();
  const est = useMemo(() => estimate(draft.answers), [draft.answers]);
  const items = checklist(draft.answers, draft.photos);
@@ -61,8 +61,8 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete }: 
   if (!(await getSession())) { setLogin(true); return; }
   setSending('Preparo l’invio…');
   try {
-   const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCaseId: draft.remoteCaseId, uploaded: draft.uploaded }, label => setSending(label),
-    cp => onUpdate(d => ({ ...d, ...cp })));
+   const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCaseId: draft.remoteCaseId, remotePropertyId: draft.remotePropertyId, remoteOwner: draft.remoteOwner, uploaded: draft.uploaded, videoUploads: draft.videoUploads }, label => setSending(label),
+    onCheckpoint);
    onUpdate(d => ({ ...d, status: 'inviata', sentAt: new Date().toISOString(), remoteCaseId: r.caseId }));
    Alert.alert('Richiesta inviata', 'I certificatori della tua zona la stanno valutando. Ti contatteremo per fissare il sopralluogo.');
   } catch (e) {
