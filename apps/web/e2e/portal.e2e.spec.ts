@@ -20,6 +20,11 @@ const CHROME = process.env.CHROME_PATH ?? '/usr/bin/google-chrome';
 describe.skipIf(!enabled)('web portal in a real browser', () => {
  const dir = enabled ? mkdtempSync(join(tmpdir(), 'ape-web-e2e-')) : '';
  const ASSIGNMENT = randomUUID(), CASE = randomUUID(), ORG_A = randomUUID(), ORG_B = randomUUID(), PROP = randomUUID();
+ const CERT_CASE = randomUUID();
+ const pdf = Buffer.from('%PDF-1.4\nsynthetic certificate fixture\n%%EOF\n');
+ const pdfHash = createHash('sha256').update(pdf).digest('hex');
+ const certificate = { regionalId: 'SYNTHETIC-APE', depositedAt: '2026-11-24T00:00:00Z', validUntil: null, sha256: pdfHash, sizeBytes: pdf.length, deliveredAt: null as string | null };
+ const receiptState = { corrupt: false, reads: 0, receipts: 0 };
  const invitations: { id: string; role: string; createdBy: string; expiresAt: string; createdAt: string }[] = [];
  const orgHeaders: string[] = [];
  const created: { id: string; propertyId: string; status: string; createdAt: string; consent: boolean; uploads: { kind: string; bytes: number }[] }[] = [];
@@ -85,6 +90,28 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
     if (path === '/v1/properties' && req.method === 'POST') { const b = JSON.parse(await readBody(req)); if (!b.address) return send(400, {}); const id = randomUUID(); createdProps[id] = { id, ...b, floorAreaM2: b.floorAreaM2 ?? null }; return send(201, createdProps[id]); }
     if (path === '/v1/cases' && req.method === 'POST') { const b = JSON.parse(await readBody(req)); const c = { id: randomUUID(), propertyId: b.propertyId, status: 'DRAFT', createdAt: new Date().toISOString(), consent: false, uploads: [] }; created.push(c); return send(201, c); }
     if (path === '/v1/notices') return send(200, { evidence_processing: '2026-11-23-draft' });
+    if (path.startsWith('/v1/cases/' + CERT_CASE + '/')) {
+     if (org !== ORG_A) return send(403, {});
+     const endpoint = path.slice(('/v1/cases/' + CERT_CASE + '/').length);
+     if (endpoint === 'inspection') return send(200, { caseStatus: certificate.deliveredAt ? 'DELIVERED' : 'DEPOSITED', inspection: null });
+     if (endpoint === 'evidence' || endpoint === 'evidence-requests') return send(200, []);
+     if (endpoint === 'certificate') return send(200, { certificate });
+     if (endpoint === 'certificate/content' && req.method === 'GET') {
+      receiptState.reads++;
+      const body = Buffer.from(pdf);
+      if (receiptState.corrupt) body[10] ^= 1;
+      res.writeHead(200, { 'Content-Type': 'application/pdf', 'Content-Length': String(body.length) });
+      return res.end(body);
+     }
+     if (endpoint === 'certificate/receipt' && req.method === 'POST') {
+      const body = JSON.parse(await readBody(req));
+      if (body.sha256 !== pdfHash || body.sizeBytes !== pdf.length) return send(400, {});
+      receiptState.receipts++;
+      certificate.deliveredAt ??= new Date().toISOString();
+      return send(201, { deliveredAt: certificate.deliveredAt });
+     }
+     return send(404, {});
+    }
     const m = /^\/v1\/cases\/([0-9a-f-]{36})\/(.+)$/.exec(path);
     const mine = m && created.find(c => c.id === m[1]);
     if (m && mine) {
@@ -97,7 +124,7 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
      if (m[2] === 'evidence-requests') return send(200, []);
     }
     if (path === '/v1/properties') return send(200, [{ id: PROP, address: 'Via Portafoglio 3', city: 'Bologna', region: 'Emilia-Romagna', floorAreaM2: 90 }, ...Object.values(createdProps)]);
-    if (path === '/v1/cases') return send(200, [{ id: CASE, propertyId: PROP, status: 'INSPECTION_SCHEDULED', createdAt: new Date().toISOString() }, ...created.map(({ id, propertyId, status, createdAt }) => ({ id, propertyId, status, createdAt }))]);
+    if (path === '/v1/cases') return send(200, [{ id: CASE, propertyId: PROP, status: 'INSPECTION_SCHEDULED', createdAt: new Date().toISOString() }, ...(org === ORG_A ? [{ id: CERT_CASE, propertyId: PROP, status: certificate.deliveredAt ? 'DELIVERED' : 'DEPOSITED', createdAt: certificate.depositedAt }] : []), ...created.map(({ id, propertyId, status, createdAt }) => ({ id, propertyId, status, createdAt }))]);
     if (path === '/v1/members') return send(200, [{ id: randomUUID(), userSubject: 'synthetic-certifier', role: 'owner', active: true, createdAt: new Date().toISOString() }]);
     if (path === '/v1/invitations' && req.method === 'POST') {
      const body = JSON.parse(await readBody(req));
@@ -245,6 +272,54 @@ describe.skipIf(!enabled)('web portal in a real browser', () => {
   await page.getByText('Richiesta inviata').waitFor({ state: 'visible', timeout: 15_000 });
   expect(created[0].status).toBe('SUBMITTED');
   await ctx.close();
+ }, 60_000);
+
+ it('verifies PDF bytes in Chrome, refuses stale tenant and corrupted downloads, then confirms receipt', async () => {
+  const ctx = await browser.newContext({ ignoreHTTPSErrors: true, acceptDownloads: true });
+  const page = await ctx.newPage();
+  try {
+   await page.goto(web + '/auth/login?returnTo=/org');
+   await page.waitForURL(web + '/org');
+   await page.locator('form', { hasText: 'Studio Alfa' }).getByRole('button', { name: 'Apri' }).click();
+   await page.goto(web + '/org/cases/' + CERT_CASE);
+   const button = page.getByRole('button', { name: 'Scarica l’APE (PDF)' });
+   await button.waitFor({ state: 'visible', timeout: 15_000 });
+   await page.getByText('Ricezione non ancora confermata.').waitFor({ state: 'visible' });
+   expect(await page.evaluate(() => !!crypto.subtle)).toBe(true);
+   const direct = await ctx.request.get(web + '/org/cases/' + CERT_CASE + '/certificate');
+   expect(direct.status()).toBe(403);
+   expect(receiptState.reads).toBe(0);
+
+   // Keep the old page open while switching organization in the shared browser session.
+   await ctx.addCookies([{ name: '__Host-ape_org', value: ORG_B, domain: 'localhost', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+   await button.click();
+   await page.getByText('Download o conferma non riusciti. Riprova.').waitFor({ state: 'visible' });
+   expect(receiptState.reads).toBe(0);
+   expect(receiptState.receipts).toBe(0);
+
+   await ctx.addCookies([{ name: '__Host-ape_org', value: ORG_A, domain: 'localhost', path: '/', secure: true, httpOnly: true, sameSite: 'Lax' }]);
+   await page.reload();
+   receiptState.corrupt = true;
+   await button.click();
+   await page.getByText('Download o conferma non riusciti. Riprova.').waitFor({ state: 'visible' });
+   expect(receiptState.reads).toBe(1);
+   expect(receiptState.receipts).toBe(0);
+   expect(certificate.deliveredAt).toBeNull();
+
+   receiptState.corrupt = false;
+   const downloadPromise = page.waitForEvent('download', { timeout: 15_000 });
+   await button.click();
+   const download = await downloadPromise;
+   expect(download.suggestedFilename()).toBe('APE-' + CERT_CASE + '.pdf');
+   const downloadedPath = await download.path();
+   expect(readFileSync(downloadedPath)).toEqual(pdf);
+   expect(receiptState.reads).toBe(2);
+   expect(receiptState.receipts).toBe(1);
+   await page.getByText('Ricezione registrata il', { exact: false }).waitFor({ state: 'visible', timeout: 15_000 });
+  } finally {
+   receiptState.corrupt = false;
+   await ctx.close();
+  }
  }, 60_000);
 
  it('serves security headers on pages', async () => {
