@@ -98,8 +98,12 @@ export async function giveConsent(form: FormData) {
  const id = String(form.get('caseId') ?? '');
  if (!isUuid(id)) throw new Error('Invalid case');
  const { cfg, s, org } = await writer(`/org/cases/${id}`);
+ const version = String(form.get('noticeVersion') ?? '');
  const notices = await orgJson<{ evidence_processing: string }>(cfg, s, org, '/v1/notices');
- await orgFetch(cfg, s, org, `/v1/cases/${id}/consents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'evidence_processing', version: notices.evidence_processing }) });
+ if (version !== '2026-11-23-draft' || version !== notices.evidence_processing) redirect(`/org/cases/${id}?msg=notice-updated`);
+ try {
+  await orgFetch(cfg, s, org, `/v1/cases/${id}/consents`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'evidence_processing', version }) });
+ } catch { redirect(`/org/cases/${id}?msg=consent-error`); }
  redirect(`/org/cases/${id}?msg=consent`);
 }
 
