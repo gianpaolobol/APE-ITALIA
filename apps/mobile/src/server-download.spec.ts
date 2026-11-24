@@ -50,7 +50,7 @@ describe('authenticated mobile downloads', () => {
   expect(mocks.download).toHaveBeenLastCalledWith(expect.stringContaining('/v1/cases/case-a/certificate/content'), expect.anything(), {
    headers: { Authorization: 'Bearer test-access', 'x-organization-id': 'org-a' },
   });
-  expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/v1/cases/case-a/certificate'), expect.objectContaining({ headers: { Authorization: 'Bearer test-access', 'x-organization-id': 'org-a' } }));
+  expect(fetchMock).toHaveBeenLastCalledWith(expect.stringContaining('/v1/cases/case-a/certificate/receipt'), expect.objectContaining({ headers: expect.objectContaining({ Authorization: 'Bearer test-access', 'x-organization-id': 'org-a' }), method: 'POST' }));
   const second = await downloadCertificate('case-a');
   expect(second).not.toBe(first);
   expect(mocks.download).toHaveBeenCalledTimes(2);

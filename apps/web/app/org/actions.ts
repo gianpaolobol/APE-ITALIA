@@ -131,3 +131,12 @@ export async function submitCase(form: FormData) {
  try { await orgFetch(cfg, s, org, `/v1/cases/${id}/submit`, { method: 'POST' }); } catch { msg = 'submit-error'; }
  redirect(`/org/cases/${id}?msg=${msg}`);
 }
+
+/** The browser reports receipt only after verifying the complete PDF bytes. */
+export async function confirmCertificateReceipt(id: string, expectedOrg: string, sha256: string, sizeBytes: number) {
+ if (!isUuid(id) || !isUuid(expectedOrg) || !/^[a-f0-9]{64}$/.test(sha256) || !Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > 15 * 1024 * 1024) throw new Error('Invalid receipt');
+ const ctx = await orgContext(`/org/cases/${id}`);
+ if (ctx?.membership?.organizationId !== expectedOrg) throw new Error('Organization changed');
+ await orgFetch(ctx.cfg, ctx.s, expectedOrg, `/v1/cases/${id}/certificate/receipt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sha256, sizeBytes }) });
+ revalidatePath(`/org/cases/${id}`);
+}

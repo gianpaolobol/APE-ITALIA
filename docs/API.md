@@ -2,7 +2,7 @@
 
 <!-- Generato da services/api/src/tools/api-index.ts: non modificare a mano. Aggiornare con `npm run docs:api -w @ape/api`. -->
 
-70 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
+71 rotte. Autenticazione: `Authorization: Bearer <access token OIDC>`; le rotte "membro dell'organizzazione" richiedono anche `x-organization-id` e una membership attiva verificata a ogni richiesta. Limite predefinito: 120 richieste/minuto per rotta e IP. Dettagli funzionali nei documenti di area in `docs/`.
 
 | Metodo | Percorso | Accesso | Esito | Limite | Handler |
 |---|---|---|---|---|---|
@@ -31,6 +31,7 @@
 | POST | `/v1/cases/:id/cancel` | membro dell'organizzazione | 201 | predefinito | `LifecycleController.cancel` |
 | GET | `/v1/cases/:id/certificate` | membro dell'organizzazione | 200 | predefinito | `CertificateController.metadata` |
 | GET | `/v1/cases/:id/certificate/content` | membro dell'organizzazione | 200 | predefinito | `CertificateController.content` |
+| POST | `/v1/cases/:id/certificate/receipt` | membro dell'organizzazione | 201 | predefinito | `CertificateController.receipt` |
 | GET | `/v1/cases/:id/evidence-requests` | membro dell'organizzazione | 200 | predefinito | `LifecycleController.listRequests` |
 | POST | `/v1/cases/:id/evidence-requests/:requestId/resolve` | membro dell'organizzazione | 201 | predefinito | `LifecycleController.resolve` |
 | GET | `/v1/cases/:id/inspection` | membro dell'organizzazione | 200 | predefinito | `CasesController.caseInspection` |

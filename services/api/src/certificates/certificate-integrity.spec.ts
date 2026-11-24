@@ -6,7 +6,7 @@ const pdf = Buffer.from('%PDF-1.7\nsynthetic certificate');
 const sha256 = createHash('sha256').update(pdf).digest('hex');
 const cert = { id: 'certificate-id', storageKey: 'private-key', scanStatus: 'clean', sha256, sizeBytes: pdf.length };
 
-function fixture(data: Buffer, row = cert) {
+function fixture(data: Buffer, row: typeof cert | null = cert) {
  vi.stubEnv('STRIPE_SECRET_KEY', '');
  const tx = {
   certificate: { updateMany: vi.fn(async () => ({ count: 1 })) },
@@ -15,6 +15,7 @@ function fixture(data: Buffer, row = cert) {
  };
  const db = {
   certificate: { findFirst: vi.fn(async () => row) },
+  payment: { findFirst: vi.fn(async (): Promise<{ id: string } | null> => null) },
   $transaction: vi.fn(async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx)),
  };
  const storage = { get: vi.fn(async () => data), put: vi.fn(), delete: vi.fn() };
@@ -44,7 +45,42 @@ describe('certificate download integrity', () => {
   for await (const chunk of file.getStream()) chunks.push(Buffer.from(chunk));
   expect(Buffer.concat(chunks)).toEqual(pdf);
   expect(f.db.certificate.findFirst).toHaveBeenCalledWith({ where: { caseId: 'case', organizationId: 'tenant' } });
-  expect(f.tx.certificate.updateMany).toHaveBeenCalledOnce();
+  expect(f.tx.certificate.updateMany).not.toHaveBeenCalled();
+  expect(f.tx.auditEvent.create).toHaveBeenCalledWith({ data: { organizationId: 'tenant', actorId: 'user', action: 'certificate.read', resourceId: cert.id } });
+ });
+ it('does not acknowledge a certificate outside the authorized tenant', async () => {
+  const f = fixture(pdf, null);
+  await expect(f.controller.receipt('foreign-case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant')).rejects.toThrow('Certificate not available');
+  expect(f.db.certificate.findFirst).toHaveBeenCalledWith({ where: { caseId: 'foreign-case', organizationId: 'tenant' } });
+  expect(f.storage.get).not.toHaveBeenCalled();
+  expect(f.db.$transaction).not.toHaveBeenCalled();
+ });
+ it('rejects receipt for an unpaid case when payments are enabled', async () => {
+  const f = fixture(pdf);
+  vi.stubEnv('STRIPE_SECRET_KEY', 'synthetic');
+  vi.stubEnv('STRIPE_WEBHOOK_SECRET', 'synthetic');
+  vi.stubEnv('PUBLIC_API_URL', 'https://example.invalid');
+  await expect(f.controller.receipt('case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant')).rejects.toThrow('Payment required before receipt');
+  expect(f.db.payment.findFirst).toHaveBeenCalledWith({ where: { caseId: 'case', status: 'PAID' } });
+  expect(f.storage.get).not.toHaveBeenCalled();
+  expect(f.db.$transaction).not.toHaveBeenCalled();
+ });
+ it('refuses receipt when the stored document has changed', async () => {
+  const altered = Buffer.from(pdf); altered[altered.length - 1] ^= 1;
+  const f = fixture(altered);
+  await expect(f.controller.receipt('case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant')).rejects.toThrow('Stored document integrity check failed');
+  expect(f.db.$transaction).not.toHaveBeenCalled();
+ });
+ it('requires matching receipt metadata and marks delivery only on explicit receipt', async () => {
+  const f = fixture(pdf);
+  await expect(f.controller.receipt('case', { sha256: 'bad', sizeBytes: pdf.length }, 'Bearer test', 'tenant')).rejects.toThrow('Certificate receipt does not match');
+  expect(f.tx.certificate.updateMany).not.toHaveBeenCalled();
+  await expect(f.controller.receipt('case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant')).resolves.toEqual({ confirmed: true });
+  expect(f.tx.certificate.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: cert.id, organizationId: 'tenant', deliveredAt: null } }));
   expect(f.tx.auditEvent.create).toHaveBeenCalledWith({ data: { organizationId: 'tenant', actorId: 'user', action: 'certificate.deliver', resourceId: cert.id } });
+  f.tx.certificate.updateMany.mockResolvedValueOnce({ count: 0 });
+  await f.controller.receipt('case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant');
+  expect(f.tx.apeCase.updateMany).toHaveBeenCalledOnce();
+  expect(f.tx.auditEvent.create).toHaveBeenCalledOnce();
  });
 });

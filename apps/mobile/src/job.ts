@@ -18,7 +18,7 @@ export type Job = {
  call?: { at: string; url: string };
  visit?: { at: string };
  verbale?: Verbale;
- ape?: { code: string; energyClass: string; pdf?: PhotoRef; deliveredAt: string };
+ ape?: { code: string; energyClass: string; pdf?: PhotoRef; deliveredAt: string; depositedAt?: string };
 };
 
 export const VERBALE_CHECKS = [

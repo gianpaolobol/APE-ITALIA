@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { LoginSheet } from './LoginSheet';
-import { getSession } from '../server';
+import { getSession, sessionBoundary } from '../server';
 import { downloadCertificate, fetchPayment, fetchRemoteJob, startPayment, type PaymentState } from '../remote-status';
 import * as WebBrowser from 'expo-web-browser';
 import { Alert, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -111,9 +111,9 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
       {draft.job.ape ? (
        <View style={[st.step, { borderBottomWidth: 0 }]}>
         <ClassBadge value={draft.job.ape.energyClass as never} size={36} />
-        <View style={{ flex: 1, marginLeft: 10 }}><Text style={F.h3}>APE pronto · classe {draft.job.ape.energyClass}</Text><Text style={F.small}>Codice {draft.job.ape.code}</Text></View>
+        <View style={{ flex: 1, marginLeft: 10 }}><Text style={F.h3}>APE pronto · classe {draft.job.ape.energyClass}</Text><Text style={F.small}>Codice {draft.job.ape.code}</Text>{draft.job.ape.depositedAt ? <Text style={F.small}>Depositato: {fmtWhen(draft.job.ape.depositedAt)}</Text> : null}{draft.remoteCaseId ? <Text style={F.small}>{draft.job.ape.deliveredAt ? 'Ricezione registrata: ' + fmtWhen(draft.job.ape.deliveredAt) : 'Ricezione non ancora confermata'}</Text> : null}</View>
         {draft.job.ape.pdf ? <Pressable onPress={() => Sharing.shareAsync(draft.job!.ape!.pdf!.uri).catch(() => undefined)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable>
-         : draft.remoteCaseId ? <Pressable onPress={() => downloadCertificate(draft.remoteCaseId!).then(uri => Sharing.shareAsync(uri)).catch(() => Alert.alert('Download non riuscito', 'Riprova tra poco.'))} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Scarica</Text></Pressable> : null}
+         : draft.remoteCaseId ? <Pressable onPress={() => { const guard = sessionBoundary(); downloadCertificate(draft.remoteCaseId!).then(async uri => { guard(); await Sharing.shareAsync(uri); guard(); const r = await fetchRemoteJob(draft.remoteCaseId!); guard(); if (r.job) onUpdate(d => ({ ...d, job: r.job })); }).catch(() => Alert.alert('Download non riuscito', 'Riprova tra poco.')); }} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Scarica</Text></Pressable> : null}
        </View>
       ) : null}
      </Card>

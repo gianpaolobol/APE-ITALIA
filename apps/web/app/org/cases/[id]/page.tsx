@@ -1,4 +1,5 @@
 import React from 'react';
+import { CertificateDownload } from './CertificateDownload';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { isUuid, orgContext } from '../../../../lib/org';
@@ -9,7 +10,7 @@ import { cancelCase, giveConsent, resolveEvidenceRequest, submitCase, uploadEvid
 type RequestInfo = { id: string; message: string; kinds: string[]; createdAt: string; resolvedAt: string | null };
 
 export const dynamic = 'force-dynamic';
-type CertificateInfo = { certificate: { regionalId: string; depositedAt: string; validUntil: string | null; sha256: string; deliveredAt: string | null } | null };
+type CertificateInfo = { certificate: { regionalId: string; depositedAt: string; validUntil: string | null; sha256: string; sizeBytes: number; deliveredAt: string | null } | null };
 type InspectionInfo = { caseStatus: string; inspection: { status: string; scheduledAt: string; performedAt: string | null; certifierName: string } | null };
 
 const MSG: Record<string, string> = { 'notice-updated': 'Informativa aggiornata: non è stato registrato alcun consenso. Riprova quando il portale sarà aggiornato.', 'consent-error': 'Registrazione del consenso non riuscita.', consent: 'Consenso registrato: ora puoi caricare foto e documenti.', 'upload-ok': 'File caricato.', 'upload-missing': 'Scegli la voce e il file.', 'upload-403': 'Serve il consenso all\'informativa prima del caricamento.', 'upload-409': 'File già caricato o pratica chiusa.', 'upload-413': 'File oltre 15 MB.', 'upload-415': 'Formato non accettato (JPEG, PNG, HEIC; PDF solo per planimetrie e documenti).', 'upload-422': 'File non valido.', submitted: 'Richiesta inviata: verrà proposta a un certificatore abilitato.', 'submit-error': 'Invio non riuscito.' };
@@ -57,7 +58,8 @@ export default async function OrgCase({ params, searchParams }: { params: Promis
    : <p>Non ancora programmato.</p>}</section>
   {cert.certificate ? <section style={box}><h2>Attestato di prestazione energetica</h2>
    <p>Identificativo regionale <strong>{cert.certificate.regionalId}</strong> · depositato il {fmt(cert.certificate.depositedAt)}{cert.certificate.validUntil ? ` · valido fino al ${new Date(cert.certificate.validUntil).toLocaleDateString('it-IT')}` : ''}</p>
-   <p><a href={`/org/cases/${id}/certificate`}>Scarica l'APE (PDF)</a> · impronta SHA-256 <code>{cert.certificate.sha256.slice(0, 16)}…</code></p>
+   <p><CertificateDownload id={id} org={org} sha256={cert.certificate.sha256} sizeBytes={cert.certificate.sizeBytes} /> · impronta SHA-256 <code>{cert.certificate.sha256.slice(0, 16)}…</code></p>
+   <p>{cert.certificate.deliveredAt ? 'Ricezione registrata il ' + fmt(cert.certificate.deliveredAt) : 'Ricezione non ancora confermata.'}</p>
    <p style={{ fontSize: 13 }}>Documento caricato dal certificatore che lo ha firmato e depositato; la piattaforma non ne modifica il contenuto.</p>
   </section> : null}
   <section style={box}><h2>Documenti e foto caricati ({evidence.length})</h2>
