@@ -80,4 +80,26 @@ describe.skipIf(!enabled)('PostgreSQL case submission', () => {
   await expect(controller.submitCase(c.id, 'Bearer test', org)).rejects.toThrow('Only draft cases');
   expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.submit', resourceId: c.id } })).toBe(1);
  });
+
+ it('protects survey data with current actor consent, tenant scope and draft status', async () => {
+  const c = await controller.createCase({ propertyId: property }, 'Bearer test', org);
+  const survey = { answers: { floorArea: 82 } };
+  await expect(controller.saveSurvey(c.id, survey, 'Bearer test', other)).rejects.toThrow('Case not found');
+  await expect(controller.saveSurvey(c.id, survey, 'Bearer test', org)).rejects.toThrow('Consent to the current');
+  const consent = { organizationId: org, caseId: c.id, kind: 'evidence_processing' };
+  await db.consent.createMany({ data: [
+   { ...consent, subject: 'different-member', version: CURRENT_NOTICES.evidence_processing },
+   { ...consent, subject: 'submit-test-subject', version: 'outdated-test-version' },
+  ] });
+  await expect(controller.saveSurvey(c.id, survey, 'Bearer test', org)).rejects.toThrow('Consent to the current');
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: c.id } })).survey).toEqual(c.survey);
+  expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.survey', resourceId: c.id } })).toBe(0);
+  await db.consent.create({ data: { ...consent, subject: 'submit-test-subject', version: CURRENT_NOTICES.evidence_processing } });
+  await expect(controller.saveSurvey(c.id, survey, 'Bearer test', org)).resolves.toEqual({ id: c.id });
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: c.id } })).survey).toEqual(survey);
+  await controller.submitCase(c.id, 'Bearer test', org);
+  await expect(controller.saveSurvey(c.id, { changed: true }, 'Bearer test', org)).rejects.toThrow('only before submission');
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: c.id } })).survey).toEqual(survey);
+  expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.survey', resourceId: c.id } })).toBe(1);
+ });
 });
