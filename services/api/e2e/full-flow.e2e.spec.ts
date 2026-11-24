@@ -148,6 +148,12 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   const pdf = await call(customer, `/v1/cases/${apeCase.id}/certificate/content`, { org: true });
   expect(pdf.status).toBe(200);
   expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+  expect((await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }))).caseStatus).toBe('DEPOSITED');
+  expect((await json(await call(customer, `/v1/cases/${apeCase.id}/certificate`, { org: true }))).certificate.deliveredAt).toBeNull();
+  const receipt = { sha256: meta.certificate.sha256, sizeBytes: meta.certificate.sizeBytes };
+  expect((await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', body: { ...receipt, sha256: 'invalid' } })).status).toBe(400);
+  expect(await json(await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', body: receipt }))).toEqual({ confirmed: true });
+  expect(await json(await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', body: receipt }))).toEqual({ confirmed: true });
   expect((await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }))).caseStatus).toBe('DELIVERED');
 
   const summaries = await json(await call(customer, '/v1/case-summaries', { org: true }));
@@ -157,6 +163,7 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   expect((await call(certSub, `/v1/certifier/assignments/${offer.id}/evidence/${files[0].id}/extract`, { method: 'POST' })).status).toBe(503);
 
   const actions = (await db.auditEvent.findMany({ where: { organizationId: org }, select: { action: true } })).map(a => a.action);
+  expect(actions.filter(a => a === 'certificate.deliver')).toHaveLength(1);
   for (const a of ['property.create', 'case.create', 'consent.accept', 'evidence.upload', 'case.submit', 'assignment.offer', 'assignment.accept', 'evidence.read', 'inspection.schedule', 'inspection.report', 'case.export', 'certificate.upload', 'certificate.deliver']) expect(actions).toContain(a);
  }, 60_000);
 
