@@ -40,22 +40,37 @@ async function read(f: File): Promise<AppState | null> {
  }
 }
 
-/** Falls back to the previous good copy if the main file is missing or corrupt. */
+/** Falls back to the redundant snapshot if the main file is missing or corrupt. */
 export async function loadState(): Promise<AppState> {
  return (await read(stateFile())) ?? (await read(backupFile())) ?? EMPTY;
 }
 
-export async function saveState(s: AppState): Promise<void> {
+/** Commit both copies of the same snapshot. A previous snapshot may contain erased personal data.
+ * Prepare both files before replacing either copy; replace the backup first so a missing primary
+ * after an interrupted replacement can recover the new snapshot, not the deleted draft.
+ * All file operations here are synchronous, so an immediate deletion can commit before updating UI.
+ */
+export function saveStateNow(s: AppState): void {
  const d = dir();
  if (!d.exists) d.create({ intermediates: true });
+ const data = JSON.stringify(s);
  const tmp = new File(d, 'state.tmp.json');
- if (tmp.exists) tmp.delete();
- tmp.create();
- tmp.write(JSON.stringify(s));
- const f = stateFile();
- // Keep the previous version as backup: a crash between the two steps never loses everything.
- if (f.exists) { const b = backupFile(); if (b.exists) b.delete(); f.move(b); }
+ const bakTmp = new File(d, 'state.bak.tmp.json');
+ for (const staging of [tmp, bakTmp]) {
+  if (staging.exists) staging.delete();
+  staging.create();
+  staging.write(data);
+ }
+ const backup = backupFile();
+ if (backup.exists) backup.delete();
+ bakTmp.move(backupFile());
+ const primary = stateFile();
+ if (primary.exists) primary.delete();
  tmp.move(stateFile());
+}
+
+export async function saveState(s: AppState): Promise<void> {
+ saveStateNow(s);
 }
 
 /** Copies a picked image/PDF into app storage so it survives cache cleanup. */
