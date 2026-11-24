@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { ORG_COOKIE, isUuid, orgContext } from '../../lib/org';
 import { ApiFailure, orgFetch, orgJson } from '../../lib/api';
+import { matchesCertificateBinding } from '../../lib/certificate-binding';
 
 export async function chooseOrganization(form: FormData) {
  const org = String(form.get('organizationId') ?? '');
@@ -133,10 +134,10 @@ export async function submitCase(form: FormData) {
 }
 
 /** The browser reports receipt only after verifying the complete PDF bytes. */
-export async function confirmCertificateReceipt(id: string, expectedOrg: string, sha256: string, sizeBytes: number) {
+export async function confirmCertificateReceipt(id: string, expectedOrg: string, binding: string, sha256: string, sizeBytes: number) {
  if (!isUuid(id) || !isUuid(expectedOrg) || !/^[a-f0-9]{64}$/.test(sha256) || !Number.isSafeInteger(sizeBytes) || sizeBytes <= 0 || sizeBytes > 15 * 1024 * 1024) throw new Error('Invalid receipt');
  const ctx = await orgContext(`/org/cases/${id}`);
- if (ctx?.membership?.organizationId !== expectedOrg) throw new Error('Organization changed');
+ if (ctx?.membership?.organizationId !== expectedOrg || !matchesCertificateBinding(ctx.cfg.sessionKey, ctx.s, expectedOrg, id, binding)) throw new Error('Session or organization changed');
  await orgFetch(ctx.cfg, ctx.s, expectedOrg, `/v1/cases/${id}/certificate/receipt`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sha256, sizeBytes }) });
  revalidatePath(`/org/cases/${id}`);
 }

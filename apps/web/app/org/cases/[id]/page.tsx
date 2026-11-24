@@ -1,5 +1,6 @@
 import React from 'react';
 import { CertificateDownload } from './CertificateDownload';
+import { certificateBinding } from '../../../../lib/certificate-binding';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { isUuid, orgContext } from '../../../../lib/org';
@@ -58,7 +59,7 @@ export default async function OrgCase({ params, searchParams }: { params: Promis
    : <p>Non ancora programmato.</p>}</section>
   {cert.certificate ? <section style={box}><h2>Attestato di prestazione energetica</h2>
    <p>Identificativo regionale <strong>{cert.certificate.regionalId}</strong> · depositato il {fmt(cert.certificate.depositedAt)}{cert.certificate.validUntil ? ` · valido fino al ${new Date(cert.certificate.validUntil).toLocaleDateString('it-IT')}` : ''}</p>
-   <p><CertificateDownload id={id} org={org} sha256={cert.certificate.sha256} sizeBytes={cert.certificate.sizeBytes} /> · impronta SHA-256 <code>{cert.certificate.sha256.slice(0, 16)}…</code></p>
+   <p><CertificateDownload id={id} org={org} binding={certificateBinding(cfg.sessionKey, s, org, id)} sha256={cert.certificate.sha256} sizeBytes={cert.certificate.sizeBytes} /> · impronta SHA-256 <code>{cert.certificate.sha256.slice(0, 16)}…</code></p>
    <p>{cert.certificate.deliveredAt ? 'Ricezione registrata il ' + fmt(cert.certificate.deliveredAt) : 'Ricezione non ancora confermata.'}</p>
    <p style={{ fontSize: 13 }}>Documento caricato dal certificatore che lo ha firmato e depositato; la piattaforma non ne modifica il contenuto.</p>
   </section> : null}
