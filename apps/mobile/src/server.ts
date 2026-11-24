@@ -29,6 +29,12 @@ function invalidate(): Promise<void> {
 
 export class ServerError extends Error { constructor(public status: number, message: string) { super(message); } }
 
+/** Bind a multi-request operation to the session that started it, including gaps between requests. */
+export function sessionBoundary(): () => void {
+ const expected = generation;
+ return () => { if (generation !== expected) throw new ServerError(401, 'Sessione cambiata'); };
+}
+
 async function raw<T>(path: string, init: RequestInit = {}, timeoutMs = 30_000): Promise<T> {
  const ctl = new AbortController();
  const t = setTimeout(() => ctl.abort(), timeoutMs);
@@ -191,16 +197,20 @@ export function toBase64(bytes: Uint8Array): string {
  * Resumable upload of a large local file (walkthrough video) in 4 MiB parts: already received parts are
  * skipped, so a retry after a dropped connection continues where it stopped.
  */
-export async function uploadResumable(caseId: string, kind: string, uri: string, onProgress: (ratio: number) => void, existing?: string): Promise<{ id: string; uploadId: string }> {
+export async function uploadResumable(caseId: string, kind: string, uri: string, onProgress: (ratio: number) => void, existing?: string, onStarted?: (id: string) => void | Promise<void>): Promise<{ id: string; uploadId: string }> {
+ const guard = sessionBoundary();
  const file = new File(uri);
  const total = file.size ?? 0;
  if (!total) throw new ServerError(400, 'File vuoto');
  let uploadId = existing, partSize = 4 * 1024 * 1024, received: number[] = [];
  if (uploadId) {
   try { const st = await api<{ receivedParts: number[]; completed: boolean; evidenceId: string | null }>(`/v1/cases/${caseId}/uploads/${uploadId}`, { org: true }); received = st.receivedParts; if (st.completed && st.evidenceId) return { id: st.evidenceId, uploadId }; }
-  catch { uploadId = undefined; }
+  catch (e) { if (!(e instanceof ServerError) || e.status !== 404) throw e; uploadId = undefined; }
  }
+ guard();
  if (!uploadId) { const st = await api<{ uploadId: string; partSize: number }>(`/v1/cases/${caseId}/uploads`, { org: true, body: { kind, totalBytes: total } }); uploadId = st.uploadId; partSize = st.partSize; }
+ await onStarted?.(uploadId);
+ guard();
  const parts = Math.ceil(total / partSize);
  const h = file.open();
  try {
@@ -209,12 +219,13 @@ export async function uploadResumable(caseId: string, kind: string, uri: string,
    h.offset = n * partSize;
    const bytes = h.readBytes(Math.min(partSize, total - n * partSize));
    for (let attempt = 0; ; attempt++) {
-    try { await api(`/v1/cases/${caseId}/uploads/${uploadId}/parts/${n}`, { org: true, text: toBase64(bytes), timeoutMs: 120_000 }); break; }
+    try { guard(); await api(`/v1/cases/${caseId}/uploads/${uploadId}/parts/${n}`, { org: true, text: toBase64(bytes), timeoutMs: 120_000 }); break; }
     catch (e) { if (attempt >= 3 || (e instanceof ServerError && e.status < 500 && e.status !== 429)) throw e; await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); }
    }
    onProgress((n + 1) / parts);
   }
  } finally { h.close(); }
+ guard();
  const ev = await api<{ id: string }>(`/v1/cases/${caseId}/uploads/${uploadId}/complete`, { org: true, body: {}, timeoutMs: 10 * 60_000 });
  return { id: ev.id, uploadId };
 }
