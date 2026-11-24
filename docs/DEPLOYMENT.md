@@ -16,7 +16,7 @@ Senza OIDC configurato l'API risponde 401 e il portale 503 (fail closed). Il vol
 
 **Verifica automatica**: il job CI `containers` costruisce le immagini, avvia lo stack con segreti sintetici e controlla `/health` 200, `/v1/me` 401, portale 200, login 503, migrazione terminata con 0, worker attivo, API non eseguita come root.
 
-**Non coperto**: backup/restore di database e volume (da pianificare e provare), monitoraggio, scelta dell'hosting, dominio e certificati.
+**Non coperto su host reale**: backup/restore (provato in CI con dati sintetici), monitoraggio, scelta dell'hosting, dominio e certificati.
 
 ## Backup e ripristino
 ```
@@ -34,11 +34,13 @@ Il compose include `clamav/clamav:stable` (scarica le firme all'avvio: alcuni mi
 ## Messa online del server di prova (staging) da GitHub Actions
 
 1. **VM in UE** (es. 2 vCPU, 4 GB RAM, 80 GB disco) con Ubuntu, Docker e il plugin compose installati; utente con accesso SSH a chiave.
-2. **DNS:** record A del dominio dell'API (es. `api.apeitalia.it`) verso l'IP della VM. Porte 80 e 443 aperte.
-3. **Segreti GitHub** (Settings → Secrets → Actions):
-   - `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (chiave privata della VM);
+2. **DNS:** record A del dominio dell'API (es. `api-staging.example.it`) verso l'IP della VM. Porte 80 e 443 aperte.
+3. **Environment GitHub `staging`** (Settings → Environments): configurare solo main, eventuale approvazione, segreti e variabili dedicati; non riutilizzare segreti di repository o produzione.
+   - `DEPLOY_HOST` (DNS o IPv4), `DEPLOY_USER` (non root), `DEPLOY_SSH_KEY` (chiave privata della VM);
+   - `DEPLOY_SSH_KNOWN_HOSTS`: riga known_hosts con chiave pubblica host verificata indipendentemente, non acquisita alla cieca dalla rete;
    - `DEPLOY_ENV_FILE`: il contenuto di `deploy/.env` compilato a partire da `deploy/.env.example` (password, chiavi casuali, `API_DOMAIN`, `PUBLIC_API_URL`, `PLATFORM_JWT_SECRET`, Brevo, eventualmente Anthropic e Stripe).
-4. **Avvio:** Actions → "Deploy staging server" → Run workflow su `main` corrente: richiede CI push verde sullo SHA esatto e tutti e quattro i job superati. Non usare credenziali o server di produzione. Il job aggiorna il codice sulla VM, scrive `.env`, avvia lo stack (Postgres, ClamAV, migrazioni, API, worker, web, Caddy con certificato TLS automatico) e controlla `/health`.
+   - variabile `STAGING_PUBLIC_API_URL`: origine HTTPS senza path, porta o slash finale, con etichetta DNS staging; `PUBLIC_API_URL` e `API_DOMAIN` nel dotenv devono coincidere, ciascuno in una sola riga letterale. `DEPLOY_PATH` opzionale (default `/opt/ape-italia-staging`, solo percorsi sotto `/opt`); se esiste uno staging precedente, verificare percorso e volumi prima di procedere, senza migrazioni implicite.
+4. **Avvio:** Actions → "Deploy staging server" → Run workflow su `main` corrente: richiede CI push verde sullo SHA esatto e tutti e quattro i job superati. Non usare credenziali o server di produzione. Il job aggiorna il codice sulla VM, scrive `.env`, avvia lo stack (Postgres, ClamAV, migrazioni, API, worker, web, Caddy con certificato TLS automatico) e richiede HTTP 200 su `/health` via HTTPS con certificato valido, senza redirect e senza saltare il controllo. Questo non identifica lo SHA servito dal proxy: verificarlo sul server e svolgere smoke test funzionali separati. Verificare che host, DNS, database e fornitori siano esclusivamente di staging (Stripe test, nessuna email reale senza autorizzazione).
 5. **App:** imposta la variabile di repository `EXPO_PUBLIC_API_BASE_URL=https://api.…` e rilancia "Mobile release": la nuova build usa il server (login con codice email, invio vero, area certificatori).
 6. **Certificatori:** approva le candidature dopo il controllo sull'elenco SACE:
    `docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec api node dist/admin/provision-cli.js approve-application --id <id> --operator <tuo-id>`
