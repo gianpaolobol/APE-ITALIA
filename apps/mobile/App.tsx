@@ -24,9 +24,11 @@ export default function App() {
   let active = true, observed = false;
   const apply = (s: DraftOwner | null) => {
    if (!active) return;
+   const previous = ownerRef.current;
    ownerRef.current = s;
    setOwner(s);
-   if (!s) setRoute(r => r.name === 'remote' ? { name: 'home' } : r);
+   if (previous && (!s || previous.subject !== s.subject || previous.organizationId !== s.organizationId)) setRoute({ name: 'home' });
+   else if (!s) setRoute(r => r.name === 'remote' ? { name: 'home' } : r);
   };
   const unsubscribe = subscribeSession(s => { observed = true; apply(s); });
   if (serverEnabled()) void getSession().then(s => { if (!observed) apply(s); });
