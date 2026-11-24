@@ -1,10 +1,11 @@
 /** Customer-side status of a request sent to the server, mapped onto the local Job shape for display. */
-import { api, download } from './server';
+import { api, download, sessionBoundary, ServerError } from './server';
+import * as Crypto from 'expo-crypto';
 import type { Job } from './job';
 
 type InspectionResp = { caseStatus: string; inspection: { status: string; scheduledAt: string; performedAt: string | null; certifierName: string } | null;
  certifier: { name: string; registrationId: string } | null; call: { at: string; url: string } | null };
-type CertResp = { certificate: { regionalId: string; energyClass: string | null; depositedAt: string } | null };
+type CertResp = { certificate: { regionalId: string; energyClass: string | null; depositedAt: string; sha256: string; sizeBytes: number } | null };
 
 export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undefined; caseStatus: string }> {
  const r = await api<InspectionResp>(`/v1/cases/${caseId}/inspection`, { org: true });
@@ -24,7 +25,22 @@ export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undef
 }
 
 export async function downloadCertificate(caseId: string): Promise<string> {
- return download(`/v1/cases/${caseId}/certificate/content`, `ape-${caseId}.pdf`, true);
+ const guard = sessionBoundary();
+ const { certificate } = await api<CertResp>(`/v1/cases/${caseId}/certificate`, { org: true });
+ guard();
+ if (!certificate || !/^[a-f0-9]{64}$/.test(certificate.sha256) || !Number.isSafeInteger(certificate.sizeBytes) || certificate.sizeBytes <= 0 || certificate.sizeBytes > 15 * 1024 * 1024) {
+  throw new ServerError(422, 'Metadati attestato non validi');
+ }
+ return download(`/v1/cases/${caseId}/certificate/content`, `ape-${caseId}.pdf`, true, async file => {
+  guard();
+  if (file.size !== certificate.sizeBytes) throw new ServerError(422, 'Attestato incompleto');
+  const bytes = await file.bytes();
+  if (bytes.length !== certificate.sizeBytes) throw new ServerError(422, 'Attestato incompleto');
+  const digest = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA256, bytes);
+  const hex = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
+  guard();
+  if (hex !== certificate.sha256) throw new ServerError(422, 'Integrità attestato non verificata');
+ });
 }
 
 export type PaymentState = { enabled: boolean; payable: boolean; paid: boolean; amountCents: number | null };
