@@ -99,8 +99,28 @@ export function deleteMedia(draftId: string): void {
  try { const d = new Directory(dir(), 'media', draftId); if (d.exists) d.delete(); } catch { /* best effort */ }
 }
 
-export function deletePhotoFile(p: PhotoRef): void {
- try { const f = new File(p.uri); if (f.exists) f.delete(); } catch { /* best effort */ }
+/** Use the current snapshot, not a stale UI callback, and preserve other references to the same file. */
+export function removeDraftPhoto(draft: Draft, questionId: string, uri: string): { draft: Draft; removed: PhotoRef; unreferenced: boolean } | null {
+ const list = draft.photos[questionId] ?? [];
+ const removed = list.find(p => p.uri === uri);
+ if (!removed) return null;
+ const photos = { ...draft.photos, [questionId]: list.filter(p => p.uri !== uri) };
+ const unreferenced = !Object.values(photos).some(items => (items ?? []).some(p => p.uri === uri));
+ return { draft: { ...draft, photos, updatedAt: new Date().toISOString() }, removed, unreferenced };
+}
+
+/** Only unlink files in this draft's own media directory. Never follow an arbitrary saved URI. */
+export function deleteDraftPhotoFile(draftId: string, p: PhotoRef): void {
+ if (!/^[a-zA-Z0-9_-]+$/.test(draftId)) return;
+ try {
+  const d = new Directory(dir(), 'media', draftId);
+  const prefix = d.uri.replace(/\/$/, '') + '/';
+  if (!p.uri.startsWith(prefix)) return;
+  const filename = p.uri.slice(prefix.length);
+  if (!/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(filename)) return;
+  const f = new File(d, filename);
+  if (f.exists) f.delete();
+ } catch { /* best effort: orphan cleanup remains separate */ }
 }
 
 export function newDraft(): Draft {
