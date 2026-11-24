@@ -105,7 +105,7 @@ export class CertificateController {
   if (!cert) throw new NotFoundException('Certificate not available');
   // When payments are enabled the APE is released after payment (customers pay after the inspection).
   if (stripeFromEnv() && !(await this.db.payment.findFirst({ where: { caseId: id, status: 'PAID' } }))) throw new HttpException('Payment required before download', HttpStatus.PAYMENT_REQUIRED);
-  const file = await evidenceFile(this.storage, { id: cert.id, storageKey: cert.storageKey, mimeType: 'application/pdf', scanStatus: cert.scanStatus });
+  const file = await evidenceFile(this.storage, { id: cert.id, storageKey: cert.storageKey, mimeType: 'application/pdf', scanStatus: cert.scanStatus }, { sha256: cert.sha256, sizeBytes: cert.sizeBytes });
   await this.db.$transaction(async tx => {
    const first = await tx.certificate.updateMany({ where: { id: cert.id, deliveredAt: null }, data: { deliveredAt: new Date(), deliveredTo: s.actorId } });
    if (first.count === 1) await tx.apeCase.updateMany({ where: { id, status: 'DEPOSITED' }, data: { status: 'DELIVERED' } });
