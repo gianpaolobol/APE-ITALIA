@@ -55,9 +55,10 @@ describe.skipIf(!enabled)('PostgreSQL: consent-gated encrypted evidence upload',
  });
  it('records consent idempotently with audit', async () => {
   const body = { kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing };
-  const a = await ctrl.consent(caseA, body, await bearer(userA), orgA);
-  const b = await ctrl.consent(caseA, body, await bearer(userA), orgA);
+  const token = await bearer(userA);
+  const [a, b] = await Promise.all([ctrl.consent(caseA, body, token, orgA), ctrl.consent(caseA, body, token, orgA)]);
   expect(a.id).toBe(b.id);
+  expect((await ctrl.consent(caseA, body, token, orgA)).id).toBe(a.id);
   expect(await db.auditEvent.count({ where: { organizationId: orgA, action: 'consent.accept' } })).toBe(1);
  });
  it('uploads, lists and reads back the stripped content', async () => {
