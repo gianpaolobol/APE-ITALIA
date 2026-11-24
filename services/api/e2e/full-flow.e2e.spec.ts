@@ -151,9 +151,9 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   expect((await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }))).caseStatus).toBe('DEPOSITED');
   expect((await json(await call(customer, `/v1/cases/${apeCase.id}/certificate`, { org: true }))).certificate.deliveredAt).toBeNull();
   const receipt = { sha256: meta.certificate.sha256, sizeBytes: meta.certificate.sizeBytes };
-  expect((await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', body: { ...receipt, sha256: 'invalid' } })).status).toBe(400);
-  expect(await json(await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', body: receipt }))).toEqual({ confirmed: true });
-  expect(await json(await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', body: receipt }))).toEqual({ confirmed: true });
+  expect((await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...receipt, sha256: 'invalid' }) })).status).toBe(400);
+  expect(await json(await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(receipt) }))).toEqual({ confirmed: true });
+  expect(await json(await call(customer, `/v1/cases/${apeCase.id}/certificate/receipt`, { org: true, method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(receipt) }))).toEqual({ confirmed: true });
   expect((await json(await call(customer, `/v1/cases/${apeCase.id}/inspection`, { org: true }))).caseStatus).toBe('DELIVERED');
 
   const summaries = await json(await call(customer, '/v1/case-summaries', { org: true }));
