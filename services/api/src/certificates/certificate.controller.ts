@@ -95,7 +95,7 @@ export class CertificateController {
   return { certificate: cert ? { regionalId: cert.regionalId, energyClass: cert.energyClass, depositedAt: cert.depositedAt, validUntil: cert.validUntil, sha256: cert.sha256, sizeBytes: cert.sizeBytes, deliveredAt: cert.deliveredAt } : null };
  }
 
- /** First download by a member of the requesting organization marks the case as DELIVERED. */
+ /** An authorized retrieval is not confirmation that the client received the document. */
  @Get('cases/:id/certificate/content')
  @Header('Cache-Control', 'no-store')
  @Header('X-Content-Type-Options', 'nosniff')
@@ -107,10 +107,31 @@ export class CertificateController {
   if (stripeFromEnv() && !(await this.db.payment.findFirst({ where: { caseId: id, status: 'PAID' } }))) throw new HttpException('Payment required before download', HttpStatus.PAYMENT_REQUIRED);
   const file = await evidenceFile(this.storage, { id: cert.id, storageKey: cert.storageKey, mimeType: 'application/pdf', scanStatus: cert.scanStatus }, { sha256: cert.sha256, sizeBytes: cert.sizeBytes });
   await this.db.$transaction(async tx => {
-   const first = await tx.certificate.updateMany({ where: { id: cert.id, deliveredAt: null }, data: { deliveredAt: new Date(), deliveredTo: s.actorId } });
-   if (first.count === 1) await tx.apeCase.updateMany({ where: { id, status: 'DEPOSITED' }, data: { status: 'DELIVERED' } });
-   await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: first.count === 1 ? 'certificate.deliver' : 'certificate.read', resourceId: cert.id } });
+   await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'certificate.read', resourceId: cert.id } });
   });
   return file;
+ }
+
+ /** Client-reported receipt; not proof of reading, signature validity or legal service. */
+ @Post('cases/:id/certificate/receipt')
+ async receipt(@Param('id', new ParseUUIDPipe()) id: string,
+  @Body() body: { sha256?: unknown; sizeBytes?: unknown } | undefined,
+  @Headers('authorization') token?: string, @Headers('x-organization-id') org?: string) {
+  const s = await this.auth.authorize(token, org);
+  const cert = await this.db.certificate.findFirst({ where: { caseId: id, organizationId: s.organizationId } });
+  if (!cert) throw new NotFoundException('Certificate not available');
+  if (stripeFromEnv() && !(await this.db.payment.findFirst({ where: { caseId: id, status: 'PAID' } }))) throw new HttpException('Payment required before receipt', HttpStatus.PAYMENT_REQUIRED);
+  if (body?.sha256 !== cert.sha256 || body?.sizeBytes !== cert.sizeBytes) throw new BadRequestException('Certificate receipt does not match deposited document');
+  // Recheck release eligibility and stored integrity before accepting a receipt.
+  await evidenceFile(this.storage, { id: cert.id, storageKey: cert.storageKey, mimeType: 'application/pdf', scanStatus: cert.scanStatus }, { sha256: cert.sha256, sizeBytes: cert.sizeBytes });
+  await this.db.$transaction(async tx => {
+   const first = await tx.certificate.updateMany({ where: { id: cert.id, organizationId: s.organizationId, deliveredAt: null }, data: { deliveredAt: new Date(), deliveredTo: s.actorId } });
+   if (first.count === 1) {
+    const moved = await tx.apeCase.updateMany({ where: { id, organizationId: s.organizationId, status: 'DEPOSITED' }, data: { status: 'DELIVERED' } });
+    if (moved.count !== 1) throw new ConflictException('Case state changed');
+    await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'certificate.deliver', resourceId: cert.id } });
+   }
+  });
+  return { confirmed: true };
  }
 }
