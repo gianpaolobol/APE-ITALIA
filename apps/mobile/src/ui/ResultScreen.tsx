@@ -61,7 +61,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
   if (!(await getSession())) { setLogin(true); return; }
   setSending('Preparo l’invio…');
   try {
-   const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCaseId: draft.remoteCaseId, remotePropertyId: draft.remotePropertyId, remoteOwner: draft.remoteOwner, uploaded: draft.uploaded, videoUploads: draft.videoUploads }, label => setSending(label),
+   const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCreationKey: draft.remoteCreationKey, remoteCaseId: draft.remoteCaseId, remotePropertyId: draft.remotePropertyId, remoteOwner: draft.remoteOwner, uploaded: draft.uploaded, videoUploads: draft.videoUploads }, label => setSending(label),
     onCheckpoint);
    onUpdate(d => ({ ...d, status: 'inviata', sentAt: new Date().toISOString(), remoteCaseId: r.caseId }));
    Alert.alert('Richiesta inviata', 'I certificatori della tua zona la stanno valutando. Ti contatteremo per fissare il sopralluogo.');
