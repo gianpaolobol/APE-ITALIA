@@ -8,6 +8,7 @@ import { CasesController } from '../cases.controller';
 import { CertifierController } from '../certifiers/certifier.controller';
 import { createOrganizationWithOwner, registerVerifiedCertifier } from '../admin/provisioning';
 import type { PrismaService } from '../prisma.service';
+import { CURRENT_NOTICES } from '../evidence/consent-policy';
 
 const enabled = process.env.RUN_DB_INTEGRATION === '1';
 describe.skipIf(!enabled)('PostgreSQL: inspection scheduling and immutable report', () => {
@@ -30,6 +31,7 @@ describe.skipIf(!enabled)('PostgreSQL: inspection scheduling and immutable repor
   certifierId = (await registerVerifiedCertifier(db, { subject: certSub, displayName: 'Cert Insp', registrationId: 'TEST-INSP', regions: [REGION], operator: 'ci-test' })).id;
   const p = await cases.createProperty({ address: 'Via Sintetica 4', city: 'Comune Test', region: REGION }, await bearer(customer), org);
   caseId = (await cases.createCase({ propertyId: p.id }, await bearer(customer), org)).id;
+  await db.consent.create({ data: { organizationId: org, caseId, subject: customer, kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing } });
   await cases.submitCase(caseId, await bearer(customer), org);
   assignmentId = (await cert.list(await bearer(certSub)))[0].id;
  });
@@ -37,6 +39,7 @@ describe.skipIf(!enabled)('PostgreSQL: inspection scheduling and immutable repor
   await db.auditEvent.deleteMany({ where: { organizationId: org } });
   await db.inspection.deleteMany({ where: { organizationId: org } });
   await db.assignment.deleteMany({ where: { organizationId: org } });
+  await db.consent.deleteMany({ where: { organizationId: org } });
   await db.apeCase.deleteMany({ where: { organizationId: org } });
   await db.property.deleteMany({ where: { organizationId: org } });
   await db.membership.deleteMany({ where: { organizationId: org } });

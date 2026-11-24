@@ -4,6 +4,7 @@ import { CasesController } from './cases.controller';
 import type { PrismaService } from './prisma.service';
 import type { AuthService } from './auth.service';
 import { offerNext } from './certifiers/assignment.service';
+import { CURRENT_NOTICES } from './evidence/consent-policy';
 vi.mock('./certifiers/assignment.service', () => ({ offerNext: vi.fn().mockResolvedValue(null) }));
 
 function setup(tenant='org-a', role='member') {
@@ -43,6 +44,13 @@ describe('tenant-scoped API query contract',()=>{
 });
 
 describe('case submission authorization', () => {
+ it('rejects a draft with no current consent of the acting member', async () => {
+  const { controller } = setup();
+  const tx = { apeCase: { updateMany: vi.fn().mockResolvedValue({ count: 0 }), findFirst: vi.fn().mockResolvedValue({ status: 'DRAFT' }) }, auditEvent: { create: vi.fn() } };
+  (controller as any).db.$transaction = vi.fn(async (fn: any) => fn(tx));
+  await expect(controller.submitCase('123e4567-e89b-42d3-a456-426614174000', 'Bearer t', 'org-a')).rejects.toBeInstanceOf(ForbiddenException);
+  expect(tx.auditEvent.create).not.toHaveBeenCalled();
+ });
  it('viewers cannot submit', async () => {
   const { controller } = setup('org-a', 'viewer');
   await expect(controller.submitCase('123e4567-e89b-42d3-a456-426614174000', 'Bearer t', 'org-a')).rejects.toBeInstanceOf(ForbiddenException);
@@ -53,7 +61,7 @@ describe('case submission authorization', () => {
   const tx = { apeCase: { updateMany, findFirstOrThrow: vi.fn().mockResolvedValue({ status: 'SUBMITTED' }) }, auditEvent: { create: vi.fn() } };
   (controller as any).db.$transaction = vi.fn(async (fn: any) => fn(tx));
   await controller.submitCase('123e4567-e89b-42d3-a456-426614174000', 'Bearer t', 'org-b');
-  expect(updateMany).toHaveBeenCalledWith({ where: { id: '123e4567-e89b-42d3-a456-426614174000', organizationId: 'org-a', status: 'DRAFT' }, data: { status: 'SUBMITTED' } });
+  expect(updateMany).toHaveBeenCalledWith({ where: { id: '123e4567-e89b-42d3-a456-426614174000', organizationId: 'org-a', status: 'DRAFT', consents: { some: { organizationId: 'org-a', subject: 'user-a', kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing } } }, data: { status: 'SUBMITTED' } });
   expect(offerNext).toHaveBeenCalledWith(tx, '123e4567-e89b-42d3-a456-426614174000');
  });
 });

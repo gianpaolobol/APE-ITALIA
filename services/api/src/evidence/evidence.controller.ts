@@ -56,10 +56,10 @@ export class EvidenceController {
   const kind = body!.kind as string, version = body!.version as string;
   return this.db.$transaction(async tx => {
    const where = { caseId_subject_kind_version: { caseId, subject: s.actorId, kind, version } };
-   const existing = await tx.consent.findUnique({ where });
-   if (existing) return existing;
-   const c = await tx.consent.create({ data: { organizationId: s.organizationId, caseId, subject: s.actorId, kind, version } });
-   await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'consent.accept', resourceId: c.id } });
+   const id = randomUUID();
+   const inserted = await tx.consent.createMany({ data: { id, organizationId: s.organizationId, caseId, subject: s.actorId, kind, version }, skipDuplicates: true });
+   const c = await tx.consent.findUniqueOrThrow({ where });
+   if (inserted.count === 1) await tx.auditEvent.create({ data: { organizationId: s.organizationId, actorId: s.actorId, action: 'consent.accept', resourceId: c.id } });
    return c;
   });
  }

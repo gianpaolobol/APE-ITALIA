@@ -10,6 +10,7 @@ import { MembersController } from '../members.controller';
 import { createOrganizationWithOwner, registerVerifiedCertifier } from '../admin/provisioning';
 import { LifecycleController } from './lifecycle.controller';
 import type { PrismaService } from '../prisma.service';
+import { CURRENT_NOTICES } from '../evidence/consent-policy';
 
 const enabled = process.env.RUN_DB_INTEGRATION === '1';
 describe.skipIf(!enabled)('PostgreSQL: evidence requests, cancellation and certifier withdrawal', () => {
@@ -24,6 +25,7 @@ describe.skipIf(!enabled)('PostgreSQL: evidence requests, cancellation and certi
   .setSubject(sub).setIssuedAt().setExpirationTime('5m').sign(key).then(t => 'Bearer ' + t);
  const newSubmittedCase = async () => {
   const c = await cases.createCase({ propertyId }, await bearer(customer), org);
+  await db.consent.create({ data: { organizationId: org, caseId: c.id, subject: customer, kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing } });
   await cases.submitCase(c.id, await bearer(customer), org);
   return c.id;
  };
@@ -44,7 +46,7 @@ describe.skipIf(!enabled)('PostgreSQL: evidence requests, cancellation and certi
   propertyId = (await cases.createProperty({ address: 'Via Sintetica 6', city: 'Comune Test', region: REGION }, await bearer(customer), org)).id;
  });
  afterAll(async () => {
-  for (const t of ['evidenceRequest', 'inspection', 'auditEvent', 'assignment', 'apeCase', 'property', 'invitation', 'membership'] as const) {
+  for (const t of ['evidenceRequest', 'inspection', 'auditEvent', 'assignment', 'consent', 'apeCase', 'property', 'invitation', 'membership'] as const) {
    await (db[t] as unknown as { deleteMany(a: unknown): Promise<unknown> }).deleteMany({ where: { organizationId: org } });
   }
   await db.organization.deleteMany({ where: { id: org } });

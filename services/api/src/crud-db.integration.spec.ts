@@ -4,6 +4,7 @@ import { BadRequestException, ConflictException, ForbiddenException, NotFoundExc
 import { PrismaClient } from '@prisma/client';
 import { CasesController } from './cases.controller';
 import type { AuthService } from './auth.service';
+import { CURRENT_NOTICES } from './evidence/consent-policy';
 
 const enabled = process.env.RUN_DB_INTEGRATION === '1';
 describe.skipIf(!enabled)('PostgreSQL: draft CRUD rules', () => {
@@ -44,6 +45,7 @@ describe.skipIf(!enabled)('PostgreSQL: draft CRUD rules', () => {
   await db.consent.create({ data: { organizationId: org, caseId: withConsent.id, subject: 'crud-test-subject', kind: 'evidence_processing', version: 'v' } });
   await expect(c.deleteCase(withConsent.id, 'Bearer t', org)).rejects.toBeInstanceOf(ConflictException);
   const submitted = await c.createCase({ propertyId: p.id }, 'Bearer t', org);
+  await db.consent.create({ data: { organizationId: org, caseId: submitted.id, subject: 'crud-test-subject', kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing } });
   await c.submitCase(submitted.id, 'Bearer t', org);
   await expect(c.updateProperty(p.id, { address: 'Altro' }, 'Bearer t', org)).rejects.toBeInstanceOf(ConflictException);
   await expect(c.deleteCase(submitted.id, 'Bearer t', org)).rejects.toBeInstanceOf(ConflictException);

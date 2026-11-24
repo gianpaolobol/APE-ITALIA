@@ -71,8 +71,11 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  await save();
  }
  // Consent creation is idempotent for the actor and version; retry even if a previous request failed.
+ // The toggles in this app release correspond to this draft notice, not a future server version.
+ const displayedNoticeVersion = '2026-11-23-draft';
  const notices = await call<{ evidence_processing: string }>('/v1/notices');
- await call(`/v1/cases/${caseId}/consents`, { org: true, body: { kind: 'evidence_processing', version: notices.evidence_processing } });
+ if (notices.evidence_processing !== displayedNoticeVersion) throw new Error('Informativa aggiornata: aggiorna l’app prima di accettare e inviare.');
+ await call(`/v1/cases/${caseId}/consents`, { org: true, body: { kind: 'evidence_processing', version: displayedNoticeVersion } });
  const est = estimate(answers);
  await call(`/v1/cases/${caseId}/survey`, { org: true, body: { answers, estimate: est, quote: quote(answers), app: 'mobile-2' } });
  const files = Object.entries(photos).flatMap(([q, list]) => (list ?? []).map(p => ({ q, p }))).filter(f => !uploaded.includes(f.p.uri));
