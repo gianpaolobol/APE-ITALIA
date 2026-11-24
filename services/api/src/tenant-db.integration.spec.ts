@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
 import { CasesController } from './cases.controller';
 import type { AuthService } from './auth.service';
+import { CURRENT_NOTICES } from './evidence/consent-policy';
 
 const enabled = process.env.RUN_DB_INTEGRATION === '1';
 describe.skipIf(!enabled)('PostgreSQL tenant isolation integration',()=>{
@@ -56,6 +57,7 @@ describe.skipIf(!enabled)('PostgreSQL case submission', () => {
  });
  afterAll(async () => {
   await db.auditEvent.deleteMany({ where: { organizationId: { in: [org, other] } } });
+  await db.consent.deleteMany({ where: { organizationId: { in: [org, other] } } });
   await db.apeCase.deleteMany({ where: { organizationId: { in: [org, other] } } });
   await db.property.deleteMany({ where: { organizationId: org } });
   await db.organization.deleteMany({ where: { id: { in: [org, other] } } });
@@ -64,6 +66,16 @@ describe.skipIf(!enabled)('PostgreSQL case submission', () => {
  it('submits a draft once, refuses resubmission and foreign tenants', async () => {
   const c = await controller.createCase({ propertyId: property }, 'Bearer test', org);
   await expect(controller.submitCase(c.id, 'Bearer test', other)).rejects.toThrow('Case not found');
+  await expect(controller.submitCase(c.id, 'Bearer test', org)).rejects.toThrow('Consent to the current');
+  const consent = { organizationId: org, caseId: c.id, kind: 'evidence_processing' };
+  await db.consent.createMany({ data: [
+   { ...consent, subject: 'different-member', version: CURRENT_NOTICES.evidence_processing },
+   { ...consent, subject: 'submit-test-subject', version: 'outdated-test-version' },
+  ] });
+  await expect(controller.submitCase(c.id, 'Bearer test', org)).rejects.toThrow('Consent to the current');
+  expect((await db.apeCase.findUniqueOrThrow({ where: { id: c.id } })).status).toBe('DRAFT');
+  expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.submit', resourceId: c.id } })).toBe(0);
+  await db.consent.create({ data: { ...consent, subject: 'submit-test-subject', version: CURRENT_NOTICES.evidence_processing } });
   expect((await controller.submitCase(c.id, 'Bearer test', org)).status).toBe('SUBMITTED');
   await expect(controller.submitCase(c.id, 'Bearer test', org)).rejects.toThrow('Only draft cases');
   expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.submit', resourceId: c.id } })).toBe(1);
