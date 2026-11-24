@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { API_BASE, deleteAccount, getSession, logout, serverEnabled } from '../server';
+import { LoginSheet } from './LoginSheet';
 import * as WebBrowser from 'expo-web-browser';
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,6 +23,7 @@ const STEPS_HOW = [
 export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: AppState; onNew: () => void; onOpen: (d: Draft) => void; onDelete: (d: Draft) => void; onPro: () => void }) {
  const insets = useSafeAreaInsets();
  const minPrice = Math.min(...PRICE_LIST.tiers.map(t => t.price));
+ const [login, setLogin] = useState(false);
  const [email, setEmail] = useState<string | null>(null);
  useEffect(() => { if (serverEnabled()) getSession().then(s => setEmail(s?.email ?? null)); }, [state]);
  const removeAccount = () => Alert.alert('Eliminare l’account?', 'Verranno cancellati accesso, dati di contatto e richieste non ancora inviate. Le pratiche già seguite da un certificatore restano solo per gli obblighi di legge, senza collegamento al tuo account.', [
@@ -79,7 +81,11 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
        <Button title="Elimina account" kind="danger" icon="trash-outline" onPress={removeAccount} style={{ flex: 1 }} />
       </View>
      </Card>
+    </>) : serverEnabled() ? (<>
+     <SectionTitle>Il tuo account</SectionTitle>
+     <Button title="Accedi" icon="log-in-outline" onPress={() => setLogin(true)} />
     </>) : null}
+    <LoginSheet visible={login} onClose={() => setLogin(false)} onDone={s => { setEmail(s.email); setLogin(false); }} />
     {serverEnabled() ? (
      <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 20, marginTop: S.l }}>
       <Pressable onPress={() => WebBrowser.openBrowserAsync(`${API_BASE}/privacy`)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '700' }}>Privacy</Text></Pressable>
