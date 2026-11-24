@@ -11,6 +11,21 @@ export const serverEnabled = (): boolean => /^https:\/\//.test(API_BASE);
 export type Session = { accessToken: string; expiresAt: number; refreshToken: string; email: string; subject: string; organizationId: string | null; isCertifier: boolean };
 const KEY = 'ape.session.v1';
 let cached: Session | null | undefined;
+// A session boundary invalidates every in-flight read, refresh and login response.
+// Serialize Keychain/Keystore writes so logout cannot be followed by an older write.
+let generation = 0;
+let storageTail: Promise<void> = Promise.resolve();
+function persist(op: () => Promise<void>): Promise<void> {
+ const result = storageTail.then(op);
+ storageTail = result.catch(() => undefined);
+ return result;
+}
+function invalidate(): Promise<void> {
+ generation++;
+ cached = null;
+ clearRemoteCache();
+ return persist(() => SecureStore.deleteItemAsync(KEY));
+}
 
 export class ServerError extends Error { constructor(public status: number, message: string) { super(message); } }
 
@@ -29,17 +44,33 @@ async function raw<T>(path: string, init: RequestInit = {}, timeoutMs = 30_000):
 }
 
 type AuthResponse = { accessToken: string; expiresIn: number; refreshToken: string; user: { subject: string; email: string }; organizationId: string | null; isCertifier: boolean };
-async function store(r: AuthResponse): Promise<Session> {
+async function revoke(refreshToken: string): Promise<void> {
+ await raw('/v1/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken }) }).catch(() => undefined);
+}
+
+async function store(r: AuthResponse, expected: number): Promise<Session | null> {
  const s: Session = { accessToken: r.accessToken, expiresAt: Date.now() + (r.expiresIn - 60) * 1000, refreshToken: r.refreshToken, email: r.user.email, subject: r.user.subject, organizationId: r.organizationId, isCertifier: r.isCertifier };
- await SecureStore.setItemAsync(KEY, JSON.stringify(s));
- cached = s;
+ try {
+  await persist(async () => {
+   if (generation !== expected) return;
+   await SecureStore.setItemAsync(KEY, JSON.stringify(s));
+   if (generation === expected) cached = s;
+  });
+ } catch (e) {
+  await revoke(r.refreshToken);
+  throw e;
+ }
+ if (generation !== expected) { await revoke(r.refreshToken); return null; }
  return s;
 }
 
 export async function getSession(): Promise<Session | null> {
  if (cached !== undefined) return cached;
- try { const v = await SecureStore.getItemAsync(KEY); cached = v ? (JSON.parse(v) as Session) : null; } catch { cached = null; }
- return cached;
+ const expected = generation;
+ let s: Session | null = null;
+ try { const v = await SecureStore.getItemAsync(KEY); s = v ? (JSON.parse(v) as Session) : null; } catch { /* no stored session */ }
+ if (generation === expected && cached === undefined) cached = s;
+ return cached ?? null;
 }
 
 export async function startLogin(email: string): Promise<void> {
@@ -47,42 +78,62 @@ export async function startLogin(email: string): Promise<void> {
 }
 
 export async function verifyLogin(email: string, code: string): Promise<Session> {
- return store(await raw<AuthResponse>('/v1/auth/email/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }) }));
+ // Explicit login is a new session even if the email/subject is the same.
+ const previous = getSession();
+ const cleared = invalidate();
+ const expected = generation;
+ const old = await previous;
+ await cleared;
+ if (old) void revoke(old.refreshToken);
+ if (generation !== expected) throw new ServerError(401, 'Sessione cambiata');
+ const s = await store(await raw<AuthResponse>('/v1/auth/email/verify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, code }) }), expected);
+ if (!s) throw new ServerError(401, 'Sessione cambiata');
+ return s;
 }
 
 export async function logout(): Promise<void> {
- const s = await getSession();
- cached = null;
- clearRemoteCache();
- await SecureStore.deleteItemAsync(KEY).catch(() => undefined);
- if (s) await raw('/v1/auth/logout', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: s.refreshToken }) }).catch(() => undefined);
+ const previous = getSession();
+ const cleared = invalidate();
+ const s = await previous;
+ try { await cleared; }
+ finally { if (s) await revoke(s.refreshToken); }
 }
 
-let refreshing: Promise<Session | null> | null = null;
-/** Valid access token, refreshed transparently (single flight). Null when logged out. */
+let refreshing: { generation: number; promise: Promise<Session | null> } | null = null;
+/** Valid access token, refreshed transparently (single flight per session). */
 export async function freshSession(): Promise<Session | null> {
+ const expected = generation;
  const s = await getSession();
- if (!s) return null;
+ if (!s || generation !== expected) return null;
  if (s.expiresAt > Date.now()) return s;
- refreshing ??= (async () => {
-  try { return await store(await raw<AuthResponse>('/v1/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: s.refreshToken }) })); }
-  catch (e) { if (e instanceof ServerError && e.status === 401) { cached = null; await SecureStore.deleteItemAsync(KEY).catch(() => undefined); return null; } throw e; }
-  finally { refreshing = null; }
+ if (refreshing?.generation === expected) return refreshing.promise;
+ const promise = (async () => {
+  try { return await store(await raw<AuthResponse>('/v1/auth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ refreshToken: s.refreshToken }) }), expected); }
+  catch (e) {
+   if (generation !== expected) return null;
+   if (e instanceof ServerError && e.status === 401) { await invalidate(); return null; }
+   throw e;
+  }
+  finally { if (refreshing?.generation === expected) refreshing = null; }
  })();
- return refreshing;
+ refreshing = { generation: expected, promise };
+ return promise;
 }
 
 /** Authenticated JSON call. `org` adds the organization header for customer routes. */
 export async function api<T>(path: string, init: { method?: string; body?: unknown; org?: boolean; form?: FormData; text?: string; timeoutMs?: number } = {}): Promise<T> {
+ const expected = generation;
  const s = await freshSession();
- if (!s) throw new ServerError(401, 'Accedi per continuare');
+ if (!s || generation !== expected) throw new ServerError(401, 'Accedi per continuare');
  const headers: Record<string, string> = { Authorization: `Bearer ${s.accessToken}` };
  if (init.org) { if (!s.organizationId) throw new ServerError(403, 'Account senza organizzazione'); headers['x-organization-id'] = s.organizationId; }
  let body: BodyInit | undefined;
  if (init.form) body = init.form;
  else if (init.text !== undefined) { headers['Content-Type'] = 'text/plain'; body = init.text; }
  else if (init.body !== undefined) { headers['Content-Type'] = 'application/json'; body = JSON.stringify(init.body); }
- return raw<T>(path, { method: init.method ?? (body ? 'POST' : 'GET'), headers, ...(body ? { body } : {}) }, init.timeoutMs);
+ const result = await raw<T>(path, { method: init.method ?? (body ? 'POST' : 'GET'), headers, ...(body ? { body } : {}) }, init.timeoutMs);
+ if (generation !== expected) throw new ServerError(401, 'Sessione cambiata');
+ return result;
 }
 
 let downloadSequence = 0;
@@ -92,8 +143,9 @@ function clearRemoteCache(): void {
 
 /** Always re-authorize at the server; never reuse a cached document from an earlier request/account. */
 export async function download(path: string, name: string, org = false): Promise<string> {
+ const expected = generation;
  const s = await freshSession();
- if (!s) throw new ServerError(401, 'Accedi per continuare');
+ if (!s || generation !== expected) throw new ServerError(401, 'Accedi per continuare');
  const headers: Record<string, string> = { Authorization: `Bearer ${s.accessToken}` };
  if (org) {
   if (!s.organizationId) throw new ServerError(403, 'Account senza organizzazione');
@@ -105,7 +157,7 @@ export async function download(path: string, name: string, org = false): Promise
  try {
   const f = await File.downloadFileAsync(`${API_BASE}${path}`, dest, { headers });
   const current = await getSession();
-  if (!current || current.subject !== s.subject || current.organizationId !== s.organizationId) throw new ServerError(401, 'Sessione cambiata');
+  if (generation !== expected || !current || current.subject !== s.subject || current.organizationId !== s.organizationId) throw new ServerError(401, 'Sessione cambiata');
   return f.uri;
  } catch (e) {
   try { if (dir.exists) dir.delete(); } catch { /* best effort */ }
@@ -114,10 +166,9 @@ export async function download(path: string, name: string, org = false): Promise
 }
 
 export async function deleteAccount(): Promise<void> {
+ const expected = generation;
  await api('/v1/auth/account', { method: 'DELETE' });
- cached = null;
- clearRemoteCache();
- await SecureStore.deleteItemAsync(KEY).catch(() => undefined);
+ if (generation === expected) await invalidate();
 }
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
