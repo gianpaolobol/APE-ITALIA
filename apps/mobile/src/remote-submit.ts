@@ -52,6 +52,11 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
   if (c.status !== 'DRAFT') throw new Error('Stato della richiesta non riconosciuto.');
  }
  await save();
+ // Check the notice before sending personal property data or creating any new server record.
+ // A previously submitted case can still be recovered without repeating writes.
+ const displayedNoticeVersion = '2026-11-23-draft';
+ const notices = await call<{ evidence_processing: string }>('/v1/notices');
+ if (notices.evidence_processing !== displayedNoticeVersion) throw new Error('Informativa aggiornata: aggiorna l’app prima di accettare e inviare.');
  if (!caseId) {
  onProgress('Creo la richiesta', 0.05);
  const province = PROVINCES.find(p => p.value === answers.province)?.label ?? String(answers.province ?? '');
@@ -71,10 +76,6 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  await save();
  }
  // Consent creation is idempotent for the actor and version; retry even if a previous request failed.
- // The toggles in this app release correspond to this draft notice, not a future server version.
- const displayedNoticeVersion = '2026-11-23-draft';
- const notices = await call<{ evidence_processing: string }>('/v1/notices');
- if (notices.evidence_processing !== displayedNoticeVersion) throw new Error('Informativa aggiornata: aggiorna l’app prima di accettare e inviare.');
  await call(`/v1/cases/${caseId}/consents`, { org: true, body: { kind: 'evidence_processing', version: displayedNoticeVersion } });
  const est = estimate(answers);
  await call(`/v1/cases/${caseId}/survey`, { org: true, body: { answers, estimate: est, quote: quote(answers), app: 'mobile-2' } });
