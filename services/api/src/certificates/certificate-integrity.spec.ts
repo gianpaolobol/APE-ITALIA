@@ -44,7 +44,19 @@ describe('certificate download integrity', () => {
   for await (const chunk of file.getStream()) chunks.push(Buffer.from(chunk));
   expect(Buffer.concat(chunks)).toEqual(pdf);
   expect(f.db.certificate.findFirst).toHaveBeenCalledWith({ where: { caseId: 'case', organizationId: 'tenant' } });
-  expect(f.tx.certificate.updateMany).toHaveBeenCalledOnce();
+  expect(f.tx.certificate.updateMany).not.toHaveBeenCalled();
+  expect(f.tx.auditEvent.create).toHaveBeenCalledWith({ data: { organizationId: 'tenant', actorId: 'user', action: 'certificate.read', resourceId: cert.id } });
+ });
+ it('requires matching receipt metadata and marks delivery only on explicit receipt', async () => {
+  const f = fixture(pdf);
+  await expect(f.controller.receipt('case', { sha256: 'bad', sizeBytes: pdf.length }, 'Bearer test', 'tenant')).rejects.toThrow('Certificate receipt does not match');
+  expect(f.tx.certificate.updateMany).not.toHaveBeenCalled();
+  await expect(f.controller.receipt('case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant')).resolves.toEqual({ confirmed: true });
+  expect(f.tx.certificate.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: { id: cert.id, organizationId: 'tenant', deliveredAt: null } }));
   expect(f.tx.auditEvent.create).toHaveBeenCalledWith({ data: { organizationId: 'tenant', actorId: 'user', action: 'certificate.deliver', resourceId: cert.id } });
+  f.tx.certificate.updateMany.mockResolvedValueOnce({ count: 0 });
+  await f.controller.receipt('case', { sha256, sizeBytes: pdf.length }, 'Bearer test', 'tenant');
+  expect(f.tx.apeCase.updateMany).toHaveBeenCalledOnce();
+  expect(f.tx.auditEvent.create).toHaveBeenCalledOnce();
  });
 });
