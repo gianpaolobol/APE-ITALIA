@@ -67,6 +67,14 @@ export default function App() {
  } else if (route.name === 'result' && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
+   onCheckpoint={async cp => {
+    const cur = latest.current;
+    if (!cur || !cur.drafts.some(x => x.id === d.id)) throw new Error('Richiesta non più disponibile.');
+    const next = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? { ...x, ...cp } : x) };
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    latest.current = next; setState(next);
+    await saveState(next);
+   }}
    onDelete={() => { deleteMedia(d.id); update(s => ({ ...s, drafts: s.drafts.filter(x => x.id !== d.id) })); setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
   screen = <ProScreen state={state} onBack={() => setRoute({ name: 'home' })} onSaved={pro => update(s => ({ ...s, pro }))} onInbox={() => setRoute({ name: 'inbox' })} onRemote={me => setRoute({ name: 'remote', me })} />;
