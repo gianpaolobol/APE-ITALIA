@@ -36,6 +36,11 @@ describe('remote submission retry', () => {
   await expect(submitToServer({ answers, photos: {}, remoteCaseId: 'case-a', remoteOwner: owner }, progress, vi.fn())).rejects.toThrow('Informativa aggiornata');
   expect(m.api.mock.calls.map(c => c[0])).toEqual(['/v1/cases/case-a', '/v1/notices']);
  });
+ it('does not create a property or case when the displayed notice is outdated', async () => {
+  m.api.mockResolvedValueOnce({ evidence_processing: 'future-version' });
+  await expect(submitToServer({ answers, photos: {} }, progress, vi.fn())).rejects.toThrow('Informativa aggiornata');
+  expect(m.api.mock.calls.map(c => c[0])).toEqual(['/v1/notices']);
+ });
  it('refuses a checkpoint belonging to a different account', async () => {
   await expect(submitToServer({ answers, photos: {}, remoteOwner: { ...owner, subject: 'subject-b' } }, progress, vi.fn())).rejects.toThrow('altro account');
   expect(m.api).not.toHaveBeenCalled();
@@ -43,7 +48,8 @@ describe('remote submission retry', () => {
  it('saves acknowledged property and case before consent; retry reuses them', async () => {
   let cp: SubmitState = {};
   const checkpoint = async (s: SubmitState) => { cp = s; };
-  m.api.mockImplementationOnce(async () => ({ id: 'property-a' }))
+  m.api.mockResolvedValueOnce({ evidence_processing: '2026-11-23-draft' })
+   .mockImplementationOnce(async () => ({ id: 'property-a' }))
    .mockImplementationOnce(async () => ({ id: 'case-a' }))
    .mockImplementationOnce(async () => { throw new Error('offline'); });
   await expect(submitToServer({ answers, photos: {} }, progress, checkpoint)).rejects.toThrow('offline');
@@ -55,7 +61,7 @@ describe('remote submission retry', () => {
  it('persists the creation key before the first request and reuses it after a lost response', async () => {
   let cp: SubmitState = {};
   const checkpoint = (s: SubmitState) => { cp = s; };
-  m.api.mockImplementationOnce(async (_path, init) => {
+  m.api.mockResolvedValueOnce({ evidence_processing: '2026-11-23-draft' }).mockImplementationOnce(async (_path, init) => {
    expect(cp.remoteCreationKey).toBeTruthy();
    expect(init.body.idempotencyKey).toBe(cp.remoteCreationKey);
    throw new Error('lost creation response');
@@ -64,8 +70,14 @@ describe('remote submission retry', () => {
   const key = cp.remoteCreationKey;
   m.api.mockClear();
   await submitToServer({ answers, photos: {}, ...cp }, progress, checkpoint);
-  expect(m.api.mock.calls[0][1].body.idempotencyKey).toBe(key);
   expect(m.api.mock.calls[1][1].body.idempotencyKey).toBe(key);
+  expect(m.api.mock.calls[2][1].body.idempotencyKey).toBe(key);
+ });
+ it('stops before uploads and submission if the survey write fails', async () => {
+  m.api.mockResolvedValueOnce({ status: 'DRAFT' }).mockResolvedValueOnce({ evidence_processing: '2026-11-23-draft' }).mockResolvedValueOnce({}).mockRejectedValueOnce(new Error('survey failed'));
+  await expect(submitToServer({ answers, photos: { walkthrough: [video] }, remoteCaseId: 'case-a', remoteOwner: owner }, progress, vi.fn())).rejects.toThrow('survey failed');
+  expect(m.api.mock.calls.map(c => c[0])).toEqual(['/v1/cases/case-a', '/v1/notices', '/v1/cases/case-a/consents', '/v1/cases/case-a/survey']);
+  expect(m.upload).not.toHaveBeenCalled();
  });
  it('does not repeat writes after a submit response was lost', async () => {
   m.api.mockResolvedValueOnce({ status: 'ASSIGNED' });
