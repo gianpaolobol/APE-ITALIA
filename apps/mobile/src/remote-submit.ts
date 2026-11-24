@@ -33,7 +33,7 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  if (!session?.organizationId) throw new Error('Accedi per continuare');
  const remoteOwner = { subject: session.subject, organizationId: session.organizationId };
  if (input.remoteOwner && (input.remoteOwner.subject !== remoteOwner.subject || input.remoteOwner.organizationId !== remoteOwner.organizationId)) throw new Error('La richiesta appartiene a un altro account.');
- const call: typeof api = (path, init) => { guard(); return api(path, init); };
+ const call = <T>(path: string, init?: Parameters<typeof api>[1]): Promise<T> => { guard(); return api<T>(path, init); };
  let caseId = input.remoteCaseId;
  let propertyId = input.remotePropertyId;
  const uploaded = [...(input.uploaded ?? [])];
