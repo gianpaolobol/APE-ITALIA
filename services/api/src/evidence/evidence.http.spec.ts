@@ -21,8 +21,20 @@ const roleBySubject: Record<string, string> = { writer: 'member', reader: 'viewe
 const fakeDb = {
  apeCase: { findFirst: async ({ where }: any) => (where.id === CASE && where.organizationId === ORG ? { id: CASE, organizationId: ORG, status: 'DRAFT' } : null) },
  consent: {
-  findUnique: async ({ where }: any) => rows.consent.find(c => c.caseId === where.caseId_subject_kind_version.caseId && c.subject === where.caseId_subject_kind_version.subject && c.version === where.caseId_subject_kind_version.version) ?? null,
-  create: async ({ data }: any) => { const c = { id: randomUUID(), ...data }; rows.consent.push(c); return c; },
+  findUnique: async ({ where }: any) => rows.consent.find(c => c.caseId === where.caseId_subject_kind_version.caseId && c.subject === where.caseId_subject_kind_version.subject && c.kind === where.caseId_subject_kind_version.kind && c.version === where.caseId_subject_kind_version.version) ?? null,
+  createMany: async ({ data, skipDuplicates }: any) => {
+   const exists = rows.consent.some(c => c.caseId === data.caseId && c.subject === data.subject && c.kind === data.kind && c.version === data.version);
+   if (exists && skipDuplicates) return { count: 0 };
+   if (exists) throw new Error('Duplicate consent');
+   rows.consent.push({ ...data, acceptedAt: new Date() });
+   return { count: 1 };
+  },
+  findUniqueOrThrow: async ({ where }: any) => {
+   const key = where.caseId_subject_kind_version;
+   const row = rows.consent.find(c => c.caseId === key.caseId && c.subject === key.subject && c.kind === key.kind && c.version === key.version);
+   if (!row) throw new Error('Consent not found');
+   return row;
+  },
  },
  evidence: {
   findUnique: async ({ where }: any) => rows.evidence.find(e => e.caseId === where.caseId_sha256.caseId && e.sha256 === where.caseId_sha256.sha256) ?? null,
@@ -80,7 +92,12 @@ describe('evidence upload over HTTP', () => {
  it('requires consent to the current notice before accepting files', async () => {
   expect((await upload('writer', form('boiler', jpegWithExif()))).status).toBe(403);
   expect((await consent('writer', 'outdated')).status).toBe(400);
-  expect((await consent('writer')).status).toBe(201);
+  const first = await consent('writer');
+  expect(first.status).toBe(201);
+  const replay = await consent('writer');
+  expect(replay.status).toBe(201);
+  expect((await replay.json()).id).toBe((await first.json()).id);
+  expect(rows.audit.filter(a => a.action === 'consent.accept')).toHaveLength(1);
  });
  it('rejects viewers', async () => {
   expect((await consent('reader')).status).toBe(403);
