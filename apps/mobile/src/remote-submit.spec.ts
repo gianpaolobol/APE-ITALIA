@@ -20,7 +20,7 @@ beforeEach(() => {
   if (path === '/v1/properties') return { id: 'property-a' };
   if (path === '/v1/cases') return { id: 'case-a' };
   if (path === '/v1/cases/case-a') return { status: 'DRAFT' };
-  if (path === '/v1/notices') return { evidence_processing: 'v1' };
+  if (path === '/v1/notices') return { evidence_processing: '2026-11-23-draft' };
   return {};
  });
 });
@@ -30,6 +30,11 @@ describe('remote submission retry', () => {
   await expect(submitToServer({ answers: { ...answers, privacy: false }, photos: {} }, progress, vi.fn())).rejects.toThrow('Accetta');
   expect(m.api).not.toHaveBeenCalled();
   expect(m.fresh).not.toHaveBeenCalled();
+ });
+ it('does not accept a newer server notice on behalf of the user', async () => {
+  m.api.mockResolvedValueOnce({ status: 'DRAFT' }).mockResolvedValueOnce({ evidence_processing: 'future-version' });
+  await expect(submitToServer({ answers, photos: {}, remoteCaseId: 'case-a', remoteOwner: owner }, progress, vi.fn())).rejects.toThrow('Informativa aggiornata');
+  expect(m.api.mock.calls.map(c => c[0])).toEqual(['/v1/cases/case-a', '/v1/notices']);
  });
  it('refuses a checkpoint belonging to a different account', async () => {
   await expect(submitToServer({ answers, photos: {}, remoteOwner: { ...owner, subject: 'subject-b' } }, progress, vi.fn())).rejects.toThrow('altro account');
