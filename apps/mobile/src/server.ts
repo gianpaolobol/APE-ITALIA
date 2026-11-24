@@ -163,7 +163,7 @@ function clearRemoteCache(): void {
 }
 
 /** Always re-authorize at the server; never reuse a cached document from an earlier request/account. */
-export async function download(path: string, name: string, org = false): Promise<string> {
+export async function download(path: string, name: string, org = false, validate?: (file: Pick<File, 'size' | 'bytes'>) => Promise<void>): Promise<string> {
  const expected = generation;
  const s = await freshSession();
  if (!s || generation !== expected) throw new ServerError(401, 'Accedi per continuare');
@@ -177,6 +177,8 @@ export async function download(path: string, name: string, org = false): Promise
  const dest = new File(dir, name);
  try {
   const f = await File.downloadFileAsync(`${API_BASE}${path}`, dest, { headers });
+  if (generation !== expected) throw new ServerError(401, 'Sessione cambiata');
+  await validate?.(f);
   const current = await getSession();
   if (generation !== expected || !current || current.subject !== s.subject || current.organizationId !== s.organizationId) throw new ServerError(401, 'Sessione cambiata');
   return f.uri;
