@@ -9,6 +9,7 @@ import { IsNotEmpty, IsString, IsUUID, IsOptional, IsNumber, Min, validateSync }
 import { plainToInstance } from 'class-transformer';
 import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
+import { CURRENT_NOTICES } from './evidence/consent-policy';
 
 class CreateCaseDto { @IsUUID() propertyId!: string; @IsOptional() @IsUUID('4') idempotencyKey?: string; }
 class UpdatePropertyDto {
@@ -100,10 +101,12 @@ export class CasesController {
   const s=await this.session(token,org);
   if(!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
   const out=await this.db.$transaction(async tx=>{
-   const res=await tx.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT'},data:{status:'SUBMITTED'}});
+   // A submission must be authorized by the current actor, not by another tenant member.
+   const res=await tx.apeCase.updateMany({where:{id,organizationId:s.organizationId,status:'DRAFT',consents:{some:{organizationId:s.organizationId,subject:s.actorId,kind:'evidence_processing',version:CURRENT_NOTICES.evidence_processing}}},data:{status:'SUBMITTED'}});
    if(res.count!==1){
-    const exists=await tx.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{id:true}});
+    const exists=await tx.apeCase.findFirst({where:{id,organizationId:s.organizationId},select:{status:true}});
     if(!exists) throw new NotFoundException('Case not found');
+    if(exists.status==='DRAFT') throw new ForbiddenException('Consent to the current evidence notice is required');
     throw new ConflictException('Only draft cases can be submitted');
    }
    await tx.auditEvent.create({data:{organizationId:s.organizationId,actorId:s.actorId,action:'case.submit',resourceId:id}});
