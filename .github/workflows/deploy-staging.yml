@@ -15,7 +15,13 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  release-gate:
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/release-ci-gate.yml
   deploy:
+    needs: release-gate
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
