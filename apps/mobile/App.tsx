@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, type DraftOwner, deleteMedia, deletePhotoFile, loadState, newDraft, persistPhoto, saveState, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, type DraftOwner, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, persistPhoto, saveState, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
@@ -93,7 +93,19 @@ export default function App() {
    // excluded when sending.
    onUpdate={fn => updateDraft(d.id, fn)}
    onAddPhoto={(qid, f) => { if (!permitted(d.id)) throw new Error('Richiesta non disponibile'); const ref = persistPhoto(d.id, f); updateDraft(d.id, cur => ({ ...cur, photos: { ...cur.photos, [qid]: [...(cur.photos[qid] ?? []), ref] }, updatedAt: new Date().toISOString() })); return ref; }}
-   onRemovePhoto={(qid, p) => { if (!permitted(d.id)) return; deletePhotoFile(p); updateDraft(d.id, cur => ({ ...cur, photos: { ...cur.photos, [qid]: (cur.photos[qid] ?? []).filter(x => x.uri !== p.uri) } })); }}
+   onRemovePhoto={(qid, p) => {
+    const cur = latest.current;
+    const current = cur?.drafts.find(x => x.id === d.id);
+    if (!cur || !current || !canViewDraft(current, ownerRef.current)) return;
+    const removal = removeDraftPhoto(current, qid, p.uri);
+    if (!removal) return;
+    const next = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? removal.draft : x) };
+    try { saveStateNow(next); }
+    catch { Alert.alert('Rimozione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return; }
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    latest.current = next; setState(next);
+    if (removal.unreferenced) deleteDraftPhotoFile(d.id, removal.removed);
+   }}
    onClose={() => setRoute({ name: 'home' })}
    onFinish={() => setRoute({ name: 'result', id: d.id })} />;
  } else if (route.name === 'result' && draft(route.id)) {
