@@ -25,7 +25,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0D5B4A"
-      }
+      },
+      "allowBackup": false
     },
     "plugins": [
       [
@@ -36,8 +37,14 @@
           "microphonePermission": "La fotocamera di iOS chiede il microfono per registrare il video dell’immobile: l’audio non viene conservato da APE Italia."
         }
       ],
-      "expo-secure-store",
-      "expo-web-browser"
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": false
+        }
+      ],
+      "expo-web-browser",
+      "./plugins/withPrivateAndroidBackup"
     ],
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
