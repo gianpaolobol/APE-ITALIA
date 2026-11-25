@@ -6,7 +6,7 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PrismaService } from '../prisma.service';
@@ -187,10 +187,42 @@ export class EvidenceController {
   const data = Buffer.from(body.toString('latin1'), 'base64');
   const expected = n === parts - 1 ? up.totalBytes - n * up.partSize : up.partSize;
   if (data.length !== expected) throw new BadRequestException(`Part ${n} must be ${expected} bytes`);
-  const dir = join(uploadTmpDir(), up.id);
-  await mkdir(dir, { recursive: true, mode: 0o700 });
-  await writeFile(join(dir, String(n)), data, { mode: 0o600 });
-  if (!up.receivedParts.includes(n)) await this.db.chunkedUpload.update({ where: { id: up.id }, data: { receivedParts: { push: n } } });
+  // Serialize part publication with other parts and the transaction that records
+  // completion. A successful retry must never replace previously accepted bytes.
+  await this.db.$transaction(async tx => {
+   const locked = await tx.$queryRaw<{ id: string }[]>`
+    SELECT "id" FROM "ChunkedUpload"
+    WHERE "id" = ${up.id} AND "caseId" = ${caseId}
+      AND "organizationId" = ${s.organizationId} AND "createdBy" = ${s.actorId}
+      AND "completedAt" IS NULL
+    FOR UPDATE
+   `;
+   if (!locked.length) throw new NotFoundException('Upload not found');
+   const current = await tx.chunkedUpload.findUniqueOrThrow({ where: { id: up.id } });
+   const dir = join(uploadTmpDir(), up.id);
+   const target = join(dir, String(n));
+   let prior: Buffer | undefined;
+   try { prior = await readFile(target); }
+   catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+   }
+   if (prior) {
+    if (!prior.equals(data)) throw new ConflictException('Part already exists with different bytes');
+   } else {
+    if (current.receivedParts.includes(n)) throw new ConflictException('Recorded part is missing; restart upload');
+    await mkdir(dir, { recursive: true, mode: 0o700 });
+    const temp = join(dir, `.${n}.${randomUUID()}.tmp`);
+    try {
+     await writeFile(temp, data, { mode: 0o600, flag: 'wx' });
+     await rename(temp, target);
+    } finally {
+     await rm(temp, { force: true }).catch(() => undefined);
+    }
+   }
+   // If the file survived a transaction failure, an identical retry can
+   // safely restore the missing progress marker.
+   if (!current.receivedParts.includes(n)) await tx.chunkedUpload.update({ where: { id: up.id }, data: { receivedParts: { push: n } } });
+  });
  }
 
  @Post('cases/:caseId/uploads/:uploadId/complete')
