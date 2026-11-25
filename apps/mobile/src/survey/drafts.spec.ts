@@ -24,7 +24,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { visiblePro, storePro, type ProProfile, canViewDraft, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -95,6 +95,33 @@ describe('draft snapshots and deletion', () => {
   const s = state(d);
   saveStateNow(s);
   expect(await loadState()).toEqual(s);
+ });
+
+ it('preserves committed snapshots and staging files when a runtime-invalid state is saved', async () => {
+  const a = newDraft();
+  saveStateNow(state(a));
+  fs.files.set('/documents/ape/state.tmp.json', 'recoverable staging');
+  const before = [...fs.files];
+  for (const invalid of [state(a, a), state({ ...a, answers: { bad: NaN } }),
+   state({ ...a, id: '../other' })]) {
+   expect(() => saveStateNow(invalid)).toThrow('Invalid local snapshot');
+   expect([...fs.files]).toEqual(before);
+  }
+  expect(await loadState()).toEqual(state(a));
+ });
+ it('rejects invalid initial state before creating any directories or files', () => {
+  const a = newDraft();
+  expect(() => saveStateNow(state(a, a))).toThrow('Invalid local snapshot');
+  expect(fs.files.size).toBe(0);
+  expect(fs.dirs.size).toBe(0);
+ });
+ it('rejects unsafe draft identifiers before copying evidence or creating directories', () => {
+  for (const id of ['', '..', '../other', 'a/b', 'a\\b', '%2e%2e', ' a ']) {
+   expect(() => persistPhoto(id, { uri: '/cache/test.jpg', name: 'test.jpg', mimeType: 'image/jpeg' }))
+    .toThrow('Invalid draft identifier');
+  }
+  expect(fs.files.size).toBe(0);
+  expect(fs.dirs.size).toBe(0);
  });
 
  it('never restores a successfully deleted draft from backup', async () => {
