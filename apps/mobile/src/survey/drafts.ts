@@ -1,5 +1,6 @@
 /** On-device persistence of requests (local-first: the app works without a server). */
 import { Directory, File, Paths } from 'expo-file-system';
+import { activateArchive, archiveIsActive, isEncryptedSnapshot, loadArchiveKey, openSnapshot, requireActiveArchive, sealSnapshot } from './snapshot-crypto';
 import type { Answers, PhotoRef, Photos } from './questions';
 import type { ProRegistration } from '../pro/registration';
 import type { Job } from '../job';
@@ -63,8 +64,9 @@ const EMPTY: AppState = { version: 1, drafts: [] };
 const dir = () => new Directory(Paths.document, 'ape');
 const stateFile = () => new File(dir(), 'state.json');
 const backupFile = () => new File(dir(), 'state.bak.json');
+const encryptionMarker = () => new File(dir(), 'state.encrypted');
 
-type SnapshotRead = { kind: 'missing' | 'invalid' | 'unavailable' } | { kind: 'valid'; state: AppState; generation: number };
+type SnapshotRead = { kind: 'missing' | 'invalid' | 'unavailable' } | { kind: 'valid'; state: AppState; generation: number; encrypted: boolean };
 
 // Validate persisted shape before exposing a snapshot to the UI or account filters.
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -122,31 +124,37 @@ function snapshotShape(v: unknown): v is AppState {
 }
 
 // Storage-only metadata; legacy snapshots without it are generation zero.
-function parseSnapshot(data: string): SnapshotRead {
+function parseSnapshot(data: string, staging = false): SnapshotRead {
+ let decoded: ReturnType<typeof openSnapshot>;
+ try { decoded = openSnapshot(data); } catch {
+  // During migration never recover unauthenticated legacy data after a
+  // committed encrypted copy failed authentication. Staging is not committed.
+  return { kind: !staging && !archiveIsActive() && isEncryptedSnapshot(data) ? 'unavailable' : 'invalid' };
+ }
  let parsed: unknown;
- try { parsed = JSON.parse(data); } catch { return { kind: 'invalid' }; }
+ try { parsed = JSON.parse(decoded.text); } catch { return { kind: 'invalid' }; }
  if (!snapshotShape(parsed)) return { kind: 'invalid' };
  const { storageGeneration, ...state } = parsed as AppState & { storageGeneration?: unknown };
  if (storageGeneration !== undefined &&
      (typeof storageGeneration !== 'number' || !Number.isSafeInteger(storageGeneration) || storageGeneration < 1)) {
   return { kind: 'invalid' };
  }
- return { kind: 'valid', state, generation: typeof storageGeneration === 'number' ? storageGeneration : 0 };
+ return { kind: 'valid', state, generation: typeof storageGeneration === 'number' ? storageGeneration : 0, encrypted: decoded.encrypted };
 }
 
-async function read(f: File): Promise<SnapshotRead> {
+async function read(f: File, staging = false): Promise<SnapshotRead> {
  try {
   if (!f.exists) return { kind: 'missing' };
-  return parseSnapshot(await f.text());
+  return parseSnapshot(await f.text(), staging);
  } catch {
   return { kind: 'unavailable' };
  }
 }
 
-function readSync(f: File): SnapshotRead {
+function readSync(f: File, staging = false): SnapshotRead {
  try {
   if (!f.exists) return { kind: 'missing' };
-  return parseSnapshot(f.textSync());
+  return parseSnapshot(f.textSync(), staging);
  } catch {
   return { kind: 'unavailable' };
  }
@@ -156,7 +164,7 @@ function readSync(f: File): SnapshotRead {
  * Never silently initialize empty state over existing but unrecoverable snapshots.
  * Staging files are evidence of an interrupted write, not committed snapshots.
  */
-export async function loadState(): Promise<AppState> {
+async function loadStateRaw(): Promise<AppState> {
  const primary = await read(stateFile());
  const d = dir();
  const tmp = new File(d, 'state.tmp.json');
@@ -170,11 +178,12 @@ export async function loadState(): Promise<AppState> {
  if (primary.kind === 'valid') {
   if (backup.kind === 'valid') {
    // Only the committed copies participate in generation ordering.
+   if (backup.encrypted !== primary.encrypted) return backup.encrypted ? backup.state : primary.state;
    if (backup.generation > primary.generation) return backup.state;
    // Older versions did not record a generation. Recognize the narrow
    // interrupted-commit case from the matching primary staging file.
    if (primary.generation === 0 && backup.generation === 0 && tmp.exists && !bakTmp.exists) {
-    const staged = await read(tmp);
+    const staged = await read(tmp, true);
     if (staged.kind === 'unavailable') throw new Error('Local snapshots temporarily unavailable');
     if (staged.kind === 'valid' && staged.generation === 0 &&
         JSON.stringify(backup.state) === JSON.stringify(staged.state)) return backup.state;
@@ -183,12 +192,47 @@ export async function loadState(): Promise<AppState> {
   return primary.state;
  }
  if (backup.kind === 'valid') return backup.state;
- if (primary.kind === 'invalid' || backup.kind === 'invalid' ||
+ if (archiveIsActive() || primary.kind === 'invalid' || backup.kind === 'invalid' ||
      tmp.exists || bakTmp.exists ||
      new Directory(d, 'media').exists) {
   throw new Error('Local snapshots could not be recovered');
  }
  return EMPTY;
+}
+
+/** An independent marker plus all four snapshot names prevent automatic key
+ * replacement if SecureStore is lost. Never mutate a snapshot while probing. */
+function hasEncryptedEvidence(): boolean {
+ if (encryptionMarker().exists) return true;
+ const d = dir();
+ return [stateFile(), backupFile(), new File(d, 'state.tmp.json'), new File(d, 'state.bak.tmp.json')]
+  .some(f => f.exists && isEncryptedSnapshot(f.textSync()));
+}
+
+async function openAndMigrate(): Promise<AppState> {
+ const mode = await loadArchiveKey(hasEncryptedEvidence);
+ const recovered = await loadStateRaw();
+ if (mode === 'pending') {
+  // Persist the marker before any encrypted snapshot is written. A crash
+  // leaves the same key and pending mode for deterministic retry.
+  const d = dir();
+  if (!d.exists) d.create({ intermediates: true });
+  const marker = encryptionMarker();
+  if (!marker.exists) marker.create();
+  commitState(recovered);
+  const a = readSync(stateFile()), b = readSync(backupFile());
+  if (a.kind !== 'valid' || b.kind !== 'valid' || !a.encrypted || !b.encrypted ||
+      a.generation !== b.generation || JSON.stringify(a.state) !== JSON.stringify(recovered) ||
+      JSON.stringify(b.state) !== JSON.stringify(recovered)) throw new Error('Local archive migration not confirmed');
+  await activateArchive();
+ }
+ return recovered;
+}
+
+let opening: Promise<AppState> | undefined;
+export function loadState(): Promise<AppState> {
+ if (!opening) opening = openAndMigrate().finally(() => { opening = undefined; });
+ return opening;
 }
 
 /** Commit both copies of the same snapshot. A previous snapshot may contain erased personal data.
@@ -197,6 +241,11 @@ export async function loadState(): Promise<AppState> {
  * All file operations here are synchronous, so an immediate deletion can commit before updating UI.
  */
 export function saveStateNow(s: AppState): void {
+ requireActiveArchive();
+ commitState(s);
+}
+
+function commitState(s: AppState): void {
  // Validate the serialized representation before touching either committed copy.
  // A runtime-invalid state must not overwrite the last recoverable snapshot.
  const serialized = JSON.stringify(s);
@@ -207,23 +256,25 @@ export function saveStateNow(s: AppState): void {
  const previousPrimary = readSync(stateFile()), previousBackup = readSync(backupFile());
  const current = [previousPrimary, previousBackup];
  if (current.some(r => r.kind === 'unavailable')) throw new Error('Local snapshots temporarily unavailable');
- if (!current.some(r => r.kind === 'valid') && current.some(r => r.kind === 'invalid')) {
+ if (!current.some(r => r.kind === 'valid') && (archiveIsActive() || current.some(r => r.kind === 'invalid'))) {
   throw new Error('Local snapshots could not be recovered');
  }
- const generation = Math.max(0, ...current.map(r => r.kind === 'valid' ? r.generation : 0)) + 1;
+ const preferEncrypted = current.some(r => r.kind === 'valid' && r.encrypted);
+ const generation = Math.max(0, ...current.map(r => r.kind === 'valid' && (!preferEncrypted || r.encrypted) ? r.generation : 0)) + 1;
  if (!Number.isSafeInteger(generation)) throw new Error('Local snapshot generation exhausted');
- const data = JSON.stringify({ ...parsed, storageGeneration: generation });
+ const data = sealSnapshot(JSON.stringify({ ...parsed, storageGeneration: generation }));
  const d = dir();
  if (!d.exists) d.create({ intermediates: true });
  const tmp = new File(d, 'state.tmp.json');
  const bakTmp = new File(d, 'state.bak.tmp.json');
- const previousStaging = tmp.exists && !bakTmp.exists ? readSync(tmp) : null;
+ const previousStaging = tmp.exists && !bakTmp.exists ? readSync(tmp, true) : null;
  if (previousStaging?.kind === 'unavailable') throw new Error('Local snapshots temporarily unavailable');
  const backupIsNewest = previousBackup.kind === 'valid' &&
-  (previousPrimary.kind !== 'valid' || previousBackup.generation > previousPrimary.generation ||
+  (previousPrimary.kind !== 'valid' || (previousBackup.encrypted && !previousPrimary.encrypted) ||
+   (previousBackup.encrypted === previousPrimary.encrypted && (previousBackup.generation > previousPrimary.generation ||
    (previousPrimary.generation === 0 && previousBackup.generation === 0 &&
     previousStaging?.kind === 'valid' && previousStaging.generation === 0 &&
-    JSON.stringify(previousBackup.state) === JSON.stringify(previousStaging.state)));
+    JSON.stringify(previousBackup.state) === JSON.stringify(previousStaging.state)))));
  for (const staging of [tmp, bakTmp]) {
   if (staging.exists) staging.delete();
   staging.create();
