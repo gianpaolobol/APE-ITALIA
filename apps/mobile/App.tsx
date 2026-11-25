@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, persistPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newDraft, persistPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
 
@@ -46,7 +46,11 @@ export default function App() {
   let active = true;
   void loadState().then(s => {
    if (!active) return;
-   latest.current = s; setState(s);
+   // A committed deletion may have been interrupted before unlinking its files.
+   // Keep the pending intent visible if retry or its checkpoint fails.
+   let recovered = s;
+   try { recovered = retryMediaCleanup(s); } catch { /* pending queue remains visible */ }
+   latest.current = recovered; setState(recovered);
   }).catch(() => { if (active) setLoadFailed(true); });
   return () => { active = false; };
  }, [loadAttempt]);
@@ -98,18 +102,33 @@ export default function App() {
  const replace = (d: Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === d.id ? d : x)) }));
  const updateDraft = (id: string, fn: (d: Draft) => Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === id && canViewDraft(x, ownerRef.current) ? fn(x) : x)) }));
 
+ // Retry only the latest archive; a failed checkpoint leaves the pending
+ // intents available for another attempt. No file paths or other account data in the UI.
+ const retryCleanup = () => {
+  const cur = latest.current;
+  if (!cur?.pendingMediaCleanup?.length) return;
+  try {
+   const next = retryMediaCleanup(cur);
+   autosave.committed();
+   latest.current = next; setState(next);
+  } catch {
+   Alert.alert('Pulizia locale incompleta', 'Non è stato possibile completare la pulizia. Riprova.');
+  }
+ };
+
  // Do not acknowledge a deletion while an older snapshot can still be restored.
  const removeDraft = (id: string): boolean => {
   const cur = latest.current;
   if (!cur || !permitted(id)) return false;
-  const next = { ...cur, drafts: cur.drafts.filter(x => x.id !== id) };
+  const logical = { ...cur, drafts: cur.drafts.filter(x => x.id !== id) };
+  const queued = enqueueMediaCleanup(logical, id);
+  const next = queued ?? logical;
   try { saveStateNow(next); }
   catch { Alert.alert('Eliminazione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return false; }
   autosave.committed();
   latest.current = next; setState(next);
-  if (deleteMedia(id, next) !== 'removed-or-absent') {
-   Alert.alert('Pulizia locale incompleta', 'La pratica è stata rimossa dall’archivio locale, ma alcuni allegati potrebbero essere ancora sul dispositivo. Contatta l’assistenza se devi eliminarli.');
-  }
+  if (queued) retryCleanup();
+  else Alert.alert('Pulizia locale incompleta', 'Non è stato possibile registrare la pulizia degli allegati. Contatta l’assistenza.');
   return true;
  };
 
@@ -133,16 +152,16 @@ export default function App() {
     if (!cur || !current || !canViewDraft(current, ownerRef.current)) return;
     const removal = removeDraftPhoto(current, qid, p.uri);
     if (!removal) return;
-    const next = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? removal.draft : x) };
+    const logical = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? removal.draft : x) };
+    const queued = removal.unreferenced ? enqueueMediaCleanup(logical, d.id, removal.removed.uri) : logical;
+    const next = queued ?? logical;
     try { saveStateNow(next); }
     catch { Alert.alert('Rimozione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return; }
     autosave.committed();
     latest.current = next; setState(next);
     if (removal.unreferenced) {
-     const cleanup = deleteDraftPhotoFile(d.id, removal.removed, next);
-     if (cleanup !== 'removed-or-absent' && cleanup !== 'retained-reference') {
-      Alert.alert('Pulizia locale incompleta', 'Il riferimento è stato rimosso, ma il file potrebbe essere ancora sul dispositivo. Contatta l’assistenza se devi eliminarlo.');
-     }
+     if (queued) retryCleanup();
+     else Alert.alert('Pulizia locale incompleta', 'Il riferimento è stato rimosso, ma il file non ha un percorso locale verificabile. Contatta l’assistenza.');
     }
    }}
    onClose={() => setRoute({ name: 'home' })}
@@ -181,6 +200,12 @@ export default function App() {
     <SafeAreaView edges={['top']} style={{ backgroundColor: '#fff4d6', paddingHorizontal: 16, paddingBottom: 8 }}>
      <Text accessibilityRole="alert" style={{ color: '#422006', fontWeight: '600' }}>Modifiche non salvate sul dispositivo. Non chiudere l'app prima di aver riprovato.</Text>
      <Button title="Riprova salvataggio" onPress={() => { autosave.flush(); }} />
+    </SafeAreaView>
+   )}
+   {!!state.pendingMediaCleanup?.length && (
+    <SafeAreaView edges={['top']} style={{ backgroundColor: '#fff4d6', paddingHorizontal: 16, paddingBottom: 8 }}>
+     <Text accessibilityRole="alert" style={{ color: '#422006', fontWeight: '600' }}>Pulizia locale in attesa. Alcuni file potrebbero essere ancora necessari o non rimossi.</Text>
+     <Button title="Riprova pulizia locale" onPress={retryCleanup} />
     </SafeAreaView>
    )}
    {screen}
