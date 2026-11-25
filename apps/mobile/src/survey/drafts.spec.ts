@@ -33,6 +33,17 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
+// This suite exercises the snapshot transaction algorithm with a transparent
+// codec; drafts.encryption.spec.ts separately exercises the real AEAD and migration.
+vi.mock('./snapshot-crypto', () => ({
+ loadArchiveKey: async () => 'active',
+ archiveIsActive: () => false,
+ isEncryptedSnapshot: () => false,
+ activateArchive: async () => undefined,
+ requireActiveArchive: () => undefined,
+ openSnapshot: (text: string) => ({ text, encrypted: false }),
+ sealSnapshot: (text: string) => text,
+}));
 import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
