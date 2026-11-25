@@ -39,9 +39,9 @@ APE,attestato,prestazione energetica,certificazione,classe energetica,Bologna,Em
 | Foto e video | Sì | Sì | Funzionalità (fascicolo per il certificatore) |
 | Documenti (planimetria, identità per delega) | Sì, facoltativo | Sì | Funzionalità |
 | Pagamenti | Gestiti da Stripe | Sì | Acquisti |
-| Posizione | No (rimossa da foto e video) | — | — |
+| Posizione / metadati dei file | Da verificare: indirizzo dichiarato e possibili metadati incorporati in foto, video o documenti | Potenzialmente sì | Fascicolo dell'immobile |
 | Tracciamento/pubblicità | No | — | — |
-Crittografia in transito: sì. Cancellazione dati su richiesta: sì, dall’app.
+Crittografia in transito: da verificare sullo staging HTTPS effettivo. Le bozze strutturate usano cifratura autenticata locale; foto, video, PDF e cache non sono interamente cifrati a livello applicativo. Non dichiarare rimozione universale dei metadati o cancellazione fisica garantita. Confermare la procedura di cancellazione account/dati e la retention prima di compilare le dichiarazioni ufficiali. Questa tabella è una bozza interna, non un'attestazione di conformità.
 
 ## Google Play
 - Account personale creato dopo il 13/11/2023: serve un **test chiuso con almeno 12 tester per 14 giorni** prima della produzione.
