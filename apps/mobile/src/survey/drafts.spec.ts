@@ -30,7 +30,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -245,11 +245,31 @@ describe('account-bound draft visibility', () => {
    expect(canViewDraft({ ...newDraft(), ...checkpoint }, null)).toBe(false);
   }
  });
- it('does not delete anonymous drafts or assign them to an account', () => {
+ it('isolates ownerless drafts in demo and never attributes them to a server account', () => {
   const draft = newDraft();
-  expect(canViewDraft(draft, null)).toBe(true);
-  expect(canViewDraft(draft, a)).toBe(true);
+  expect(canViewDraft(draft, null, true)).toBe(true);
+  for (const owner of [null, a, b, otherOrg]) expect(canViewDraft(draft, owner, false)).toBe(false);
+  expect(canViewDraft(draft, a, true)).toBe(false);
   expect(draft.remoteOwner).toBeUndefined();
+ });
+ it('requires a known owner for new connected drafts and keeps offline demo available', () => {
+  expect(newScopedDraft(null, false)).toBeNull();
+  const demoDraft = newScopedDraft(null, true)!;
+  expect(canViewDraft(demoDraft, null, true)).toBe(true);
+  expect(canViewDraft(demoDraft, a, false)).toBe(false);
+  const connected = newScopedDraft(a, false)!;
+  expect(connected.localOwner).toEqual(a);
+  expect(canViewDraft(connected, a, false)).toBe(true);
+  expect(canViewDraft(connected, b, false)).toBe(false);
+  expect(canViewDraft(connected, otherOrg, false)).toBe(false);
+ });
+ it('preserves quarantined ownerless legacy snapshots without assigning them', async () => {
+  const legacy = newDraft();
+  const connected = newScopedDraft(a, false)!;
+  const original = state(legacy, connected);
+  saveStateNow(original);
+  expect(await loadState()).toEqual(original);
+  expect(original.drafts.filter(d => canViewDraft(d, a, false))).toEqual([connected]);
  });
 });
 
