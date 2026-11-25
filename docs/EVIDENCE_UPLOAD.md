@@ -22,6 +22,10 @@
 10. Scansione malware: con `CLAMAV_HOST` impostato l'API interroga ClamAV (`clamd`, protocollo INSTREAM); `infected` ⇒ 422; scanner configurato ma irraggiungibile o risposta anomala ⇒ **503 e nessun salvataggio** (fail closed). Senza `CLAMAV_HOST` il file è salvato come `unscanned` e il worker lo scansiona appena lo scanner è disponibile (`rescan`, ogni 5 minuti): i file infetti diventano `infected` (download 410) con evento `evidence.quarantine`.
 11. Cifratura AES-256-GCM con IV casuale e chiave di archiviazione come AAD; chiave dell'oggetto generata dal server (`org/<org>/case/<case>/<uuid>`); scrittura atomica con permessi 0600; riga DB + audit in transazione, oggetto eliminato se la transazione fallisce.
 
+## Upload riprendibili
+
+Ogni parte di un upload riprendibile richiede nuovamente membership attiva con ruolo di scrittura, pratica ancora aperta alle evidenze, consenso alla versione corrente e storage configurato. Il possesso dell'identificativo di un upload precedente non autorizza ulteriori scritture. Le parti sono tuttora temporanee in chiaro (directory privata); la cifratura dello storage finale non le protegge. Restano da validare retention degli upload abbandonati, concorrenza delle parti e protezione dei file temporanei. Il controllo non annulla retroattivamente parti già accettate né garantisce l'atomicità con cambi di stato simultanei.
+
 ## Download
 Solo nella stessa organizzazione (404 altrimenti); `infected` ⇒ 410; `unscanned` ⇒ 423 a meno di `EVIDENCE_ALLOW_UNSCANNED=1` (solo sviluppo). Intestazioni `Content-Disposition: attachment`, `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`. Ogni lettura genera `evidence.read` in audit.
 
