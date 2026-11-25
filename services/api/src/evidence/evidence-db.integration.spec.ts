@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { access, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -135,9 +135,22 @@ describe.skipIf(!enabled)('PostgreSQL: consent-gated encrypted evidence upload',
   expect(start.parts).toBe(2);
   const part = (n: number) => Buffer.from(file.subarray(n * start.partSize, (n + 1) * start.partSize).toString('base64'), 'latin1');
   await expect(ctrl.completeUpload(caseA, start.uploadId, await bearer(userA), orgA)).rejects.toThrow(/Missing parts/);
-  await ctrl.uploadPart(caseA, start.uploadId, '1', part(1), await bearer(userA), orgA);
-  await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userA), orgA);
-  await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userA), orgA); // retry
+  const uploadToken = await bearer(userA);
+  // Simultaneous identical retries must record exactly one progress marker,
+  // even while another part of the same upload is being published.
+  await Promise.all([
+   ctrl.uploadPart(caseA, start.uploadId, '1', part(1), uploadToken, orgA),
+   ctrl.uploadPart(caseA, start.uploadId, '0', part(0), uploadToken, orgA),
+   ctrl.uploadPart(caseA, start.uploadId, '0', part(0), uploadToken, orgA),
+  ]);
+  const status = await ctrl.uploadStatus(caseA, start.uploadId, uploadToken, orgA);
+  expect([...status.receivedParts].sort()).toEqual([0, 1]);
+  const changed = Buffer.from(file.subarray(0, start.partSize));
+  changed[changed.length - 1] ^= 1;
+  await expect(ctrl.uploadPart(caseA, start.uploadId, '0', Buffer.from(changed.toString('base64'), 'latin1'), uploadToken, orgA)).rejects.toBeInstanceOf(ConflictException);
+  const original = await readFile(join(uploadTmpDir(), start.uploadId, '0'));
+  expect(original.equals(file.subarray(0, start.partSize))).toBe(true);
+  await ctrl.uploadPart(caseA, start.uploadId, '0', part(0), uploadToken, orgA); // later identical retry
   await expect(ctrl.uploadPart(caseA, start.uploadId, '0', part(0), await bearer(userB), orgB)).rejects.toBeInstanceOf(NotFoundException);
   const token = await bearer(userA);
   // Concurrent completion and a later retry must return the same committed receipt.
