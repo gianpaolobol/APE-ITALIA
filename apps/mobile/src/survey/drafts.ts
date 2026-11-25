@@ -30,7 +30,8 @@ export type ProProfile = { data: ProRegistration; submittedAt: string; status: '
 export type DraftOwner = { subject: string; organizationId: string | null };
 type ScopedProProfile = { owner: DraftOwner | null; profile: ProProfile };
 // Legacy pro is retained for recovery, but never attributed to an arbitrary account.
-export type AppState = { version: 1; drafts: Draft[]; pro?: ProProfile; proProfiles?: ScopedProProfile[] };
+type MediaCleanupTask = { draftId: string; filename?: string };
+export type AppState = { version: 1; drafts: Draft[]; pro?: ProProfile; proProfiles?: ScopedProProfile[]; pendingMediaCleanup?: MediaCleanupTask[] };
 
 export function sameOwner(a: DraftOwner | null, b: DraftOwner | null): boolean {
  return a === null ? b === null : b !== null && a.subject === b.subject && a.organizationId === b.organizationId;
@@ -71,6 +72,8 @@ const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const safeId = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9_-]+$/.test(v);
 const optional = (v: unknown, check: (x: unknown) => boolean) => v === undefined || check(v);
+const safeFilename = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(v);
+const cleanupShape = (v: unknown): boolean => record(v) && safeId(v.draftId) && optional(v.filename, safeFilename);
 const ownerShape = (v: unknown, allowNullOrg: boolean): boolean => record(v) && nonempty(v.subject) &&
  (nonempty(v.organizationId) || (allowNullOrg && v.organizationId === null));
 const photoShape = (v: unknown): boolean => record(v) && nonempty(v.uri) &&
@@ -111,7 +114,8 @@ function draftShape(v: unknown): v is Draft {
 function snapshotShape(v: unknown): v is AppState {
  if (!record(v) || v.version !== 1 || !Array.isArray(v.drafts) || !v.drafts.every(draftShape)) return false;
  if (new Set(v.drafts.map(d => d.id)).size !== v.drafts.length) return false;
- return optional(v.pro, profileShape) && optional(v.proProfiles, x => Array.isArray(x) &&
+ return optional(v.pendingMediaCleanup, x => Array.isArray(x) && x.every(cleanupShape)) &&
+  optional(v.pro, profileShape) && optional(v.proProfiles, x => Array.isArray(x) &&
   x.every(p => record(p) && (p.owner === null || ownerShape(p.owner, true)) && profileShape(p.profile)));
 }
 
@@ -274,19 +278,60 @@ export function removeDraftPhoto(draft: Draft, questionId: string, uri: string):
 }
 
 /** Only unlink files in this draft's own media directory. Never follow an arbitrary saved URI. */
-export function deleteDraftPhotoFile(draftId: string, p: PhotoRef, remaining: AppState): MediaCleanup {
+export function deleteDraftPhotoFile(draftId: string, p: Pick<PhotoRef, 'uri'>, remaining: AppState): MediaCleanup {
  if (!safeId(draftId)) return 'unsafe-path';
  try {
   const d = new Directory(dir(), 'media', draftId);
   const prefix = d.uri.replace(/\/$/, '') + '/';
   if (!p.uri.startsWith(prefix)) return 'unsafe-path';
   const filename = p.uri.slice(prefix.length);
-  if (!/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(filename)) return 'unsafe-path';
+  if (!safeFilename(filename)) return 'unsafe-path';
   if (remaining.drafts.some(draft => mediaUris(draft).includes(p.uri))) return 'retained-reference';
   const f = new File(d, filename);
   if (f.exists) f.delete();
   return f.exists ? 'failed' : 'removed-or-absent';
  } catch { return 'failed'; }
+}
+
+/** Record the cleanup intent in the same snapshot as the logical deletion.
+ * Only store relative, validated app-owned paths; never persist arbitrary URIs as deletion targets.
+ */
+export function enqueueMediaCleanup(state: AppState, draftId: string, uri?: string): AppState | null {
+ if (!safeId(draftId)) return null;
+ let task: MediaCleanupTask = { draftId };
+ if (uri !== undefined) {
+  const prefix = new Directory(dir(), 'media', draftId).uri.replace(/\/$/, '') + '/';
+  if (!uri.startsWith(prefix)) return null;
+  const filename = uri.slice(prefix.length);
+  if (!safeFilename(filename)) return null;
+  task = { draftId, filename };
+ }
+ const pending = state.pendingMediaCleanup ?? [];
+ if (pending.some(p => p.draftId === task.draftId && p.filename === task.filename)) return state;
+ return { ...state, pendingMediaCleanup: [...pending, task] };
+}
+
+/** Idempotent retry after both snapshots have been committed. If saving the
+ * reduced queue fails, the old queue remains retryable; deleting an absent
+ * file is harmless. Never remove a still-referenced file or a live draft's directory.
+ */
+export function retryMediaCleanup(state: AppState): AppState {
+ const pending = state.pendingMediaCleanup ?? [];
+ if (!pending.length) return state;
+ saveStateNow(state);
+ const remaining = pending.filter(task => {
+  if (!safeId(task.draftId) || (task.filename !== undefined && !safeFilename(task.filename))) return true;
+  if (task.filename === undefined && state.drafts.some(d => d.id === task.draftId)) return true;
+  const result = task.filename === undefined
+   ? deleteMedia(task.draftId, state)
+   : deleteDraftPhotoFile(task.draftId, { uri: new File(new Directory(dir(), 'media', task.draftId), task.filename).uri }, state);
+  return result !== 'removed-or-absent';
+ });
+ if (remaining.length === pending.length) return state;
+ const { pendingMediaCleanup: _pending, ...rest } = state;
+ const next = remaining.length ? { ...rest, pendingMediaCleanup: remaining } : rest;
+ saveStateNow(next);
+ return next;
 }
 
 export function newDraft(): Draft {
