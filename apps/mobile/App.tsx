@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, AppState as RNAppState, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState as RNAppState, Button, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { C } from './src/ui/theme';
@@ -17,6 +17,8 @@ type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | 
 
 export default function App() {
  const [state, setState] = useState<AppState | null>(null);
+ const [loadFailed, setLoadFailed] = useState(false);
+ const [loadAttempt, setLoadAttempt] = useState(0);
  const [route, setRoute] = useState<Route>({ name: 'home' });
  const [owner, setOwner] = useState<DraftOwner | null | undefined>(undefined);
  const ownerRef = useRef<DraftOwner | null>(null);
@@ -37,7 +39,14 @@ export default function App() {
  }, []);
  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
- useEffect(() => { loadState().then(s => { latest.current = s; setState(s); }); }, []);
+ useEffect(() => {
+  let active = true;
+  void loadState().then(s => {
+   if (!active) return;
+   latest.current = s; setState(s);
+  }).catch(() => { if (active) setLoadFailed(true); });
+  return () => { active = false; };
+ }, [loadAttempt]);
  // Flush pending writes when the app goes to background (the debounce must not lose the last edit).
  useEffect(() => {
   const sub = RNAppState.addEventListener('change', st => {
@@ -57,6 +66,15 @@ export default function App() {
   saveTimer.current = setTimeout(() => { saveState(next).catch(() => undefined); }, 300);
  }, []);
 
+ if (loadFailed) return (
+  <SafeAreaProvider>
+   <View style={{ flex: 1, justifyContent: 'center', padding: 24, backgroundColor: C.bg }}>
+    <Text accessibilityRole="header" style={{ fontSize: 22, fontWeight: 'bold', marginBottom: 12 }}>Archivio locale non disponibile</Text>
+    <Text style={{ fontSize: 16, marginBottom: 20 }}>Non è stato possibile recuperare le pratiche salvate. Per evitare di sovrascrivere i dati, l'app non inizializza un nuovo archivio. Non disinstallare l'app né cancellarne i dati. Riprova o contatta l'assistenza.</Text>
+    <Button title="Riprova" onPress={() => { setLoadFailed(false); setLoadAttempt(n => n + 1); }} />
+   </View>
+  </SafeAreaProvider>
+ );
  if (!state || owner === undefined) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: C.bg }}><ActivityIndicator color={C.brand} /></View>;
 
  const demo = !serverEnabled();

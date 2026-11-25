@@ -62,19 +62,35 @@ const dir = () => new Directory(Paths.document, 'ape');
 const stateFile = () => new File(dir(), 'state.json');
 const backupFile = () => new File(dir(), 'state.bak.json');
 
-async function read(f: File): Promise<AppState | null> {
+type SnapshotRead = { kind: 'missing' | 'invalid' } | { kind: 'valid'; state: AppState };
+
+async function read(f: File): Promise<SnapshotRead> {
  try {
-  if (!f.exists) return null;
+  if (!f.exists) return { kind: 'missing' };
   const parsed = JSON.parse(await f.text()) as AppState;
-  return parsed && parsed.version === 1 && Array.isArray(parsed.drafts) ? parsed : null;
+  return parsed && parsed.version === 1 && Array.isArray(parsed.drafts)
+   ? { kind: 'valid', state: parsed } : { kind: 'invalid' };
  } catch {
-  return null;
+  return { kind: 'invalid' };
  }
 }
 
-/** Falls back to the redundant snapshot if the main file is missing or corrupt. */
+/** A missing or unreadable installation is not interchangeable with a new one.
+ * Never silently initialize empty state over existing but unrecoverable snapshots.
+ * Staging files are evidence of an interrupted write, not committed snapshots.
+ */
 export async function loadState(): Promise<AppState> {
- return (await read(stateFile())) ?? (await read(backupFile())) ?? EMPTY;
+ const primary = await read(stateFile());
+ if (primary.kind === 'valid') return primary.state;
+ const backup = await read(backupFile());
+ if (backup.kind === 'valid') return backup.state;
+ const d = dir();
+ if (primary.kind === 'invalid' || backup.kind === 'invalid' ||
+     new File(d, 'state.tmp.json').exists || new File(d, 'state.bak.tmp.json').exists ||
+     new Directory(d, 'media').exists) {
+  throw new Error('Local snapshots could not be recovered');
+ }
+ return EMPTY;
 }
 
 /** Commit both copies of the same snapshot. A previous snapshot may contain erased personal data.

@@ -33,6 +33,37 @@ const state = (...drafts: AppState['drafts']): AppState => ({ version: 1, drafts
 beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; });
 
 describe('draft snapshots and deletion', () => {
+ it('initializes only when there is no evidence of an existing archive', async () => {
+  expect(await loadState()).toEqual(state());
+  expect(fs.files.size).toBe(0);
+ });
+ it('rejects two invalid snapshots without altering either copy', async () => {
+  fs.files.set(primary, 'truncated');
+  fs.files.set(backup, '{"version":2,"drafts":[]}');
+  const before = [...fs.files];
+  await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
+  expect([...fs.files]).toEqual(before);
+ });
+ it('rejects a single corrupt snapshot or an interrupted initial write', async () => {
+  for (const path of [primary, backup, '/documents/ape/state.tmp.json', '/documents/ape/state.bak.tmp.json']) {
+   fs.files.clear();
+   fs.files.set(path, 'partial');
+   await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
+   expect(fs.files.get(path)).toBe('partial');
+  }
+ });
+ it('rejects an absent snapshot when a media directory remains', async () => {
+  fs.dirs.add('/documents/ape/media');
+  await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
+ });
+ it('allows retry after a valid backup becomes available', async () => {
+  fs.files.set(primary, 'truncated');
+  await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
+  const a = newDraft();
+  fs.files.set(backup, JSON.stringify(state(a)));
+  expect(await loadState()).toEqual(state(a));
+ });
+
  it('never restores a successfully deleted draft from backup', async () => {
   const a = newDraft(), b = newDraft();
   saveStateNow(state(a, b));
