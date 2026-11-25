@@ -1,13 +1,18 @@
 /** Versioned, authenticated local snapshot envelope. No browser crypto polyfill
  * or Math.random fallback; Expo supplies native random values and SecureStore.
  * The key is device-local and is never written into the document directory. */
-import { getRandomValues } from 'expo-crypto';
-import * as SecureStore from 'expo-secure-store';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha';
 import { bytesToHex, hexToBytes } from '@noble/ciphers/utils';
 
 const SLOT = 'ape.snapshot.key.v1';
-const OPTIONS = { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY };
+type NativeStore = typeof import('expo-secure-store');
+let nativeStore: NativeStore | undefined;
+let nativeRandom: typeof import('expo-crypto').getRandomValues | undefined;
+function store(): NativeStore {
+ if (!nativeStore) throw new Error('Local archive secure storage unavailable');
+ return nativeStore;
+}
+const options = () => ({ keychainAccessible: store().WHEN_UNLOCKED_THIS_DEVICE_ONLY });
 const PREFIX = 'APE-AEAD:';
 const V1 = PREFIX + '1:';
 const aad = Uint8Array.from([97,112,101,46,115,110,97,112,115,104,111,116,46,118,49]); // ape.snapshot.v1
@@ -15,7 +20,8 @@ type KeyRecord = { version: 1; mode: 'pending' | 'active'; key: string };
 let current: KeyRecord | undefined;
 
 function random(size: number): Uint8Array {
- return getRandomValues(new Uint8Array(size));
+ if (!nativeRandom) throw new Error('Local archive secure randomness unavailable');
+ return nativeRandom(new Uint8Array(size));
 }
 
 function parseKey(raw: string): KeyRecord {
@@ -27,14 +33,18 @@ function parseKey(raw: string): KeyRecord {
 
 async function persistKey(record: KeyRecord): Promise<void> {
  const raw = JSON.stringify(record);
- await SecureStore.setItemAsync(SLOT, raw, OPTIONS);
- if (await SecureStore.getItemAsync(SLOT, OPTIONS) !== raw) throw new Error('Local archive key not confirmed');
+ await store().setItemAsync(SLOT, raw, options());
+ if (await store().getItemAsync(SLOT, options()) !== raw) throw new Error('Local archive key not confirmed');
  current = record;
 }
 
 export async function loadArchiveKey(hasEncryptedEvidence: () => boolean): Promise<'pending' | 'active'> {
  current = undefined;
- const raw = await SecureStore.getItemAsync(SLOT, OPTIONS);
+ // Load native modules only for storage initialization, not for pure draft helpers.
+ const [secureStore, crypto] = await Promise.all([import('expo-secure-store'), import('expo-crypto')]);
+ nativeStore = secureStore;
+ nativeRandom = crypto.getRandomValues;
+ const raw = await store().getItemAsync(SLOT, options());
  if (raw !== null) { current = parseKey(raw); return current.mode; }
  // Never replace a missing key for an existing sealed archive.
  if (hasEncryptedEvidence()) throw new Error('Local archive key unavailable');
@@ -86,7 +96,7 @@ export function openSnapshot(data: string): { text: string; encrypted: boolean }
  if (!data.startsWith(V1)) throw new Error('Unsupported archive version');
  const [nonce, ciphertext, extra] = data.slice(V1.length).split(':');
  if (extra !== undefined || !/^[0-9a-f]{48}$/.test(nonce ?? '') ||
-     !/^(?:[0-9a-f]{2}){16,}$/.test(ciphertext ?? '')) throw new Error('Invalid archive envelope');
+     !ciphertext || ciphertext.length < 32 || ciphertext.length % 2 !== 0 || !/^[0-9a-f]+$/.test(ciphertext)) throw new Error('Invalid archive envelope');
  const key = hexToBytes(current.key);
  try {
   return { text: jsonText(xchacha20poly1305(key, hexToBytes(nonce), aad).decrypt(hexToBytes(ciphertext))), encrypted: true };
