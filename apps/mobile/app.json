@@ -7,7 +7,10 @@
     "orientation": "portrait",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "it.apeitalia.app"
+      "bundleIdentifier": "it.apeitalia.app",
+      "entitlements": {
+        "com.apple.developer.default-data-protection": "NSFileProtectionComplete"
+      }
     },
     "android": {
       "package": "it.apeitalia.app",
