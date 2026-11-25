@@ -38,4 +38,41 @@ describe.skipIf(!enabled)('PostgreSQL: scoped case creation idempotency', () => 
   await ctrl.deleteProperty(p.id);
   await expect(ctrl.createProperty(body)).rejects.toBeInstanceOf(ConflictException);
  });
+
+ it('rejects a competing payload for the same receipt key without creating a second property or audit event', async () => {
+  const org = await db.organization.create({ data: { name: 'Synthetic receipt competing payloads' } });
+  const actorId = randomUUID(), key = randomUUID();
+  const ctrl = new CasesController(db as unknown as PrismaService, { authorize: vi.fn().mockResolvedValue({ organizationId: org.id, actorId, role: 'owner' }) } as unknown as AuthService);
+  const payload = { address: 'Synthetic A', city: 'Test', region: 'Test', idempotencyKey: key };
+  const outcomes = await Promise.allSettled([ctrl.createProperty(payload), ctrl.createProperty({ ...payload, address: 'Synthetic B' })]);
+  const successes = outcomes.filter(x => x.status === 'fulfilled');
+  const failures = outcomes.filter(x => x.status === 'rejected');
+  expect(successes).toHaveLength(1);
+  expect(failures).toHaveLength(1);
+  if (successes[0]?.status !== 'fulfilled' || failures[0]?.status !== 'rejected') throw new Error('Unexpected concurrency result');
+  expect(failures[0].reason).toBeInstanceOf(ConflictException);
+  const winner = successes[0].value;
+  const receipt = await db.creationReceipt.findUniqueOrThrow({ where: { organizationId_actorId_operation_key: { organizationId: org.id, actorId, operation: 'property.create', key } } });
+  expect(receipt.resourceId).toBe(winner.id);
+  expect(await db.property.count({ where: { organizationId: org.id } })).toBe(1);
+  expect(await db.auditEvent.count({ where: { organizationId: org.id, action: 'property.create' } })).toBe(1);
+  expect((await ctrl.createProperty({ ...payload, address: winner.address })).id).toBe(winner.id);
+ });
+ it('rolls back a failed case reservation and permits a corrected retry with the same key', async () => {
+  const org = await db.organization.create({ data: { name: 'Synthetic receipt rollback' } });
+  const actorId = randomUUID(), key = randomUUID();
+  const ctrl = new CasesController(db as unknown as PrismaService, { authorize: vi.fn().mockResolvedValue({ organizationId: org.id, actorId, role: 'owner' }) } as unknown as AuthService);
+  const receiptWhere = { organizationId: org.id, actorId, operation: 'case.create', key };
+  const property = await ctrl.createProperty({ address: 'Synthetic valid', city: 'Test', region: 'Test' });
+  await expect(ctrl.createCase({ propertyId: randomUUID(), idempotencyKey: key })).rejects.toBeInstanceOf(NotFoundException);
+  expect(await db.creationReceipt.count({ where: receiptWhere })).toBe(0);
+  expect(await db.apeCase.count({ where: { organizationId: org.id } })).toBe(0);
+  expect(await db.auditEvent.count({ where: { organizationId: org.id, action: 'case.create' } })).toBe(0);
+  const body = { propertyId: property.id, idempotencyKey: key };
+  const [first, retry] = await Promise.all([ctrl.createCase(body), ctrl.createCase(body)]);
+  expect(first.id).toBe(retry.id);
+  expect(await db.creationReceipt.count({ where: receiptWhere })).toBe(1);
+  expect(await db.apeCase.count({ where: { organizationId: org.id } })).toBe(1);
+  expect(await db.auditEvent.count({ where: { organizationId: org.id, action: 'case.create' } })).toBe(1);
+ });
 });
