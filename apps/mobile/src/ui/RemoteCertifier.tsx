@@ -8,7 +8,8 @@ import { JobScreen, type JobOps } from './JobScreen';
 import { PROVINCES } from '../survey/questions';
 import { euro } from '../pricing';
 import { fmtWhen } from '../job';
-import { acceptAssignment, declineAssignment, deliverCertificate, listAssignments, loadDossier, offerDraft, resolveVideo, scheduleCall, scheduleVisit, submitReport, type RemoteAssignment } from '../certifier-remote';
+import { acceptAssignment, declineAssignment, deliverCertificate, listAssignments, loadCurrentAssignment, loadDossier, offerDraft, resolveVideo, scheduleCall, scheduleVisit, submitReport, type RemoteAssignment } from '../certifier-remote';
+import { sessionBoundary } from '../server';
 import type { Draft } from '../survey/drafts';
 import type { ProRegistration } from '../pro/registration';
 
@@ -72,10 +73,14 @@ function RemoteJob({ a, me, onBack }: { a: RemoteAssignment; me: Me; onBack: () 
  const [error, setError] = useState<string | null>(null);
  const reload = useCallback(async (as: RemoteAssignment) => {
   try {
-   const fresh = (await listAssignments()).find(x => x.id === as.id) ?? as;
+   const guard = sessionBoundary();
+   const fresh = await loadCurrentAssignment(as.id);
+   guard();
+   const next = fresh.status === 'ACCEPTED' ? await loadDossier(fresh, me) : offerDraft(fresh);
+   guard();
    setAssignment(fresh);
-   setDraft(fresh.status === 'ACCEPTED' ? await loadDossier(fresh, me) : offerDraft(fresh));
-  } catch (e) { setError(e instanceof Error ? e.message : 'Errore'); }
+   setDraft(next);
+  } catch (e) { setDraft(null); setError(e instanceof Error ? e.message : 'Errore'); }
  }, [me]);
  useEffect(() => { if (a.status === 'ACCEPTED') reload(a); }, []); // eslint-disable-line react-hooks/exhaustive-deps
  if (error) return <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24 }}><Text style={{ color: C.danger, textAlign: 'center' }}>{error}</Text><Button title="Indietro" kind="secondary" onPress={onBack} style={{ marginTop: 16 }} /></View>;
