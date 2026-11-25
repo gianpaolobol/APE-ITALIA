@@ -30,7 +30,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { visiblePro, storePro, type ProProfile, canViewDraft, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -378,5 +378,64 @@ describe('account-scoped certifier profiles', () => {
   expect(s.proProfiles?.[0].owner).toEqual(a);
   expect(JSON.stringify(s)).not.toContain('synthetic-token');
   expect(JSON.stringify(s)).not.toContain('synthetic-refresh');
+ });
+});
+
+describe('durable media cleanup', () => {
+ it('replays a failed directory deletion after reload and removes the completed intent', async () => {
+  const draft = newDraft(), folder = '/documents/ape/media/' + draft.id, uri = folder + '/photo.jpg';
+  fs.dirs.add(folder); fs.files.set(uri, 'evidence');
+  saveStateNow(state(draft));
+  const queued = enqueueMediaCleanup(state(), draft.id)!;
+  saveStateNow(queued);
+  fs.failDeleteAt = folder;
+  expect(retryMediaCleanup(queued)).toEqual(queued);
+  expect(fs.files.get(uri)).toBe('evidence');
+  expect(await loadState()).toEqual(queued);
+  fs.failDeleteAt = '';
+  expect(retryMediaCleanup(await loadState())).toEqual(state());
+  expect(fs.files.has(uri)).toBe(false);
+  expect(await loadState()).toEqual(state());
+  expect(fs.files.get(primary)).toBe(fs.files.get(backup));
+ });
+ it('never unlinks evidence if committing both snapshots fails', async () => {
+  const draft = newDraft(), folder = '/documents/ape/media/' + draft.id, uri = folder + '/photo.jpg';
+  fs.dirs.add(folder); fs.files.set(uri, 'keep');
+  saveStateNow(state(draft));
+  const queued = enqueueMediaCleanup(state(), draft.id)!;
+  fs.failMoveTo = primary;
+  expect(() => retryMediaCleanup(queued)).toThrow('simulated move failure');
+  expect(fs.files.get(uri)).toBe('keep');
+  fs.failMoveTo = '';
+  expect(retryMediaCleanup(await loadState())).toEqual(state());
+  expect(fs.files.has(uri)).toBe(false);
+ });
+ it('retains shared evidence until the last reference disappears, even across drafts', async () => {
+  const uri = '/documents/ape/media/a/photo.jpg';
+  const b = { ...newDraft(), photos: { wall: [{ uri, name: 'photo.jpg', mimeType: 'image/jpeg', takenAt: '2026-11-25' }] } };
+  fs.files.set(uri, 'keep');
+  const queued = enqueueMediaCleanup(state(b), 'a', uri)!;
+  expect(enqueueMediaCleanup(queued, 'a', uri)).toEqual(queued);
+  expect(retryMediaCleanup(queued)).toEqual(queued);
+  expect(fs.files.get(uri)).toBe('keep');
+  expect(retryMediaCleanup({ ...queued, drafts: [] })).toEqual(state());
+  expect(fs.files.has(uri)).toBe(false);
+ });
+ it('never removes the directory of an existing draft even if no media is referenced', () => {
+  const a = newDraft(), folder = '/documents/ape/media/' + a.id;
+  fs.dirs.add(folder); fs.files.set(folder + '/photo.jpg', 'keep');
+  const queued = enqueueMediaCleanup(state(a), a.id)!;
+  expect(retryMediaCleanup(queued)).toEqual(queued);
+  expect(fs.files.get(folder + '/photo.jpg')).toBe('keep');
+ });
+ it('rejects foreign or unsafe targets and malformed persisted cleanup intents', async () => {
+  expect(enqueueMediaCleanup(state(), '../b')).toBeNull();
+  for (const uri of ['/documents/ape/media/b/photo.jpg', '/documents/ape/media/a/../b.jpg', primary]) {
+   expect(enqueueMediaCleanup(state(), 'a', uri)).toBeNull();
+  }
+  const invalid = { ...state(), pendingMediaCleanup: [{ draftId: 'a', filename: '../other.jpg' }] };
+  expect(() => saveStateNow(invalid)).toThrow('Invalid local snapshot');
+  fs.files.set(primary, JSON.stringify(invalid));
+  await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
  });
 });
