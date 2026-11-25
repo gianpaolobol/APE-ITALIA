@@ -6,8 +6,8 @@ module.exports = ({ config }) => ({
   ios: {
     ...config.ios,
     buildNumber: BUILD,
-    // Only standard encryption (HTTPS / OS crypto APIs): exempt from export documentation.
-    infoPlist: { ...(config.ios && config.ios.infoPlist), ITSAppUsesNonExemptEncryption: false },
+    // Local archives now use a third-party AEAD implementation. Do not declare
+    // an exemption before the App Store Connect export compliance review.
   },
   android: { ...config.android, versionCode: Number(BUILD) },
   plugins: [...(config.plugins || []), './plugins/withAndroidReleaseSigning'],

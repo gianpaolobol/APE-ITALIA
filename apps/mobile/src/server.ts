@@ -102,6 +102,8 @@ async function store(r: AuthResponse, expected: number): Promise<Session | null>
 }
 
 export async function getSession(): Promise<Session | null> {
+ // A process restart must not preserve plaintext downloads from an earlier run.
+ if (!remoteCacheChecked) clearRemoteCache();
  if (cached !== undefined) return cached;
  const expected = generation;
  let s: Session | null = null;
@@ -180,8 +182,16 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 }
 
 let downloadSequence = 0;
+let remoteCacheChecked = false;
+let remoteCacheReady = false;
 function clearRemoteCache(): void {
- try { const dir = new Directory(Paths.cache, 'remote'); if (dir.exists) dir.delete(); } catch { /* best effort */ }
+ remoteCacheChecked = true;
+ remoteCacheReady = false;
+ try {
+  const dir = new Directory(Paths.cache, 'remote');
+  if (dir.exists) dir.delete();
+  remoteCacheReady = true;
+ } catch { /* retry before permitting new downloads */ }
 }
 
 /** Always re-authorize at the server; never reuse a cached document from an earlier request/account. */
@@ -194,10 +204,14 @@ export async function download(path: string, name: string, org = false, validate
   if (!s.organizationId) throw new ServerError(403, 'Account senza organizzazione');
   headers['x-organization-id'] = s.organizationId;
  }
+ // Server-supplied identifiers must not turn a cache filename into a path.
+ if (name.length > 200 || !/^[a-zA-Z0-9_-]+(?:\.[a-zA-Z0-9_-]+)*$/.test(name)) throw new ServerError(400, 'Nome file non valido');
+ if (!remoteCacheReady) clearRemoteCache();
+ if (!remoteCacheReady) throw new ServerError(503, 'Pulizia cache non riuscita. Riprova.');
  const dir = new Directory(Paths.cache, 'remote', `download-${Date.now()}-${++downloadSequence}`);
- dir.create({ intermediates: true });
- const dest = new File(dir, name);
  try {
+  dir.create({ intermediates: true });
+  const dest = new File(dir, name);
   const f = await File.downloadFileAsync(`${API_BASE}${path}`, dest, { headers });
   if (generation !== expected) throw new ServerError(401, 'Sessione cambiata');
   await validate?.(f);
@@ -237,17 +251,19 @@ export async function uploadResumable(caseId: string, kind: string, uri: string,
  if (!total) throw new ServerError(400, 'File vuoto');
  let uploadId = existing, partSize = 4 * 1024 * 1024, received: number[] = [];
  if (uploadId) {
-  try { const st = await api<{ receivedParts: number[]; completed: boolean; evidenceId: string | null }>(`/v1/cases/${caseId}/uploads/${uploadId}`, { org: true }); received = st.receivedParts; if (st.completed && st.evidenceId) return { id: st.evidenceId, uploadId }; }
+  try { const st = await api<{ receivedParts: number[]; completed: boolean; evidenceId: string | null }>(`/v1/cases/${caseId}/uploads/${uploadId}`, { org: true }); guard(); received = st.receivedParts; if (st.completed && st.evidenceId) return { id: st.evidenceId, uploadId }; }
   catch (e) { if (!(e instanceof ServerError) || e.status !== 404) throw e; uploadId = undefined; }
  }
  guard();
  if (!uploadId) { const st = await api<{ uploadId: string; partSize: number }>(`/v1/cases/${caseId}/uploads`, { org: true, body: { kind, totalBytes: total } }); uploadId = st.uploadId; partSize = st.partSize; }
+ guard();
  await onStarted?.(uploadId);
  guard();
  const parts = Math.ceil(total / partSize);
  const h = file.open();
  try {
   for (let n = 0; n < parts; n++) {
+   guard();
    if (received.includes(n)) { onProgress((n + 1) / parts); continue; }
    h.offset = n * partSize;
    const bytes = h.readBytes(Math.min(partSize, total - n * partSize));
@@ -255,10 +271,12 @@ export async function uploadResumable(caseId: string, kind: string, uri: string,
     try { guard(); await api(`/v1/cases/${caseId}/uploads/${uploadId}/parts/${n}`, { org: true, text: toBase64(bytes), timeoutMs: 120_000 }); break; }
     catch (e) { if (attempt >= 3 || (e instanceof ServerError && e.status < 500 && e.status !== 429)) throw e; await new Promise(r => setTimeout(r, 2000 * (attempt + 1))); }
    }
+   guard();
    onProgress((n + 1) / parts);
   }
  } finally { h.close(); }
  guard();
  const ev = await api<{ id: string }>(`/v1/cases/${caseId}/uploads/${uploadId}/complete`, { org: true, body: {}, timeoutMs: 10 * 60_000 });
+ guard();
  return { id: ev.id, uploadId };
 }
