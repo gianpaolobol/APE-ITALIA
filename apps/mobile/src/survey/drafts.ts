@@ -132,12 +132,25 @@ async function read(f: File): Promise<SnapshotRead> {
  */
 export async function loadState(): Promise<AppState> {
  const primary = await read(stateFile());
- if (primary.kind === 'valid') return primary.state;
+ const d = dir();
+ const tmp = new File(d, 'state.tmp.json');
+ const bakTmp = new File(d, 'state.bak.tmp.json');
+ if (primary.kind === 'valid') {
+  // If backup replacement completed but primary replacement never started,
+  // the old primary is still valid. A surviving primary staging file that
+  // matches the committed backup identifies the newer snapshot.
+  if (tmp.exists && !bakTmp.exists) {
+   const backup = await read(backupFile());
+   const staged = await read(tmp);
+   if (backup.kind === 'valid' && staged.kind === 'valid' &&
+       JSON.stringify(backup.state) === JSON.stringify(staged.state)) return backup.state;
+  }
+  return primary.state;
+ }
  const backup = await read(backupFile());
  if (backup.kind === 'valid') return backup.state;
- const d = dir();
  if (primary.kind === 'invalid' || backup.kind === 'invalid' ||
-     new File(d, 'state.tmp.json').exists || new File(d, 'state.bak.tmp.json').exists ||
+     tmp.exists || bakTmp.exists ||
      new Directory(d, 'media').exists) {
   throw new Error('Local snapshots could not be recovered');
  }
