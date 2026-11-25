@@ -242,9 +242,25 @@ export function persistPhoto(draftId: string, src: { uri: string; name: string; 
  return { uri: dest.uri, name: src.name, mimeType: src.mimeType, takenAt: new Date().toISOString(), ...(src.width ? { width: src.width } : {}), ...(src.height ? { height: src.height } : {}), ...(src.durationSec ? { durationSec: src.durationSec } : {}) };
 }
 
-export function deleteMedia(draftId: string): void {
- if (!safeId(draftId)) return;
- try { const d = new Directory(dir(), 'media', draftId); if (d.exists) d.delete(); } catch { /* best effort */ }
+/** Local cleanup is separate from committing the logical deletion. */
+export type MediaCleanup = 'removed-or-absent' | 'retained-reference' | 'unsafe-path' | 'failed';
+
+function mediaUris(draft: Draft): string[] {
+ return [
+  ...Object.values(draft.photos).flatMap(items => (items ?? []).map(p => p.uri)),
+  ...(draft.job?.ape?.pdf ? [draft.job.ape.pdf.uri] : []),
+ ];
+}
+
+export function deleteMedia(draftId: string, remaining: AppState): MediaCleanup {
+ if (!safeId(draftId)) return 'unsafe-path';
+ try {
+  const d = new Directory(dir(), 'media', draftId);
+  const prefix = d.uri.replace(/\/$/, '') + '/';
+  if (remaining.drafts.some(draft => mediaUris(draft).some(uri => uri.startsWith(prefix)))) return 'retained-reference';
+  if (d.exists) d.delete();
+  return d.exists ? 'failed' : 'removed-or-absent';
+ } catch { return 'failed'; }
 }
 
 /** Use the current snapshot, not a stale UI callback, and preserve other references to the same file. */
@@ -253,22 +269,24 @@ export function removeDraftPhoto(draft: Draft, questionId: string, uri: string):
  const removed = list.find(p => p.uri === uri);
  if (!removed) return null;
  const photos = { ...draft.photos, [questionId]: list.filter(p => p.uri !== uri) };
- const unreferenced = !Object.values(photos).some(items => (items ?? []).some(p => p.uri === uri));
+ const unreferenced = !mediaUris({ ...draft, photos }).includes(uri);
  return { draft: { ...draft, photos, updatedAt: new Date().toISOString() }, removed, unreferenced };
 }
 
 /** Only unlink files in this draft's own media directory. Never follow an arbitrary saved URI. */
-export function deleteDraftPhotoFile(draftId: string, p: PhotoRef): void {
- if (!/^[a-zA-Z0-9_-]+$/.test(draftId)) return;
+export function deleteDraftPhotoFile(draftId: string, p: PhotoRef, remaining: AppState): MediaCleanup {
+ if (!safeId(draftId)) return 'unsafe-path';
  try {
   const d = new Directory(dir(), 'media', draftId);
   const prefix = d.uri.replace(/\/$/, '') + '/';
-  if (!p.uri.startsWith(prefix)) return;
+  if (!p.uri.startsWith(prefix)) return 'unsafe-path';
   const filename = p.uri.slice(prefix.length);
-  if (!/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(filename)) return;
+  if (!/^[a-zA-Z0-9_-]+\.[a-zA-Z0-9]+$/.test(filename)) return 'unsafe-path';
+  if (remaining.drafts.some(draft => mediaUris(draft).includes(p.uri))) return 'retained-reference';
   const f = new File(d, filename);
   if (f.exists) f.delete();
- } catch { /* best effort: orphan cleanup remains separate */ }
+  return f.exists ? 'failed' : 'removed-or-absent';
+ } catch { return 'failed'; }
 }
 
 export function newDraft(): Draft {
