@@ -1,13 +1,13 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { mkdtemp } from 'node:fs/promises';
+import { access, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
 import { AuthService } from '../auth.service';
-import { EvidenceController } from './evidence.controller';
+import { EvidenceController, uploadTmpDir } from './evidence.controller';
 import { EncryptedFileStorage } from './storage';
 import { notConfiguredScanner } from './file-policy';
 import { CURRENT_NOTICES } from './consent-policy';
@@ -90,6 +90,41 @@ describe.skipIf(!enabled)('PostgreSQL: consent-gated encrypted evidence upload',
  });
  it('rejects a duplicate file in the same case', async () => {
   await expect(ctrl.upload(caseA, blob(jpegWithExif()), { kind: 'boiler' }, await bearer(userA), orgA)).rejects.toThrow('Duplicate');
+ });
+
+ it('refuses further chunk bytes after role downgrade, case closure or loss of current consent', async () => {
+  const token = await bearer(userA);
+  const notice = { kind: 'evidence_processing', version: CURRENT_NOTICES.evidence_processing };
+  await ctrl.consent(caseA, notice, token, orgA);
+  const file = jpegWithExif();
+  const start = await ctrl.startUpload(caseA, { kind: 'boiler', totalBytes: file.length }, token, orgA);
+  const body = Buffer.from(file.toString('base64'), 'latin1');
+  const membership = { organizationId_userSubject: { organizationId: orgA, userSubject: userA } };
+  const oldRole = (await db.membership.findUniqueOrThrow({ where: membership })).role;
+  const oldStatus = (await db.apeCase.findUniqueOrThrow({ where: { id: caseA } })).status;
+  const dir = join(uploadTmpDir(), start.uploadId);
+  const attempt = () => ctrl.uploadPart(caseA, start.uploadId, '0', body, token, orgA);
+  try {
+   await db.membership.update({ where: membership, data: { role: 'viewer' } });
+   await expect(attempt()).rejects.toBeInstanceOf(ForbiddenException);
+   await db.membership.update({ where: membership, data: { role: oldRole } });
+   await db.apeCase.update({ where: { id: caseA }, data: { status: 'CANCELLED' } });
+   await expect(attempt()).rejects.toBeInstanceOf(ConflictException);
+   await db.apeCase.update({ where: { id: caseA }, data: { status: oldStatus } });
+   await db.consent.deleteMany({ where: { caseId: caseA, subject: userA, ...notice } });
+   await expect(attempt()).rejects.toBeInstanceOf(ForbiddenException);
+   expect(await ctrl.uploadStatus(caseA, start.uploadId, token, orgA)).toMatchObject({ receivedParts: [], completed: false });
+   await expect(access(dir)).rejects.toMatchObject({ code: 'ENOENT' });
+   await ctrl.consent(caseA, notice, token, orgA);
+   await attempt();
+   expect(await ctrl.uploadStatus(caseA, start.uploadId, token, orgA)).toMatchObject({ receivedParts: [0], completed: false });
+  } finally {
+   await db.membership.update({ where: membership, data: { role: oldRole } });
+   await db.apeCase.update({ where: { id: caseA }, data: { status: oldStatus } });
+   await ctrl.consent(caseA, notice, token, orgA);
+   await rm(dir, { recursive: true, force: true });
+   await db.chunkedUpload.deleteMany({ where: { id: start.uploadId } });
+  }
  });
 
  it('resumable upload: parts in any order, idempotent retry, then the normal ingest pipeline', async () => {

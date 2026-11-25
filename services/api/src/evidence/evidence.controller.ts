@@ -78,6 +78,10 @@ export class EvidenceController {
  /** Authorization, case state and consent checks shared by direct and chunked uploads. */
  private async precheck(caseId: string, rawKind: unknown, token?: string, org?: string) {
   const s = await this.auth.authorize(token, org);
+  return this.checkUploadPolicy(caseId, rawKind, s);
+ }
+
+ private async checkUploadPolicy(caseId: string, rawKind: unknown, s: Awaited<ReturnType<AuthService['authorize']>>) {
   if (!canWrite(s.role)) throw new ForbiddenException('Read-only membership');
   if (!this.storage) throw new ServiceUnavailableException('Evidence storage not configured');
   const kind = rawKind;
@@ -174,6 +178,9 @@ export class EvidenceController {
   const s = await this.auth.authorize(token, org);
   const up = await this.db.chunkedUpload.findFirst({ where: { id: uploadId, caseId, organizationId: s.organizationId, createdBy: s.actorId, completedAt: null } });
   if (!up) throw new NotFoundException('Upload not found');
+  // A resumed upload is not a durable authorization: recheck role, case state,
+  // current consent and storage before accepting any further private bytes.
+  await this.checkUploadPolicy(caseId, up.kind, s);
   const n = Number(nRaw), parts = Math.ceil(up.totalBytes / up.partSize);
   if (!Number.isInteger(n) || n < 0 || n >= parts) throw new BadRequestException('Invalid part number');
   if (!Buffer.isBuffer(body)) throw new BadRequestException('Part body required (text/plain base64)');
@@ -193,7 +200,7 @@ export class EvidenceController {
   const up = await this.db.chunkedUpload.findFirst({ where: { id: uploadId, caseId, organizationId: s.organizationId, createdBy: s.actorId } });
   if (!up) throw new NotFoundException('Upload not found');
   if (up.completedAt && up.evidenceId) return this.db.evidence.findUniqueOrThrow({ where: { id: up.evidenceId }, select: EVIDENCE_PUBLIC_FIELDS });
-  const { kind } = await this.precheck(caseId, up.kind, token, org);
+  const { kind } = await this.checkUploadPolicy(caseId, up.kind, s);
   const parts = Math.ceil(up.totalBytes / up.partSize);
   const missing = Array.from({ length: parts }, (_, i) => i).filter(i => !up.receivedParts.includes(i));
   if (missing.length) throw new ConflictException(`Missing parts: ${missing.slice(0, 20).join(',')}`);
