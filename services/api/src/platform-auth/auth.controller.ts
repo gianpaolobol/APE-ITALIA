@@ -48,11 +48,12 @@ export class PlatformAuthController {
   const code = typeof body?.code === 'string' ? body.code.trim() : '';
   if (!EMAIL_RE.test(email) || !/^\d{6}$/.test(code)) throw new BadRequestException('email and 6-digit code required');
   const row = await this.db.loginCode.findFirst({ where: { email, consumedAt: null, expiresAt: { gt: new Date() } }, orderBy: { createdAt: 'desc' } });
-  if (!row || row.attempts >= CODE_MAX_ATTEMPTS) throw new UnauthorizedException('Code expired or invalid');
-  if (!sameHash(row.codeHash, hashCode(cfg, email, code))) {
-   await this.db.loginCode.update({ where: { id: row.id }, data: { attempts: { increment: 1 } } });
-   throw new UnauthorizedException('Code expired or invalid');
-  }
+  if (!row) throw new UnauthorizedException('Code expired or invalid');
+  // Reserve the attempt atomically BEFORE comparing: concurrent guesses cannot all read the same
+  // counter and exceed CODE_MAX_ATTEMPTS. A correct code also spends one of the attempts.
+  const reserved = await this.db.loginCode.updateMany({ where: { id: row.id, consumedAt: null, attempts: { lt: CODE_MAX_ATTEMPTS } }, data: { attempts: { increment: 1 } } });
+  if (reserved.count !== 1) throw new UnauthorizedException('Code expired or invalid');
+  if (!sameHash(row.codeHash, hashCode(cfg, email, code))) throw new UnauthorizedException('Code expired or invalid');
   const consumed = await this.db.loginCode.updateMany({ where: { id: row.id, consumedAt: null }, data: { consumedAt: new Date() } });
   if (consumed.count !== 1) throw new UnauthorizedException('Code already used');
   const user = await this.db.$transaction(async tx => {

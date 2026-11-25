@@ -19,6 +19,18 @@ describe.skipIf(!enabled)('PostgreSQL: email-code login', () => {
  const codeOf = () => /(\d{6})/.exec(mailer.sent.at(-1)!.text)![1];
  afterAll(async () => { await db.$disconnect(); });
 
+ it('parallel wrong guesses cannot exceed the attempt limit, and the code then stops working', async () => {
+  const target = `race-${Date.now()}@example.test`;
+  await ctrl.start({ email: target });
+  const right = codeOf();
+  const wrong = right === '000000' ? '111111' : '000000';
+  const results = await Promise.allSettled(Array.from({ length: 20 }, () => ctrl.verify({ email: target, code: wrong })));
+  expect(results.every(r => r.status === 'rejected')).toBe(true);
+  const row = await db.loginCode.findFirstOrThrow({ where: { email: target }, orderBy: { createdAt: 'desc' } });
+  expect(row.attempts).toBe(5);
+  await expect(ctrl.verify({ email: target, code: right })).rejects.toBeInstanceOf(UnauthorizedException);
+ });
+
  it('first login creates the account and a personal organization; the token authorizes it', async () => {
   await ctrl.start({ email });
   await expect(ctrl.verify({ email, code: codeOf() === '000000' ? '111111' : '000000' })).rejects.toBeInstanceOf(UnauthorizedException);
