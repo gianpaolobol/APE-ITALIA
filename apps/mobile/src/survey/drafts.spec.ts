@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fs = vi.hoisted(() => ({ files: new Map<string, string>(), dirs: new Set<string>(), failMoveTo: '' }));
+const fs = vi.hoisted(() => ({ files: new Map<string, string>(), dirs: new Set<string>(), failMoveTo: '', failDeleteAt: '' }));
 vi.mock('expo-file-system', () => {
  class Directory {
   uri: string;
@@ -15,7 +15,8 @@ vi.mock('expo-file-system', () => {
   create() { fs.files.set(this.uri, ''); }
   write(data: string) { fs.files.set(this.uri, data); }
   async text() { return fs.files.get(this.uri) ?? ''; }
-  delete() { fs.files.delete(this.uri); }
+  textSync() { return fs.files.get(this.uri) ?? ''; }
+  delete() { if (this.uri === fs.failDeleteAt) throw new Error('simulated delete failure'); fs.files.delete(this.uri); }
   move(dest: File) {
    if (dest.uri === fs.failMoveTo) throw new Error('simulated move failure');
    if (!this.exists || dest.exists) throw new Error('invalid move');
@@ -30,7 +31,7 @@ const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
 const state = (...drafts: AppState['drafts']): AppState => ({ version: 1, drafts });
 
-beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; });
+beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; fs.failDeleteAt = ''; });
 
 describe('draft snapshots and deletion', () => {
  it('initializes only when there is no evidence of an existing archive', async () => {
@@ -139,6 +140,69 @@ describe('draft snapshots and deletion', () => {
   fs.failMoveTo = primary;
   expect(() => saveStateNow(state())).toThrow('simulated move failure');
   expect(await loadState()).toEqual(state());
+ });
+ it('recovers the committed backup even when the old primary still exists', async () => {
+  const a = newDraft(), b = newDraft();
+  saveStateNow(state(a, b));
+  fs.failDeleteAt = primary;
+  expect(() => saveStateNow(state(b))).toThrow('simulated delete failure');
+  expect(JSON.parse(fs.files.get(primary)!)).toMatchObject(state(a, b));
+  expect(JSON.parse(fs.files.get(backup)!)).toMatchObject(state(b));
+  const before = [...fs.files];
+  expect(await loadState()).toEqual(state(b));
+  expect([...fs.files]).toEqual(before);
+ });
+ it('does not promote staging while backup replacement has not committed', async () => {
+  const a = newDraft(), b = newDraft();
+  saveStateNow(state(a));
+  fs.failDeleteAt = backup;
+  expect(() => saveStateNow(state(b))).toThrow('simulated delete failure');
+  expect(await loadState()).toEqual(state(a));
+ });
+ it('does not promote unmatched staging or a divergent legacy backup', async () => {
+  const a = newDraft(), b = newDraft(), c = newDraft();
+  saveStateNow(state(a));
+  fs.files.set(backup, JSON.stringify(state(b)));
+  expect(await loadState()).toEqual(state(a));
+  fs.files.set('/documents/ape/state.tmp.json', JSON.stringify(state(c)));
+  expect(await loadState()).toEqual(state(a));
+  fs.files.set('/documents/ape/state.tmp.json', 'truncated');
+  expect(await loadState()).toEqual(state(a));
+ });
+ it('keeps the newest committed backup if a subsequent primary replacement fails', async () => {
+  const a = newDraft(), b = newDraft(), c = newDraft();
+  saveStateNow(state(a));
+  fs.failDeleteAt = primary;
+  expect(() => saveStateNow(state(b))).toThrow('simulated delete failure');
+  expect(await loadState()).toEqual(state(b));
+  fs.failDeleteAt = '';
+  fs.failMoveTo = primary;
+  expect(() => saveStateNow(state(c))).toThrow('simulated move failure');
+  expect(await loadState()).toEqual(state(b));
+  fs.failMoveTo = '';
+  saveStateNow(state(c));
+  expect(await loadState()).toEqual(state(c));
+  expect(fs.files.get(primary)).toBe(fs.files.get(backup));
+ });
+ it('recovers the newer primary if the second replacement fails after backup recovery', async () => {
+  const a = newDraft(), b = newDraft(), c = newDraft();
+  saveStateNow(state(a));
+  fs.failDeleteAt = primary;
+  expect(() => saveStateNow(state(b))).toThrow('simulated delete failure');
+  fs.failDeleteAt = backup;
+  expect(() => saveStateNow(state(c))).toThrow('simulated delete failure');
+  expect(await loadState()).toEqual(state(c));
+ });
+ it('recognizes matching legacy staging and migrates generations without changing app state', async () => {
+  const a = newDraft(), b = newDraft();
+  fs.files.set(primary, JSON.stringify(state(a)));
+  fs.files.set(backup, JSON.stringify(state(b)));
+  fs.files.set('/documents/ape/state.tmp.json', JSON.stringify(state(b)));
+  expect(await loadState()).toEqual(state(b));
+  saveStateNow(state(b));
+  expect(JSON.parse(fs.files.get(primary)!).storageGeneration).toBe(1);
+  expect(await loadState()).toEqual(state(b));
+  expect(fs.files.get(primary)).toBe(fs.files.get(backup));
  });
  it('preserves the previous primary if backup replacement fails', async () => {
   const a = newDraft();
