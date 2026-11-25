@@ -64,7 +64,7 @@ const dir = () => new Directory(Paths.document, 'ape');
 const stateFile = () => new File(dir(), 'state.json');
 const backupFile = () => new File(dir(), 'state.bak.json');
 
-type SnapshotRead = { kind: 'missing' | 'invalid' } | { kind: 'valid'; state: AppState; generation: number };
+type SnapshotRead = { kind: 'missing' | 'invalid' | 'unavailable' } | { kind: 'valid'; state: AppState; generation: number };
 
 // Validate persisted shape before exposing a snapshot to the UI or account filters.
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -123,7 +123,8 @@ function snapshotShape(v: unknown): v is AppState {
 
 // Storage-only metadata; legacy snapshots without it are generation zero.
 function parseSnapshot(data: string): SnapshotRead {
- const parsed: unknown = JSON.parse(data);
+ let parsed: unknown;
+ try { parsed = JSON.parse(data); } catch { return { kind: 'invalid' }; }
  if (!snapshotShape(parsed)) return { kind: 'invalid' };
  const { storageGeneration, ...state } = parsed as AppState & { storageGeneration?: unknown };
  if (storageGeneration !== undefined &&
@@ -138,7 +139,7 @@ async function read(f: File): Promise<SnapshotRead> {
   if (!f.exists) return { kind: 'missing' };
   return parseSnapshot(await f.text());
  } catch {
-  return { kind: 'invalid' };
+  return { kind: 'unavailable' };
  }
 }
 
@@ -147,7 +148,7 @@ function readSync(f: File): SnapshotRead {
   if (!f.exists) return { kind: 'missing' };
   return parseSnapshot(f.textSync());
  } catch {
-  return { kind: 'invalid' };
+  return { kind: 'unavailable' };
  }
 }
 
@@ -161,6 +162,11 @@ export async function loadState(): Promise<AppState> {
  const tmp = new File(d, 'state.tmp.json');
  const bakTmp = new File(d, 'state.bak.tmp.json');
  const backup = await read(backupFile());
+ // An I/O error (e.g. protected files while locked) is not proven corruption.
+ // A temporarily unreadable copy could be the newest committed generation.
+ if (primary.kind === 'unavailable' || backup.kind === 'unavailable') {
+  throw new Error('Local snapshots temporarily unavailable');
+ }
  if (primary.kind === 'valid') {
   if (backup.kind === 'valid') {
    // Only the committed copies participate in generation ordering.
@@ -169,6 +175,7 @@ export async function loadState(): Promise<AppState> {
    // interrupted-commit case from the matching primary staging file.
    if (primary.generation === 0 && backup.generation === 0 && tmp.exists && !bakTmp.exists) {
     const staged = await read(tmp);
+    if (staged.kind === 'unavailable') throw new Error('Local snapshots temporarily unavailable');
     if (staged.kind === 'valid' && staged.generation === 0 &&
         JSON.stringify(backup.state) === JSON.stringify(staged.state)) return backup.state;
    }
@@ -199,6 +206,10 @@ export function saveStateNow(s: AppState): void {
  // ordering even if another save is interrupted after an earlier recovery.
  const previousPrimary = readSync(stateFile()), previousBackup = readSync(backupFile());
  const current = [previousPrimary, previousBackup];
+ if (current.some(r => r.kind === 'unavailable')) throw new Error('Local snapshots temporarily unavailable');
+ if (!current.some(r => r.kind === 'valid') && current.some(r => r.kind === 'invalid')) {
+  throw new Error('Local snapshots could not be recovered');
+ }
  const generation = Math.max(0, ...current.map(r => r.kind === 'valid' ? r.generation : 0)) + 1;
  if (!Number.isSafeInteger(generation)) throw new Error('Local snapshot generation exhausted');
  const data = JSON.stringify({ ...parsed, storageGeneration: generation });
@@ -207,6 +218,7 @@ export function saveStateNow(s: AppState): void {
  const tmp = new File(d, 'state.tmp.json');
  const bakTmp = new File(d, 'state.bak.tmp.json');
  const previousStaging = tmp.exists && !bakTmp.exists ? readSync(tmp) : null;
+ if (previousStaging?.kind === 'unavailable') throw new Error('Local snapshots temporarily unavailable');
  const backupIsNewest = previousBackup.kind === 'valid' &&
   (previousPrimary.kind !== 'valid' || previousBackup.generation > previousPrimary.generation ||
    (previousPrimary.generation === 0 && previousBackup.generation === 0 &&
