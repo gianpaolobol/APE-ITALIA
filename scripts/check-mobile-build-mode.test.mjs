@@ -37,3 +37,17 @@ test('build-only suppresses signing configuration and compiles both platforms af
  assert.match(step('Build release bundle (AAB, Google Play) and APK (Firebase App Distribution)'), /bundleRelease assembleRelease/);
  assert.equal([...workflow.matchAll(/^    needs: release-gate$/gm)].length, 2);
 });
+
+test('explicit distribution fails early instead of reporting an unsigned build as distribution', () => {
+ const android = step('Require Android test distribution configuration');
+ assert.match(android, /^        if: inputs\.mode == 'distribute'$/m);
+ assert.ok(android.includes('No Android test distribution destination is configured'));
+ assert.ok(android.includes('Play internal is configured but the upload key is missing'));
+ const ios = step('Require TestFlight configuration');
+ assert.match(ios, /^        if: inputs\.mode == 'distribute' && env\.HAS_ASC != 'true'$/m);
+ assert.match(ios, /exit 1/);
+ assert.ok(workflow.indexOf('Require Android test distribution configuration') < workflow.indexOf('Build release bundle (AAB'));
+ assert.ok(workflow.indexOf('Require TestFlight configuration') < workflow.indexOf('Xcode 26 ('));
+ assert.match(step('Firebase configuration (keyless)'), /jq -er/);
+ assert.match(step('Firebase configuration (keyless)'), /set -euo pipefail/);
+});
