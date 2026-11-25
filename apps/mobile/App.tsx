@@ -1,7 +1,7 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, AppState as RNAppState, Button, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { C } from './src/ui/theme';
 import { HomeScreen } from './src/ui/HomeScreen';
 import { WizardScreen } from './src/ui/WizardScreen';
@@ -11,7 +11,9 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, persistPhoto, saveState, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, persistPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+
+import { createAutosave } from './src/survey/autosave';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
@@ -37,7 +39,8 @@ export default function App() {
   else apply(null);
   return () => { active = false; unsubscribe(); };
  }, []);
- const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+ const [saveFailed, setSaveFailed] = useState(false);
+ const autosave = useMemo(() => createAutosave(saveStateNow, setSaveFailed), []);
 
  useEffect(() => {
   let active = true;
@@ -50,10 +53,10 @@ export default function App() {
  // Flush pending writes when the app goes to background (the debounce must not lose the last edit).
  useEffect(() => {
   const sub = RNAppState.addEventListener('change', st => {
-   if (st !== 'active' && latest.current) { if (saveTimer.current) clearTimeout(saveTimer.current); saveState(latest.current).catch(() => undefined); }
+   if (st !== 'active') autosave.flush();
   });
-  return () => sub.remove();
- }, []);
+  return () => { sub.remove(); autosave.cancelTimer(); };
+ }, [autosave]);
 
  const latest = useRef<AppState | null>(null);
  /** Functional updates against the latest state: async photo reads never overwrite newer edits. */
@@ -62,9 +65,8 @@ export default function App() {
   const next = fn(cur);
   latest.current = next;
   setState(next);
-  if (saveTimer.current) clearTimeout(saveTimer.current);
-  saveTimer.current = setTimeout(() => { saveState(next).catch(() => undefined); }, 300);
- }, []);
+  autosave.schedule(next);
+ }, [autosave]);
 
  if (loadFailed) return (
   <SafeAreaProvider>
@@ -86,7 +88,7 @@ export default function App() {
   const next = storePro(cur, owner, demo, profile);
   try { saveStateNow(next); }
   catch { Alert.alert('Salvataggio non riuscito', 'Non è stato possibile salvare la candidatura sul telefono.'); return false; }
-  if (saveTimer.current) clearTimeout(saveTimer.current);
+  autosave.committed();
   latest.current = next; setState(next);
   return true;
  };
@@ -103,7 +105,7 @@ export default function App() {
   const next = { ...cur, drafts: cur.drafts.filter(x => x.id !== id) };
   try { saveStateNow(next); }
   catch { Alert.alert('Eliminazione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return false; }
-  if (saveTimer.current) clearTimeout(saveTimer.current);
+  autosave.committed();
   latest.current = next; setState(next);
   deleteMedia(id);
   return true;
@@ -132,7 +134,7 @@ export default function App() {
     const next = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? removal.draft : x) };
     try { saveStateNow(next); }
     catch { Alert.alert('Rimozione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return; }
-    if (saveTimer.current) clearTimeout(saveTimer.current);
+    autosave.committed();
     latest.current = next; setState(next);
     if (removal.unreferenced) deleteDraftPhotoFile(d.id, removal.removed);
    }}
@@ -145,9 +147,9 @@ export default function App() {
     const cur = latest.current;
     if (!cur || !permitted(d.id) || (cp.remoteOwner && !canViewDraft({ ...d, ...cp }, ownerRef.current))) throw new Error('Richiesta non più disponibile.');
     const next = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? { ...x, ...cp } : x) };
-    if (saveTimer.current) clearTimeout(saveTimer.current);
     latest.current = next; setState(next);
-    await saveState(next);
+    autosave.schedule(next);
+    if (!autosave.flush()) throw new Error('Salvataggio locale non riuscito. Riprova.');
    }}
    onDelete={() => { if (removeDraft(d.id)) setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
@@ -168,6 +170,12 @@ export default function App() {
  return (
   <SafeAreaProvider>
    <StatusBar style={route.name === 'home' ? 'light' : 'dark'} />
+   {saveFailed && (
+    <SafeAreaView edges={['top']} style={{ backgroundColor: '#fff4d6', paddingHorizontal: 16, paddingBottom: 8 }}>
+     <Text accessibilityRole="alert" style={{ color: '#422006', fontWeight: '600' }}>Modifiche non salvate sul dispositivo. Non chiudere l'app prima di aver riprovato.</Text>
+     <Button title="Riprova salvataggio" onPress={() => { autosave.flush(); }} />
+    </SafeAreaView>
+   )}
    {screen}
   </SafeAreaProvider>
  );
