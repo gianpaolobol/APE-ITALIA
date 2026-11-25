@@ -41,7 +41,8 @@ describe('remote cache lifetime and filename boundaries', () => {
  it('purges old plaintext downloads at first session read, not on every read or download', async () => {
   const s = await import('./server');
   await s.getSession();
-  expect(mocks.removeDir).toHaveBeenCalledExactlyOnceWith('cache/remote');
+  expect(mocks.removeDir).toHaveBeenCalledTimes(1);
+  expect(mocks.removeDir).toHaveBeenCalledWith('cache/remote');
   await s.getSession();
   await s.download('/v1/test', 'document.pdf');
   await s.download('/v1/test', 'another.jpg');
@@ -77,9 +78,9 @@ describe('remote cache lifetime and filename boundaries', () => {
 describe('resumable upload callbacks', () => {
  it('does not continue skipped parts or finish after a progress callback logs out', async () => {
   const s = await import('./server');
-  const fetcher = vi.fn(async (url: string) => url.endsWith('/uploads/upload-a') ? ok({ receivedParts: [0, 1], completed: false, evidenceId: null }) : noContent);
+  const fetcher = vi.fn(async (url: string) => url.endsWith('/uploads/upload-a') ? ok({ receivedParts: [0], completed: false, evidenceId: null }) : noContent);
   vi.stubGlobal('fetch', fetcher);
-  // One 8-byte file, both parts marked as already received. A logout at the first callback must prevent completion.
+  // One 8-byte file, one part marked as already received. A logout at the first callback must prevent completion.
   const progress = vi.fn(() => { void s.logout(); });
   await expect(s.uploadResumable('case-a', 'video', 'local.mp4', progress, 'upload-a')).rejects.toThrow('Sessione cambiata');
   expect(progress).toHaveBeenCalledTimes(1);
