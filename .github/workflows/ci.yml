@@ -31,7 +31,7 @@ jobs:
           node-version: '22'
       - run: npm ci --no-audit --no-fund
       - run: node scripts/check-secrets.mjs
-      - run: node --test scripts/verify-release-ci.test.mjs scripts/verify-staging-config.test.mjs
+      - run: node --test scripts/verify-release-ci.test.mjs scripts/verify-staging-config.test.mjs scripts/check-mobile-build-mode.test.mjs
       - name: Dependency audit (report only; see docs/SECURITY.md for accepted residual risk)
         run: npm audit --omit=dev --audit-level=critical
       - run: npm exec --workspace @ape/api -- prisma validate

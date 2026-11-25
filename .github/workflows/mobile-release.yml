@@ -1,11 +1,16 @@
 name: Mobile release (TestFlight / Firebase App Distribution / Google Play)
 
 # Manual run on current validated main only (Actions → "Mobile release" → Run workflow).
-# Without signing secrets the jobs still compile the native apps (unsigned) to verify the build;
-# with secrets they sign and upload. Required secrets and one-time setup: docs/MOBILE_RELEASE.md.
+# Default build-only mode uses demo configuration and no signing credentials or store uploads.
+# Explicit distribute mode may sign and upload to test channels only. See docs/MOBILE_RELEASE.md.
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: 'Build locale di verifica (nessun upload agli store) oppure distribuzione di test esplicita'
+        type: choice
+        options: [build-only, distribute]
+        default: build-only
       platform:
         description: 'Piattaforma (Android: Firebase App Distribution, più Google Play se configurato)'
         type: choice
@@ -27,10 +32,10 @@ concurrency:
 env:
   BUILD_NUMBER: ${{ github.run_number }}
   # Public (non-secret) app configuration, from repository Variables. Empty = demo mode without uploads.
-  EXPO_PUBLIC_API_BASE_URL: ${{ vars.EXPO_PUBLIC_API_BASE_URL }}
-  EXPO_PUBLIC_OIDC_ISSUER: ${{ vars.EXPO_PUBLIC_OIDC_ISSUER }}
-  EXPO_PUBLIC_OIDC_CLIENT_ID: ${{ vars.EXPO_PUBLIC_OIDC_CLIENT_ID }}
-  EXPO_PUBLIC_OIDC_AUDIENCE: ${{ vars.EXPO_PUBLIC_OIDC_AUDIENCE }}
+  EXPO_PUBLIC_API_BASE_URL: ${{ inputs.mode == 'distribute' && vars.EXPO_PUBLIC_API_BASE_URL || '' }}
+  EXPO_PUBLIC_OIDC_ISSUER: ${{ inputs.mode == 'distribute' && vars.EXPO_PUBLIC_OIDC_ISSUER || '' }}
+  EXPO_PUBLIC_OIDC_CLIENT_ID: ${{ inputs.mode == 'distribute' && vars.EXPO_PUBLIC_OIDC_CLIENT_ID || '' }}
+  EXPO_PUBLIC_OIDC_AUDIENCE: ${{ inputs.mode == 'distribute' && vars.EXPO_PUBLIC_OIDC_AUDIENCE || '' }}
 
 jobs:
   release-gate:
@@ -47,9 +52,9 @@ jobs:
       contents: read
       id-token: write   # keyless Google auth (Workload Identity Federation)
     env:
-      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
-      HAS_PLAY: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
-      HAS_FIREBASE: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+      HAS_KEYSTORE: ${{ inputs.mode == 'distribute' && secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      HAS_PLAY: ${{ inputs.mode == 'distribute' && secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
+      HAS_FIREBASE: ${{ inputs.mode == 'distribute' && secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -73,9 +78,9 @@ jobs:
       - name: Build release bundle (AAB, Google Play) and APK (Firebase App Distribution)
         working-directory: apps/mobile/android
         env:
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ inputs.mode == 'distribute' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+          ANDROID_KEY_ALIAS: ${{ inputs.mode == 'distribute' && secrets.ANDROID_KEY_ALIAS || '' }}
+          ANDROID_KEY_PASSWORD: ${{ inputs.mode == 'distribute' && secrets.ANDROID_KEY_PASSWORD || '' }}
         run: ./gradlew bundleRelease assembleRelease --no-daemon --stacktrace
       - name: Check signature
         run: |
@@ -89,6 +94,7 @@ jobs:
           path: apps/mobile/android/app/build/outputs/apk/release/app-release.apk
           retention-days: 14
       - name: Firebase configuration (keyless)
+        if: inputs.mode == 'distribute'
         run: |
           if [ -f deploy/firebase/config.json ]; then
             {
@@ -100,13 +106,13 @@ jobs:
             } >> "$GITHUB_ENV"
           fi
       - name: Google authentication via Workload Identity Federation
-        if: env.FB_PROVIDER != ''
+        if: inputs.mode == 'distribute' && env.FB_PROVIDER != ''
         uses: google-github-actions/auth@v2
         with:
           workload_identity_provider: ${{ env.FB_PROVIDER }}
           service_account: ${{ env.FB_SA }}
       - name: Distribute APK with Firebase App Distribution (keyless)
-        if: env.FB_PROVIDER != ''
+        if: inputs.mode == 'distribute' && env.FB_PROVIDER != ''
         run: |
           set -o pipefail
           NOTES="APE Italia build ${BUILD_NUMBER} ($(git rev-parse --short HEAD)) — prova interna, dati solo sintetici."
@@ -116,7 +122,7 @@ jobs:
           echo "FIREBASE_APP_ID=$FB_APP" >> "$GITHUB_ENV"
           echo "HAS_FIREBASE=true" >> "$GITHUB_ENV"
       - name: Distribute APK with Firebase App Distribution (service account key)
-        if: env.HAS_FIREBASE == 'true' && env.FB_PROVIDER == ''
+        if: inputs.mode == 'distribute' && env.HAS_FIREBASE == 'true' && env.FB_PROVIDER == ''
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
           TESTERS: ${{ vars.FIREBASE_TESTERS }}
@@ -148,7 +154,7 @@ jobs:
           path: apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
           retention-days: 14
       - name: Upload to Google Play (internal testing)
-        if: env.HAS_KEYSTORE == 'true' && env.HAS_PLAY == 'true'
+        if: inputs.mode == 'distribute' && env.HAS_KEYSTORE == 'true' && env.HAS_PLAY == 'true'
         uses: r0adkll/upload-google-play@v1.1.3
         with:
           serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -156,12 +162,15 @@ jobs:
           releaseFiles: apps/mobile/android/app/build/outputs/bundle/release/app-release.aab
           track: internal
           status: ${{ inputs.play_status || 'completed' }}
+      - name: Remove upload key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/upload.jks"
       - name: Summary
         run: |
           {
             echo "### Android build ${BUILD_NUMBER}"
             if [ "$HAS_KEYSTORE" = true ]; then echo "- Firmato con la chiave di caricamento."; else echo "- Firmato con la chiave di debug del progetto (sufficiente per i tester Firebase, non per Google Play)."; fi
-            if [ "$HAS_FIREBASE" = true ]; then echo "- APK distribuito con **Firebase App Distribution** (app \`${FIREBASE_APP_ID:-?}\`): i tester ricevono l'email di invito."; else echo "- Firebase saltato: manca il secret FIREBASE_SERVICE_ACCOUNT_JSON."; fi
+            if [ "${{ inputs.mode }}" = build-only ]; then echo "- Modalità build-only: nessuna distribuzione Firebase o Play."; elif [ "$HAS_FIREBASE" = true ]; then echo "- APK distribuito con **Firebase App Distribution** (app \`${FIREBASE_APP_ID:-?}\`): i tester ricevono l'email di invito."; else echo "- Firebase saltato: manca il secret FIREBASE_SERVICE_ACCOUNT_JSON."; fi
             if [ "$HAS_KEYSTORE" = true ] && [ "$HAS_PLAY" = true ]; then echo "- AAB caricato sul canale **internal** di Google Play."; fi
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -171,7 +180,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 90
     env:
-      HAS_ASC: ${{ (secrets.ASC_KEY_P8 != '' || secrets.ASC_KEY_P8_BASE64 != '') && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
+      HAS_ASC: ${{ inputs.mode == 'distribute' && (secrets.ASC_KEY_P8 != '' || secrets.ASC_KEY_P8_BASE64 != '') && secrets.ASC_KEY_ID != '' && secrets.ASC_ISSUER_ID != '' && secrets.APPLE_TEAM_ID != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -201,7 +210,7 @@ jobs:
           xcodebuild -workspace APEItalia.xcworkspace -scheme APEItalia -configuration Release -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build | tail -40
       - name: App Store Connect API key
-        if: env.HAS_ASC == 'true'
+        if: inputs.mode == 'distribute' && env.HAS_ASC == 'true'
         env:
           KEY_PEM: ${{ secrets.ASC_KEY_P8 }}
           KEY_B64: ${{ secrets.ASC_KEY_P8_BASE64 }}
@@ -214,7 +223,7 @@ jobs:
           else echo "$KEY_B64" | base64 -d > "$RUNNER_TEMP/AuthKey.p8"; fi
           grep -q 'BEGIN PRIVATE KEY' "$RUNNER_TEMP/AuthKey.p8" || { echo "::error::The App Store Connect key is not a .p8 private key"; exit 1; }
       - name: Archive (automatic signing via API key)
-        if: env.HAS_ASC == 'true'
+        if: inputs.mode == 'distribute' && env.HAS_ASC == 'true'
         working-directory: apps/mobile/ios
         env:
           KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -234,7 +243,7 @@ jobs:
           # profile, which Apple only issues when the team has registered devices. The export step below
           # signs for App Store distribution (cloud-managed certificate, no devices needed).
       - name: Export and upload to TestFlight
-        if: env.HAS_ASC == 'true'
+        if: inputs.mode == 'distribute' && env.HAS_ASC == 'true'
         env:
           KEY_ID: ${{ secrets.ASC_KEY_ID }}
           ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
@@ -262,6 +271,6 @@ jobs:
         run: |
           {
             echo "### iOS build ${BUILD_NUMBER}"
-            if [ "$HAS_ASC" != true ]; then echo "- Compilato per simulatore **senza firma** (secret App Store Connect mancanti): solo verifica."
+            if [ "${{ inputs.mode }}" = build-only ]; then echo "- Compilato per simulatore senza firma, in modalità build-only: nessun upload TestFlight."; elif [ "$HAS_ASC" != true ]; then echo "- Compilato per simulatore **senza firma** (secret App Store Connect mancanti): solo verifica."
             else echo "- Archiviato, firmato e inviato ad App Store Connect: comparirà in **TestFlight** dopo l'elaborazione di Apple (di solito 5–30 minuti)."; fi
           } >> "$GITHUB_STEP_SUMMARY"
