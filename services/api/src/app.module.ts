@@ -1,4 +1,5 @@
-import { Controller, Get, Module } from '@nestjs/common';
+import { Controller, Get, Header, Module } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { PrismaClient } from '@prisma/client';
@@ -29,8 +30,20 @@ import { PLATFORM_AUTH } from './auth.service';
 import { notConfiguredScanner } from './evidence/file-policy';
 import { scannerFromEnv } from './evidence/clamav';
 
+// The image embeds a public Git revision at build time, independent of runtime environment variables.
+function imageRevision(): string | null {
+ try {
+  const value = readFileSync('/app/ape-build-revision', 'utf8').trim();
+  return /^[a-f0-9]{40}$/.test(value) ? value : null;
+ } catch { return null; }
+}
+const buildRevision = imageRevision();
 @Controller()
-class HealthController { @Get('health') health() { return { status: 'ok', service: 'ape-italia-api', mode: 'development' }; } }
+class HealthController {
+ @Get('health')
+ @Header('Cache-Control', 'no-store')
+ health() { return { status: 'ok', service: 'ape-italia-api', mode: 'development', revision: buildRevision }; }
+}
 
 /** Default: 120 requests/minute per client IP (in-memory, per instance; use a shared store when scaling out). */
 /** RATE_LIMIT_STORE=postgres shares counters across API instances (own small connection pool). */
