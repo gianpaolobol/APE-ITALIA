@@ -3,7 +3,7 @@
 ## Modalità di esecuzione
 
 - `mode: build-only` (predefinito): compila Android con chiave debug e iOS per simulatore senza firma, senza configurazione pubblica API/OIDC, senza usare le credenziali di firma e senza autenticazione/upload Firebase, Play o TestFlight. Gli artifact Android restano disponibili in GitHub Actions. Non è una prova di installazione fisica.
-- `mode: distribute`: solo scelta esplicita, dopo CI verde sullo SHA esatto, verifica di quote/costi e configurazione separata di test. I canali consentiti sono Firebase App Distribution, Play internal e TestFlight. Non utilizzare dati reali.
+- `mode: distribute`: solo scelta esplicita, dopo CI verde sullo SHA esatto, verifica di quote/costi e configurazione separata di test. I canali consentiti sono Firebase App Distribution, Play internal e TestFlight. Non utilizzare dati reali. In modalità distribute una piattaforma richiesta senza destinazione di test configurata fallisce prima della compilazione; non viene considerata distribuita una build unsigned. La configurazione Firebase keyless presente deve essere completa; se è configurato Play occorre anche la chiave di caricamento. Scegli build-only per la sola verifica di compilazione.
 - Tutte le istruzioni di caricamento riportate sotto presuppongono `mode: distribute`; la scelta della sola piattaforma non avvia upload.
 
 ## Android con Firebase App Distribution (scelta attuale per le prove)
