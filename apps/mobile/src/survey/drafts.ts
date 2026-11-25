@@ -150,9 +150,12 @@ export async function loadState(): Promise<AppState> {
  * All file operations here are synchronous, so an immediate deletion can commit before updating UI.
  */
 export function saveStateNow(s: AppState): void {
+ // Validate the serialized representation before touching either committed copy.
+ // A runtime-invalid state must not overwrite the last recoverable snapshot.
+ const data = JSON.stringify(s);
+ if (!snapshotShape(JSON.parse(data))) throw new Error('Invalid local snapshot');
  const d = dir();
  if (!d.exists) d.create({ intermediates: true });
- const data = JSON.stringify(s);
  const tmp = new File(d, 'state.tmp.json');
  const bakTmp = new File(d, 'state.bak.tmp.json');
  for (const staging of [tmp, bakTmp]) {
@@ -174,6 +177,7 @@ export async function saveState(s: AppState): Promise<void> {
 
 /** Copies a picked image/PDF into app storage so it survives cache cleanup. */
 export function persistPhoto(draftId: string, src: { uri: string; name: string; mimeType: string; width?: number; height?: number; durationSec?: number }): PhotoRef {
+ if (!safeId(draftId)) throw new Error('Invalid draft identifier');
  const d = new Directory(dir(), 'media', draftId);
  if (!d.exists) d.create({ intermediates: true });
  const ext = src.mimeType.startsWith('video/') ? (src.mimeType === 'video/quicktime' ? 'mov' : 'mp4') : src.mimeType === 'application/pdf' ? 'pdf' : src.mimeType === 'image/png' ? 'png' : src.mimeType === 'image/heic' ? 'heic' : 'jpg';
