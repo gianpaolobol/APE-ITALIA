@@ -51,3 +51,14 @@ test('explicit distribution fails early instead of reporting an unsigned build a
  assert.match(step('Firebase configuration (keyless)'), /jq -er/);
  assert.match(step('Firebase configuration (keyless)'), /set -euo pipefail/);
 });
+
+
+test('public GitHub artifacts contain only demo build-only Android packages', () => {
+ const uploads = [...workflow.matchAll(/^      - uses: actions\/upload-artifact@v4\n([\s\S]*?)(?=^      - |^  [\w-]+:|$(?![\s\S]))/gm)];
+ assert.equal(uploads.length, 2);
+ for (const upload of uploads) {
+  assert.match(upload[1], /^        if: inputs\.mode == 'build-only'$/m);
+  assert.match(upload[1], /^          if-no-files-found: error$/m);
+ }
+ assert.ok(workflow.includes('Nessun APK/AAB di distribuzione pubblicato come artifact GitHub.'));
+});
