@@ -83,7 +83,7 @@ export function HomeScreen({ state, canStartDraft, onNew, onOpen, onDelete, onPr
      <Card>
       <Text style={F.h3}>{email}</Text>
       <View style={{ flexDirection: 'row', gap: 10, marginTop: 12 }}>
-       <Button title="Esci" kind="secondary" icon="log-out-outline" onPress={() => logout().then(() => setEmail(null))} style={{ flex: 1 }} />
+       <Button title="Esci" kind="secondary" icon="log-out-outline" onPress={() => { void logout().then(() => setEmail(null)).catch(() => { setEmail(null); Alert.alert('Uscita incompleta', 'Non è stato possibile confermare la rimozione delle credenziali dal dispositivo. Contatta l’assistenza se il problema persiste.'); }); }} style={{ flex: 1 }} />
        <Button title="Elimina account" kind="danger" icon="trash-outline" onPress={removeAccount} style={{ flex: 1 }} />
       </View>
      </Card>
