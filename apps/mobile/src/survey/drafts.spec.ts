@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fs = vi.hoisted(() => ({ files: new Map<string, string>(), dirs: new Set<string>(), failMoveTo: '', failDeleteAt: '' }));
+const fs = vi.hoisted(() => ({ files: new Map<string, string>(), dirs: new Set<string>(), failMoveTo: '', failDeleteAt: '', failReadAt: '' }));
 vi.mock('expo-file-system', () => {
  class Directory {
   uri: string;
@@ -19,8 +19,11 @@ vi.mock('expo-file-system', () => {
   get exists() { return fs.files.has(this.uri); }
   create() { fs.files.set(this.uri, ''); }
   write(data: string) { fs.files.set(this.uri, data); }
-  async text() { return fs.files.get(this.uri) ?? ''; }
-  textSync() { return fs.files.get(this.uri) ?? ''; }
+  async text() { return this.textSync(); }
+  textSync() {
+   if (this.uri === fs.failReadAt) throw new Error('simulated protected file');
+   return fs.files.get(this.uri) ?? '';
+  }
   delete() { if (this.uri === fs.failDeleteAt) throw new Error('simulated delete failure'); fs.files.delete(this.uri); }
   move(dest: File) {
    if (dest.uri === fs.failMoveTo) throw new Error('simulated move failure');
@@ -36,7 +39,7 @@ const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
 const state = (...drafts: AppState['drafts']): AppState => ({ version: 1, drafts });
 
-beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; fs.failDeleteAt = ''; });
+beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; fs.failDeleteAt = ''; fs.failReadAt = ''; });
 
 describe('draft snapshots and deletion', () => {
  it('initializes only when there is no evidence of an existing archive', async () => {
@@ -49,6 +52,42 @@ describe('draft snapshots and deletion', () => {
   const before = [...fs.files];
   await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
   expect([...fs.files]).toEqual(before);
+ });
+ it('does not return a potentially stale backup or overwrite either copy on transient read failure', async () => {
+  const a = newDraft(), b = newDraft();
+  saveStateNow(state(a));
+  fs.failDeleteAt = primary;
+  expect(() => saveStateNow(state(b))).toThrow('simulated delete failure');
+  fs.failDeleteAt = '';
+  const before = [...fs.files];
+  for (const path of [backup, primary]) {
+   fs.failReadAt = path;
+   await expect(loadState()).rejects.toThrow('Local snapshots temporarily unavailable');
+   expect(() => saveStateNow(state(a))).toThrow('Local snapshots temporarily unavailable');
+   expect([...fs.files]).toEqual(before);
+  }
+  fs.failReadAt = '';
+  expect(await loadState()).toEqual(state(b));
+ });
+ it('does not overwrite corrupt committed snapshots when no valid copy exists', async () => {
+  fs.files.set(primary, 'truncated');
+  fs.files.set(backup, '{"version":2,"drafts":[]}');
+  const before = [...fs.files];
+  expect(() => saveStateNow(state(newDraft()))).toThrow('Local snapshots could not be recovered');
+  expect([...fs.files]).toEqual(before);
+ });
+ it('preserves legacy snapshots if the staging file needed for recovery is temporarily unreadable', async () => {
+  const a = newDraft(), b = newDraft();
+  fs.files.set(primary, JSON.stringify(state(a)));
+  fs.files.set(backup, JSON.stringify(state(b)));
+  fs.failReadAt = '/documents/ape/state.tmp.json';
+  fs.files.set(fs.failReadAt, JSON.stringify(state(b)));
+  const before = [...fs.files];
+  await expect(loadState()).rejects.toThrow('Local snapshots temporarily unavailable');
+  expect(() => saveStateNow(state(a))).toThrow('Local snapshots temporarily unavailable');
+  expect([...fs.files]).toEqual(before);
+  fs.failReadAt = '';
+  expect(await loadState()).toEqual(state(b));
  });
  it('rejects a single corrupt snapshot or an interrupted initial write', async () => {
   for (const path of [primary, backup, '/documents/ape/state.tmp.json', '/documents/ape/state.bak.tmp.json']) {
