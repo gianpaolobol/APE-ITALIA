@@ -8,7 +8,9 @@ type InspectionResp = { caseStatus: string; inspection: { status: string; schedu
 type CertResp = { certificate: { regionalId: string; energyClass: string | null; depositedAt: string; deliveredAt: string | null; sha256: string; sizeBytes: number } | null };
 
 export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undefined; caseStatus: string }> {
+ const guard = sessionBoundary();
  const r = await api<InspectionResp>(`/v1/cases/${caseId}/inspection`, { org: true });
+ guard();
  if (!r.certifier) return { job: undefined, caseStatus: r.caseStatus };
  const job: Job = { status: 'accettata', certifier: { name: r.certifier.name, sace: r.certifier.registrationId } };
  if (r.call) job.call = { at: r.call.at, url: r.call.url };
@@ -19,6 +21,7 @@ export async function fetchRemoteJob(caseId: string): Promise<{ job: Job | undef
  }
  if (['DEPOSITED', 'DELIVERED'].includes(r.caseStatus)) {
   const c = await api<CertResp>(`/v1/cases/${caseId}/certificate`, { org: true });
+  guard();
   if (c.certificate) { job.status = c.certificate.deliveredAt ? 'consegnata' : 'accettata'; job.ape = { code: c.certificate.regionalId, energyClass: c.certificate.energyClass ?? '—', deliveredAt: c.certificate.deliveredAt ?? '', depositedAt: c.certificate.depositedAt }; }
  }
  return { job, caseStatus: r.caseStatus };

@@ -439,3 +439,28 @@ describe('durable media cleanup', () => {
   await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
  });
 });
+
+describe('deposited APE snapshot', () => {
+ it('persists a deposited but unreceived certificate alongside other drafts, then records actual receipt', async () => {
+  const other = newDraft();
+  const draft = { ...newDraft(), job: { status: 'accettata' as const, certifier: { name: 'Synthetic', sace: 'SYNTH' },
+   ape: { code: 'SYNTH', energyClass: 'A1', depositedAt: '2026-11-25', deliveredAt: '' } } };
+  saveStateNow(state(other, draft));
+  expect(await loadState()).toEqual(state(other, draft));
+  const delivered = { ...draft, job: { ...draft.job, status: 'consegnata' as const,
+   ape: { ...draft.job.ape, deliveredAt: '2026-11-26' } } };
+  saveStateNow(state(other, delivered));
+  expect(await loadState()).toEqual(state(other, delivered));
+ });
+ it('rejects an empty receipt on a delivered job or an undated deposit without replacing existing snapshots', () => {
+  const previous = newDraft();
+  saveStateNow(state(previous));
+  const before = [...fs.files];
+  const job = { status: 'consegnata' as const, certifier: { name: 'Synthetic', sace: 'SYNTH' },
+   ape: { code: 'SYNTH', energyClass: 'A1', depositedAt: '2026-11-25', deliveredAt: '' } };
+  for (const invalid of [job, { ...job, status: 'accettata' as const, ape: { ...job.ape, depositedAt: undefined } }]) {
+   expect(() => saveStateNow(state({ ...newDraft(), job: invalid }))).toThrow('Invalid local snapshot');
+   expect([...fs.files]).toEqual(before);
+  }
+ });
+});

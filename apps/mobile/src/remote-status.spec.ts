@@ -80,3 +80,19 @@ describe('remote certificate status', () => {
   expect(r.job?.ape?.deliveredAt).toBe('2026-01-03');
  });
 });
+
+describe('remote job session boundaries', () => {
+ const inspection = { caseStatus: 'DEPOSITED', certifier: { name: 'Synthetic', registrationId: 'SYNTH' }, inspection: null, call: null };
+ it('does not request certificate metadata after the inspection session changes', async () => {
+  mock.api.mockResolvedValueOnce(inspection);
+  mock.guard.mockImplementationOnce(() => { throw new Error('Sessione cambiata'); });
+  await expect(fetchRemoteJob('case')).rejects.toThrow('Sessione cambiata');
+  expect(mock.api).toHaveBeenCalledTimes(1);
+ });
+ it('does not return stale job details after the metadata response changes session', async () => {
+  mock.api.mockResolvedValueOnce(inspection).mockResolvedValueOnce({ certificate: { ...meta, deliveredAt: null } });
+  mock.guard.mockImplementationOnce(() => {}).mockImplementationOnce(() => { throw new Error('Sessione cambiata'); });
+  await expect(fetchRemoteJob('case')).rejects.toThrow('Sessione cambiata');
+  expect(mock.api).toHaveBeenCalledTimes(2);
+ });
+});
