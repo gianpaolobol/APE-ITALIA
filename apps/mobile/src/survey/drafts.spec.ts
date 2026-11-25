@@ -7,6 +7,11 @@ vi.mock('expo-file-system', () => {
   constructor(parent: string | { uri: string }, ...parts: string[]) { this.uri = [typeof parent === 'string' ? parent : parent.uri, ...parts].join('/'); }
   get exists() { return fs.dirs.has(this.uri); }
   create() { fs.dirs.add(this.uri); }
+  delete() {
+   if (this.uri === fs.failDeleteAt) throw new Error('simulated directory delete failure');
+   for (const key of fs.files.keys()) if (key.startsWith(this.uri + '/')) fs.files.delete(key);
+   for (const key of fs.dirs) if (key === this.uri || key.startsWith(this.uri + '/')) fs.dirs.delete(key);
+  }
  }
  class File {
   uri: string;
@@ -25,7 +30,7 @@ vi.mock('expo-file-system', () => {
  }
  return { Directory, File, Paths: { document: '/documents' } };
 });
-import { visiblePro, storePro, type ProProfile, canViewDraft, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -271,18 +276,55 @@ describe('individual evidence removal', () => {
   saveStateNow(state(current));
   const result = removeDraftPhoto(current, 'wall', uri)!;
   saveStateNow(state(result.draft));
-  deleteDraftPhotoFile(draft.id, p);
+  expect(deleteDraftPhotoFile(draft.id, p, state(result.draft))).toBe('removed-or-absent');
   expect(fs.files.has(uri)).toBe(false);
   fs.files.set(primary, 'corrupt');
   expect((await loadState()).drafts[0].photos.wall).toEqual([]);
  });
  it('does not unlink another draft file, a nested path or the state snapshot', () => {
   const foreign = ['/documents/ape/media/b/photo.jpg', '/documents/ape/media/a/../b/photo.jpg', primary];
-  for (const uri of foreign) { fs.files.set(uri, 'keep'); deleteDraftPhotoFile('a', photo(uri)); expect(fs.files.get(uri)).toBe('keep'); }
+  for (const uri of foreign) { fs.files.set(uri, 'keep'); expect(deleteDraftPhotoFile('a', photo(uri), state())).toBe('unsafe-path'); expect(fs.files.get(uri)).toBe('keep'); }
   const valid = '/documents/ape/media/a/photo.jpg';
   fs.files.set(valid, 'remove');
-  deleteDraftPhotoFile('a', photo(valid));
+  expect(deleteDraftPhotoFile('a', photo(valid), state())).toBe('removed-or-absent');
   expect(fs.files.has(valid)).toBe(false);
+ });
+ it('reports failed file cleanup and allows an explicit retry without touching other files', () => {
+  const uri = '/documents/ape/media/a/photo.jpg';
+  fs.files.set(uri, 'keep');
+  fs.failDeleteAt = uri;
+  expect(deleteDraftPhotoFile('a', photo(uri), state())).toBe('failed');
+  expect(fs.files.get(uri)).toBe('keep');
+  fs.failDeleteAt = '';
+  expect(deleteDraftPhotoFile('a', photo(uri), state())).toBe('removed-or-absent');
+  expect(deleteDraftPhotoFile('a', photo(uri), state())).toBe('removed-or-absent');
+ });
+ it('does not delete a file still referenced by another draft or by an APE PDF', () => {
+  const uri = '/documents/ape/media/a/photo.jpg', p = photo(uri);
+  const draft = { ...newDraft(), photos: { wall: [p] }, job: {
+   status: 'consegnata' as const, certifier: { name: 'Test', sace: '0' },
+   ape: { code: 'synthetic', energyClass: 'A', deliveredAt: '2026-11-25', pdf: p },
+  } };
+  fs.files.set(uri, 'keep');
+  const removal = removeDraftPhoto(draft, 'wall', uri)!;
+  expect(removal.unreferenced).toBe(false);
+  expect(deleteDraftPhotoFile('a', p, state(removal.draft))).toBe('retained-reference');
+  expect(deleteDraftPhotoFile('a', p, state({ ...newDraft(), photos: { wall: [p] } }))).toBe('retained-reference');
+  expect(fs.files.get(uri)).toBe('keep');
+ });
+ it('reports directory cleanup outcomes and preserves other drafts and unsafe paths', () => {
+  const folder = '/documents/ape/media/a', uri = folder + '/photo.jpg', other = '/documents/ape/media/b/photo.jpg';
+  fs.dirs.add(folder); fs.files.set(uri, 'keep'); fs.files.set(other, 'other');
+  expect(deleteMedia('../b', state())).toBe('unsafe-path');
+  expect(deleteMedia('a', state({ ...newDraft(), photos: { wall: [photo(uri)] } }))).toBe('retained-reference');
+  fs.failDeleteAt = folder;
+  expect(deleteMedia('a', state())).toBe('failed');
+  expect(fs.files.get(uri)).toBe('keep');
+  fs.failDeleteAt = '';
+  expect(deleteMedia('a', state())).toBe('removed-or-absent');
+  expect(deleteMedia('a', state())).toBe('removed-or-absent');
+  expect(fs.files.has(uri)).toBe(false);
+  expect(fs.files.get(other)).toBe('other');
  });
 });
 
