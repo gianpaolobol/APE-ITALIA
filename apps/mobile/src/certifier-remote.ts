@@ -14,6 +14,14 @@ type EvidenceRow = { id: string; kind: string; mimeType: string; sizeBytes: numb
 type InspectionRow = { status: string; scheduledAt: string; performedAt: string | null } | null;
 
 export const listAssignments = () => api<RemoteAssignment[]>('/v1/certifier/assignments');
+/** Do not reuse an old offer/dossier if the server no longer lists the assignment. */
+export async function loadCurrentAssignment(id: string): Promise<RemoteAssignment> {
+ const guard = sessionBoundary();
+ const current = (await listAssignments()).find(a => a.id === id);
+ guard();
+ if (!current) throw new Error('Incarico non più disponibile');
+ return current;
+}
 export const acceptAssignment = (id: string) => api(`/v1/certifier/assignments/${id}/accept`, { body: {} });
 export const declineAssignment = (id: string) => api(`/v1/certifier/assignments/${id}/decline`, { body: { reason: 'Non disponibile' } });
 
