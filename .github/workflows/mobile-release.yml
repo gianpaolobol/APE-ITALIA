@@ -199,6 +199,8 @@ jobs:
       - name: Native project (expo prebuild)
         working-directory: apps/mobile
         run: npx expo prebuild --platform ios --no-install --clean
+      - name: Verify generated iOS data protection entitlement
+        run: python3 scripts/check-ios-protection.py apps/mobile/ios/APEItalia
       - name: CocoaPods
         working-directory: apps/mobile/ios
         run: pod install
