@@ -179,8 +179,8 @@ export async function loadState(): Promise<AppState> {
 }
 
 /** Commit both copies of the same snapshot. A previous snapshot may contain erased personal data.
- * Prepare both files before replacing either copy; replace the backup first so a missing primary
- * after an interrupted replacement can recover the new snapshot, not the deleted draft.
+ * Prepare both files before replacing either copy; replace the older copy first so a failure
+ * cannot erase the sole latest committed snapshot.
  * All file operations here are synchronous, so an immediate deletion can commit before updating UI.
  */
 export function saveStateNow(s: AppState): void {
@@ -191,7 +191,8 @@ export function saveStateNow(s: AppState): void {
  if (!snapshotShape(parsed)) throw new Error('Invalid local snapshot');
  // Read committed generations before touching staging files. This preserves
  // ordering even if another save is interrupted after an earlier recovery.
- const current = [readSync(stateFile()), readSync(backupFile())];
+ const previousPrimary = readSync(stateFile()), previousBackup = readSync(backupFile());
+ const current = [previousPrimary, previousBackup];
  const generation = Math.max(0, ...current.map(r => r.kind === 'valid' ? r.generation : 0)) + 1;
  if (!Number.isSafeInteger(generation)) throw new Error('Local snapshot generation exhausted');
  const data = JSON.stringify({ ...parsed, storageGeneration: generation });
@@ -199,17 +200,31 @@ export function saveStateNow(s: AppState): void {
  if (!d.exists) d.create({ intermediates: true });
  const tmp = new File(d, 'state.tmp.json');
  const bakTmp = new File(d, 'state.bak.tmp.json');
+ const previousStaging = tmp.exists && !bakTmp.exists ? readSync(tmp) : null;
+ const backupIsNewest = previousBackup.kind === 'valid' &&
+  (previousPrimary.kind !== 'valid' || previousBackup.generation > previousPrimary.generation ||
+   (previousPrimary.generation === 0 && previousBackup.generation === 0 &&
+    previousStaging?.kind === 'valid' && previousStaging.generation === 0 &&
+    JSON.stringify(previousBackup.state) === JSON.stringify(previousStaging.state)));
  for (const staging of [tmp, bakTmp]) {
   if (staging.exists) staging.delete();
   staging.create();
   staging.write(data);
  }
- const backup = backupFile();
- if (backup.exists) backup.delete();
- bakTmp.move(backupFile());
- const primary = stateFile();
- if (primary.exists) primary.delete();
- tmp.move(stateFile());
+ const replace = (staged: File, target: () => File) => {
+  const committed = target();
+  if (committed.exists) committed.delete();
+  staged.move(target());
+ };
+ // Never replace the sole newest valid copy first: a failure during the
+ // first replacement must still leave the previously committed snapshot.
+ if (backupIsNewest) {
+  replace(tmp, stateFile);
+  replace(bakTmp, backupFile);
+ } else {
+  replace(bakTmp, backupFile);
+  replace(tmp, stateFile);
+ }
 }
 
 export async function saveState(s: AppState): Promise<void> {
