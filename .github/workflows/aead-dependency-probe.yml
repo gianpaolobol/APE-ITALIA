@@ -1,0 +1,41 @@
+# Temporary isolated diagnostic. Do not merge this workflow to main.
+name: AEAD dependency probe
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  probe:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'audit/aead-dependency-probe'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Generate candidate npm lock without lifecycle scripts
+        run: |
+          npm install --workspace @ape/mobile --save-exact --package-lock-only --ignore-scripts --no-audit --no-fund @noble/ciphers@1.3.0
+          git diff -- apps/mobile/package.json package-lock.json
+      - name: Verify generated lock and public API in Node
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          cd apps/mobile
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+          import { randomBytes } from 'node:crypto';
+          const key = randomBytes(32), nonce = randomBytes(24);
+          const msg = new TextEncoder().encode('synthetic snapshot');
+          const aad = new TextEncoder().encode('ape-probe-v1');
+          const encrypted = xchacha20poly1305(key, nonce, aad).encrypt(msg);
+          assert.deepEqual(xchacha20poly1305(key, nonce, aad).decrypt(encrypted), msg);
+          encrypted[0] ^= 1;
+          assert.throws(() => xchacha20poly1305(key, nonce, aad).decrypt(encrypted));
+          console.log('Node AEAD round-trip and tamper check passed; not a Hermes or native test.');
+          JS
