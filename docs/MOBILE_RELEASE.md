@@ -1,5 +1,11 @@
 # Distribuzione di prova: TestFlight, Firebase App Distribution e Google Play con GitHub Actions
 
+## Modalità di esecuzione
+
+- `mode: build-only` (predefinito): compila Android con chiave debug e iOS per simulatore senza firma, senza configurazione pubblica API/OIDC, senza usare le credenziali di firma e senza autenticazione/upload Firebase, Play o TestFlight. Gli artifact Android restano disponibili in GitHub Actions. Non è una prova di installazione fisica.
+- `mode: distribute`: solo scelta esplicita, dopo CI verde sullo SHA esatto, verifica di quote/costi e configurazione separata di test. I canali consentiti sono Firebase App Distribution, Play internal e TestFlight. Non utilizzare dati reali.
+- Tutte le istruzioni di caricamento riportate sotto presuppongono `mode: distribute`; la scelta della sola piattaforma non avvia upload.
+
 ## Android con Firebase App Distribution (scelta attuale per le prove)
 
 ### Configurazione dal telefono, senza chiavi (consigliata)
@@ -25,7 +31,7 @@ Senza chiave di caricamento l'APK è firmato con la chiave di debug del progetto
 
 
 Workflow: `.github/workflows/mobile-release.yml` — **Actions → "Mobile release (TestFlight / Google Play internal)" → Run workflow** (scegli `both`, `android` o `ios`). Il dispatch è consentito solo su `main` corrente e dopo il successo della CI push sullo SHA esatto (tutti e quattro i job); i tag non avviano distribuzioni. Se una CI è fallita o mancano job nell'ultimo tentativo, rieseguire tutti i job e verificare il risultato. Il gate non sostituisce l'autorizzazione di spesa o la validazione fisica.
-Il numero di build è il numero dell'esecuzione (`github.run_number`), quindi sempre crescente. Senza secret il workflow compila comunque le app (verifica), senza firmarle né caricarle.
+Il numero di build è il numero dell'esecuzione (`github.run_number`), quindi sempre crescente. In modalità build-only, anche se esistono secret, Android compila con firma debug e iOS per simulatore senza firma; non vengono avviati upload agli store. In modalità distribute gli upload dipendono dalle credenziali configurate.
 
 ## 1. Apple (TestFlight) — una tantum
 1. **App Store Connect → App → "+" → Nuova app**: piattaforma iOS, nome "APE Italia" (o quello scelto), lingua italiano, **bundle ID `it.apeitalia.app`** (se non compare, viene registrato al primo archivio firmato; in alternativa crealo in Certificates, Identifiers & Profiles → Identifiers), SKU a piacere.
