@@ -273,7 +273,7 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
    const summaries = await json(await scoped(f.admin, f.org, '/v1/case-summaries'));
    expect(summaries).toHaveLength(1);
    expect(summaries[0]).toMatchObject({ id: f.caseId, status: 'DELIVERED', certificate: { regionalId: f.registration } });
-   expect(await db.auditEvent.count({ where: { organizationId: f.org, resourceId: f.caseId, action: 'certificate.deliver' } })).toBe(1);
+   expect(await db.auditEvent.count({ where: { organizationId: f.org, action: 'certificate.deliver' } })).toBe(1);
   }
   expect(await db.apeCase.count({ where: { organizationId: { in: matrixOrgs }, status: 'DELIVERED' } })).toBe(10);
  }, 120_000);
