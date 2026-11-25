@@ -62,7 +62,7 @@ const dir = () => new Directory(Paths.document, 'ape');
 const stateFile = () => new File(dir(), 'state.json');
 const backupFile = () => new File(dir(), 'state.bak.json');
 
-type SnapshotRead = { kind: 'missing' | 'invalid' } | { kind: 'valid'; state: AppState };
+type SnapshotRead = { kind: 'missing' | 'invalid' } | { kind: 'valid'; state: AppState; generation: number };
 
 // Validate persisted shape before exposing a snapshot to the UI or account filters.
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
@@ -115,12 +115,31 @@ function snapshotShape(v: unknown): v is AppState {
   x.every(p => record(p) && (p.owner === null || ownerShape(p.owner, true)) && profileShape(p.profile)));
 }
 
+// Storage-only metadata; legacy snapshots without it are generation zero.
+function parseSnapshot(data: string): SnapshotRead {
+ const parsed: unknown = JSON.parse(data);
+ if (!snapshotShape(parsed)) return { kind: 'invalid' };
+ const { storageGeneration, ...state } = parsed as AppState & { storageGeneration?: unknown };
+ if (storageGeneration !== undefined &&
+     (typeof storageGeneration !== 'number' || !Number.isSafeInteger(storageGeneration) || storageGeneration < 1)) {
+  return { kind: 'invalid' };
+ }
+ return { kind: 'valid', state, generation: typeof storageGeneration === 'number' ? storageGeneration : 0 };
+}
+
 async function read(f: File): Promise<SnapshotRead> {
  try {
   if (!f.exists) return { kind: 'missing' };
-  const parsed: unknown = JSON.parse(await f.text());
-  return snapshotShape(parsed)
-   ? { kind: 'valid', state: parsed } : { kind: 'invalid' };
+  return parseSnapshot(await f.text());
+ } catch {
+  return { kind: 'invalid' };
+ }
+}
+
+function readSync(f: File): SnapshotRead {
+ try {
+  if (!f.exists) return { kind: 'missing' };
+  return parseSnapshot(f.textSync());
  } catch {
   return { kind: 'invalid' };
  }
@@ -135,19 +154,21 @@ export async function loadState(): Promise<AppState> {
  const d = dir();
  const tmp = new File(d, 'state.tmp.json');
  const bakTmp = new File(d, 'state.bak.tmp.json');
+ const backup = await read(backupFile());
  if (primary.kind === 'valid') {
-  // If backup replacement completed but primary replacement never started,
-  // the old primary is still valid. A surviving primary staging file that
-  // matches the committed backup identifies the newer snapshot.
-  if (tmp.exists && !bakTmp.exists) {
-   const backup = await read(backupFile());
-   const staged = await read(tmp);
-   if (backup.kind === 'valid' && staged.kind === 'valid' &&
-       JSON.stringify(backup.state) === JSON.stringify(staged.state)) return backup.state;
+  if (backup.kind === 'valid') {
+   // Only the committed copies participate in generation ordering.
+   if (backup.generation > primary.generation) return backup.state;
+   // Older versions did not record a generation. Recognize the narrow
+   // interrupted-commit case from the matching primary staging file.
+   if (primary.generation === 0 && backup.generation === 0 && tmp.exists && !bakTmp.exists) {
+    const staged = await read(tmp);
+    if (staged.kind === 'valid' && staged.generation === 0 &&
+        JSON.stringify(backup.state) === JSON.stringify(staged.state)) return backup.state;
+   }
   }
   return primary.state;
  }
- const backup = await read(backupFile());
  if (backup.kind === 'valid') return backup.state;
  if (primary.kind === 'invalid' || backup.kind === 'invalid' ||
      tmp.exists || bakTmp.exists ||
@@ -165,8 +186,15 @@ export async function loadState(): Promise<AppState> {
 export function saveStateNow(s: AppState): void {
  // Validate the serialized representation before touching either committed copy.
  // A runtime-invalid state must not overwrite the last recoverable snapshot.
- const data = JSON.stringify(s);
- if (!snapshotShape(JSON.parse(data))) throw new Error('Invalid local snapshot');
+ const serialized = JSON.stringify(s);
+ const parsed: unknown = JSON.parse(serialized);
+ if (!snapshotShape(parsed)) throw new Error('Invalid local snapshot');
+ // Read committed generations before touching staging files. This preserves
+ // ordering even if another save is interrupted after an earlier recovery.
+ const current = [readSync(stateFile()), readSync(backupFile())];
+ const generation = Math.max(0, ...current.map(r => r.kind === 'valid' ? r.generation : 0)) + 1;
+ if (!Number.isSafeInteger(generation)) throw new Error('Local snapshot generation exhausted');
+ const data = JSON.stringify({ ...parsed, storageGeneration: generation });
  const d = dir();
  if (!d.exists) d.create({ intermediates: true });
  const tmp = new File(d, 'state.tmp.json');
