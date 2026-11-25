@@ -107,7 +107,9 @@ export default function App() {
   catch { Alert.alert('Eliminazione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return false; }
   autosave.committed();
   latest.current = next; setState(next);
-  deleteMedia(id);
+  if (deleteMedia(id, next) !== 'removed-or-absent') {
+   Alert.alert('Pulizia locale incompleta', 'La pratica è stata rimossa dall’archivio locale, ma alcuni allegati potrebbero essere ancora sul dispositivo. Contatta l’assistenza se devi eliminarli.');
+  }
   return true;
  };
 
@@ -136,7 +138,12 @@ export default function App() {
     catch { Alert.alert('Rimozione non riuscita', 'Non è stato possibile salvare la modifica. Riprova.'); return; }
     autosave.committed();
     latest.current = next; setState(next);
-    if (removal.unreferenced) deleteDraftPhotoFile(d.id, removal.removed);
+    if (removal.unreferenced) {
+     const cleanup = deleteDraftPhotoFile(d.id, removal.removed, next);
+     if (cleanup !== 'removed-or-absent' && cleanup !== 'retained-reference') {
+      Alert.alert('Pulizia locale incompleta', 'Il riferimento è stato rimosso, ma il file potrebbe essere ancora sul dispositivo. Contatta l’assistenza se devi eliminarlo.');
+     }
+    }
    }}
    onClose={() => setRoute({ name: 'home' })}
    onFinish={() => setRoute({ name: 'result', id: d.id })} />;
