@@ -44,12 +44,13 @@ vi.mock('expo-secure-store', () => ({
   secure.writes++;
  },
 }));
-vi.mock('expo-crypto', () => ({
- getRandomValues: (a: Uint8Array) => {
+vi.mock('expo-crypto', async () => {
+ const { randomFillSync } = await import('node:crypto');
+ return { getRandomValues: (a: Uint8Array) => {
   if (secure.failRandom) throw new Error('simulated RNG unavailable');
-  return globalThis.crypto.getRandomValues(a);
- },
-}));
+  return randomFillSync(a);
+ } };
+});
 
 import { loadState, newDraft, saveStateNow, type AppState } from './drafts';
 
