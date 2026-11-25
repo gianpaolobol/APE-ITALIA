@@ -93,6 +93,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify staging-only mobile configuration
+        if: inputs.mode == 'distribute'
+        env:
+          EXPECTED_STAGING_API: ${{ vars.STAGING_PUBLIC_API_URL }}
+          EXPECTED_STAGING_OIDC: ${{ vars.STAGING_PUBLIC_OIDC_ISSUER }}
+        run: node scripts/verify-mobile-test-config.mjs
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -217,6 +223,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Verify staging-only mobile configuration
+        if: inputs.mode == 'distribute'
+        env:
+          EXPECTED_STAGING_API: ${{ vars.STAGING_PUBLIC_API_URL }}
+          EXPECTED_STAGING_OIDC: ${{ vars.STAGING_PUBLIC_OIDC_ISSUER }}
+        run: node scripts/verify-mobile-test-config.mjs
       - name: Xcode 26 (App Store Connect requires the iOS 26 SDK or later)
         run: |
           set -euo pipefail

@@ -1,6 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { validateMobileTestConfig } from './verify-mobile-test-config.mjs';
 
 const workflow = readFileSync(new URL('../.github/workflows/mobile-release.yml', import.meta.url), 'utf8');
 const steps = [...workflow.matchAll(/^      - name: (.+)\n([\s\S]*?)(?=^      - |^  [\w-]+:|$(?![\s\S]))/gm)];
@@ -61,4 +62,32 @@ test('public GitHub artifacts contain only demo build-only Android packages', ()
   assert.match(upload[1], /^          if-no-files-found: error$/m);
  }
  assert.ok(workflow.includes('Nessun APK/AAB di distribuzione pubblicato come artifact GitHub.'));
+});
+
+const staging = { api: 'https://api-staging.example.test', expectedApi: 'https://api-staging.example.test',
+ issuer: '', expectedIssuer: '', clientId: '', audience: '' };
+test('connected mobile distribution accepts only the explicitly configured staging origin', () => {
+ assert.doesNotThrow(() => validateMobileTestConfig(staging));
+ for (const overrides of [{ api: '' }, { expectedApi: '' }, { api: 'https://api.example.test', expectedApi: 'https://api.example.test' },
+  { api: 'https://api-staging.example.test/' }, { api: 'http://api-staging.example.test' }, { api: 'https://other-staging.example.test' },
+  { api: 'https://api-staging.example.test@evil.test' }, { api: 'https://api-staging.example.test?x=1' }]) {
+  assert.throws(() => validateMobileTestConfig({ ...staging, ...overrides }));
+ }
+});
+test('optional OIDC settings must be complete and point to the expected staging issuer', () => {
+ const oidc = { ...staging, issuer: 'https://auth-staging.example.test/realms/ape', expectedIssuer: 'https://auth-staging.example.test/realms/ape', clientId: 'ape-mobile', audience: 'ape-api' };
+ assert.doesNotThrow(() => validateMobileTestConfig(oidc));
+ for (const overrides of [{ clientId: '' }, { audience: '' }, { expectedIssuer: '' }, { issuer: 'https://auth.example.test/realms/ape', expectedIssuer: 'https://auth.example.test/realms/ape' },
+  { issuer: 'https://auth-staging.example.test/../ape', expectedIssuer: 'https://auth-staging.example.test/../ape' }, { issuer: 'https://auth-staging.example.test/realms/other' }, { clientId: 'a b' }]) {
+  assert.throws(() => validateMobileTestConfig({ ...oidc, ...overrides }));
+ }
+});
+test('both native jobs validate staging before prebuild and signing, without blocking build-only', () => {
+ const matches = [...workflow.matchAll(/^      - name: Verify staging-only mobile configuration\n([\s\S]*?)(?=^      - |^  [\w-]+:|$(?![\s\S]))/gm)];
+ assert.equal(matches.length, 2);
+ for (const m of matches) {
+  assert.match(m[1], /^        if: inputs\.mode == 'distribute'$/m);
+  assert.ok(m[1].includes('node scripts/verify-mobile-test-config.mjs'));
+  assert.ok(workflow.indexOf('Native project (expo prebuild)', m.index) > m.index);
+ }
 });
