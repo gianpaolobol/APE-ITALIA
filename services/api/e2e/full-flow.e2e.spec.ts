@@ -23,6 +23,7 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
  const REGION = 'Regione-E2E-' + randomUUID().slice(0, 8);
  const customer = 'e2e-customer-' + randomUUID(), certSub = 'e2e-cert-' + randomUUID();
  let jwks: Server, api: ChildProcess, base = '', issuer = '', key: CryptoKey, rogue: CryptoKey, org = '', certifierId = '';
+ const matrixOrgs: string[] = [], matrixCertifiers: string[] = [];
  const tok = (sub: string, k: CryptoKey = key) => new SignJWT({}).setProtectedHeader({ alg: 'RS256', kid: 'e2e' }).setIssuer(issuer).setAudience('ape-italia-api')
   .setSubject(sub).setIssuedAt().setExpirationTime('5m').sign(k);
  const call = async (sub: string, path: string, init: RequestInit & { org?: boolean } = {}) => {
@@ -63,13 +64,15 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   api?.kill('SIGTERM');
   jwks?.close();
   if (!enabled) return;
-  const fields = await db.extractedField.findMany({ where: { organizationId: org }, select: { id: true } });
+  const organizations = [org, ...matrixOrgs].filter(Boolean);
+  const certifiers = [certifierId, ...matrixCertifiers].filter(Boolean);
+  const fields = await db.extractedField.findMany({ where: { organizationId: { in: organizations } }, select: { id: true } });
   await db.extractedFieldRevision.deleteMany({ where: { extractedFieldId: { in: fields.map(f => f.id) } } });
   for (const t of ['certificate', 'extractedField', 'inspection', 'auditEvent', 'assignment', 'evidence', 'consent', 'apeCase', 'property', 'invitation', 'membership'] as const) {
-   await (db[t] as unknown as { deleteMany(a: unknown): Promise<unknown> }).deleteMany({ where: { organizationId: org } });
+   await (db[t] as unknown as { deleteMany(a: unknown): Promise<unknown> }).deleteMany({ where: { organizationId: { in: organizations } } });
   }
-  await db.organization.deleteMany({ where: { id: org } });
-  await db.certifier.deleteMany({ where: { id: certifierId } });
+  await db.organization.deleteMany({ where: { id: { in: organizations } } });
+  await db.certifier.deleteMany({ where: { id: { in: certifiers } } });
   await db.$disconnect();
  });
 
@@ -172,4 +175,106 @@ describe.skipIf(!enabled)('E2E: customer request to certifier export over HTTP',
   const res = await fetch(base + '/v1/properties', { headers: { Authorization: 'Bearer ' + (await tok(other)), 'x-organization-id': org } });
   expect(res.status).toBe(403);
  });
+
+ it('runs ten isolated customer/certifier journeys and crosses organization roles over real HTTP', async () => {
+  type Fixture = { owner: string; admin: string; viewer: string; certifier: string; org: string; region: string; address: string; caseId: string; assignmentId: string; evidenceId: string; registration: string };
+  const fixtures: Fixture[] = [];
+  const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const scoped = (sub: string, orgId: string, path: string, init: RequestInit = {}) => call(sub, path, { ...init, headers: { ...(init.headers as Record<string, string> | undefined), 'x-organization-id': orgId } });
+  const namespace = randomUUID().slice(0, 8);
+
+  // Distinct regions guarantee deterministic matching independent of other CI tests.
+  // No actual people, addresses, deposited certificates or external mail services.
+  for (let i = 0; i < 10; i++) {
+   const stem = 'matrix-' + namespace + '-' + i;
+   const owner = stem + '-customer', admin = stem + '-admin', viewer = stem + '-viewer', certifier = stem + '-certifier';
+   const region = 'Regione-Sintetica-' + stem, registration = 'MATRIX-' + namespace + '-' + i;
+   const organization = await createOrganizationWithOwner(db, { name: 'Studio sintetico ' + stem, ownerSubject: owner, operator: 'ci-role-matrix' });
+   matrixOrgs.push(organization.organizationId);
+   const orgId = organization.organizationId;
+   await db.membership.createMany({ data: [
+    { organizationId: orgId, userSubject: admin, role: 'admin' },
+    { organizationId: orgId, userSubject: viewer, role: 'viewer' },
+   ] });
+   const registered = await registerVerifiedCertifier(db, { subject: certifier, displayName: 'Certificatore sintetico ' + i, registrationId: registration, regions: [region], operator: 'ci-role-matrix' });
+   matrixCertifiers.push(registered.id);
+
+   const address = 'Via Sintetica ' + stem;
+   const propertyInput = { address, city: 'Comune sintetico', region, floorAreaM2: 60 + i };
+   expect((await scoped(viewer, orgId, '/v1/properties', post(propertyInput))).status).toBe(403);
+   expect((await scoped(viewer, orgId, '/v1/members')).status).toBe(403);
+   const members = await json(await scoped(admin, orgId, '/v1/members'));
+   expect(members.map((m: { role: string }) => m.role).sort()).toEqual(['admin', 'owner', 'viewer']);
+   expect((await scoped(admin, orgId, '/v1/invitations', post({ role: 'owner' }))).status).toBe(403);
+   const property = await json(await scoped(owner, orgId, '/v1/properties', post(propertyInput)));
+   const c = await json(await scoped(owner, orgId, '/v1/cases', post({ propertyId: property.id })));
+   expect((await json(await scoped(viewer, orgId, '/v1/cases'))).map((item: { id: string }) => item.id)).toEqual([c.id]);
+   const survey = post({ answers: { floorArea: 60 + i } });
+   expect((await scoped(owner, orgId, '/v1/cases/' + c.id + '/survey', survey)).status).toBe(403);
+   expect((await scoped(owner, orgId, '/v1/cases/' + c.id + '/submit', { method: 'POST' })).status).toBe(403);
+   const notices = await json(await scoped(owner, orgId, '/v1/notices'));
+   await json(await scoped(owner, orgId, '/v1/cases/' + c.id + '/consents', post({ kind: 'evidence_processing', version: notices.evidence_processing })));
+   expect((await scoped(owner, orgId, '/v1/cases/' + c.id + '/survey', survey)).status).toBe(200);
+   const form = new FormData();
+   form.append('kind', 'boiler');
+   form.append('file', new Blob([new Uint8Array(jpegWithExif())], { type: 'image/jpeg' }), 'caldaia-sintetica.jpg');
+   const evidence = await json(await scoped(owner, orgId, '/v1/cases/' + c.id + '/evidence', { method: 'POST', body: form }));
+   expect((await json(await scoped(owner, orgId, '/v1/cases/' + c.id + '/submit', { method: 'POST' }))).status).toBe('SUBMITTED');
+   const offers = await json(await call(certifier, '/v1/certifier/assignments'));
+   expect(offers).toHaveLength(1);
+   const offer = offers[0];
+   expect(offer.caseId).toBe(c.id);
+   expect(offer.property).toEqual({ city: 'Comune sintetico', region });
+   expect((await call(certifier, '/v1/certifier/assignments/' + offer.id + '/evidence')).status).toBe(404);
+   fixtures.push({ owner, admin, viewer, certifier, org: orgId, region, address, caseId: c.id, assignmentId: offer.id, evidenceId: evidence.id, registration });
+  }
+
+  for (let i = 0; i < fixtures.length; i++) {
+   const f = fixtures[i], other = fixtures[(i + 1) % fixtures.length];
+   const customerPath = '/v1/cases/' + f.caseId;
+   const assignmentPath = '/v1/certifier/assignments/' + f.assignmentId;
+   expect((await scoped(other.owner, f.org, '/v1/cases')).status).toBe(403);
+   expect((await scoped(other.admin, f.org, '/v1/members')).status).toBe(403);
+   expect((await scoped(other.owner, other.org, customerPath)).status).toBe(404);
+   expect((await call(other.certifier, assignmentPath + '/accept', { method: 'POST' })).status).toBe(404);
+   await json(await call(f.certifier, assignmentPath + '/accept', { method: 'POST' }));
+   const assignments = await json(await call(f.certifier, '/v1/certifier/assignments'));
+   expect(assignments[0].property.address).toBe(f.address);
+   expect((await call(other.certifier, assignmentPath + '/evidence')).status).toBe(404);
+   const files = await json(await call(f.certifier, assignmentPath + '/evidence'));
+   expect(files.map((item: { id: string }) => item.id)).toEqual([f.evidenceId]);
+   const file = await call(f.certifier, assignmentPath + '/evidence/' + f.evidenceId + '/content');
+   expect(file.status).toBe(200);
+   expect(Buffer.from(await file.arrayBuffer()).includes(Buffer.from('GPS 44.4949N'))).toBe(false);
+
+   await json(await call(f.certifier, assignmentPath + '/inspection', post({ scheduledAt: new Date(Date.now() + 3600_000).toISOString() })));
+   const report = { performedAt: new Date().toISOString(), attendees: 'Proprietario sintetico', declaration: true, findings: [
+    { field: 'heating.generator.nominal_power_kw', status: 'verified', value: 24, source: 'photo', evidenceId: f.evidenceId, note: 'Dato sintetico' },
+    { field: 'envelope.wall.insulation', status: 'undeterminable', source: 'inspection', note: 'Nessun saggio sintetico' },
+   ] };
+   expect((await json(await call(f.certifier, assignmentPath + '/inspection/report', post(report)))).summary).toEqual({ verified: 1, to_verify: 0, undeterminable: 1 });
+   const exported = await json(await call(f.certifier, assignmentPath + '/export'));
+   expect(exported).toMatchObject({ schema: 'ape-italia/case-export', case: { status: 'INSPECTION_DONE' } });
+   const certificate = new FormData();
+   certificate.append('regionalId', f.registration);
+   certificate.append('depositedAt', new Date(Date.now() - 60_000).toISOString());
+   certificate.append('declaration', 'true');
+   certificate.append('file', new Blob([new Uint8Array(pdfBytes())], { type: 'application/pdf' }), 'ape-sintetico.pdf');
+   await json(await call(f.certifier, assignmentPath + '/certificate', { method: 'POST', body: certificate }));
+   expect((await scoped(other.owner, other.org, customerPath + '/certificate/content')).status).toBe(404);
+   const meta = (await json(await scoped(f.owner, f.org, customerPath + '/certificate'))).certificate;
+   expect(meta).toMatchObject({ regionalId: f.registration, deliveredAt: null });
+   const pdf = await scoped(f.owner, f.org, customerPath + '/certificate/content');
+   expect(pdf.status).toBe(200);
+   expect(Buffer.from(await pdf.arrayBuffer()).subarray(0, 5).toString()).toBe('%PDF-');
+   const receipt = post({ sha256: meta.sha256, sizeBytes: meta.sizeBytes });
+   expect(await json(await scoped(f.owner, f.org, customerPath + '/certificate/receipt', receipt))).toEqual({ confirmed: true });
+   expect(await json(await scoped(f.owner, f.org, customerPath + '/certificate/receipt', receipt))).toEqual({ confirmed: true });
+   const summaries = await json(await scoped(f.admin, f.org, '/v1/case-summaries'));
+   expect(summaries).toHaveLength(1);
+   expect(summaries[0]).toMatchObject({ id: f.caseId, status: 'DELIVERED', certificate: { regionalId: f.registration } });
+   expect(await db.auditEvent.count({ where: { organizationId: f.org, resourceId: f.caseId, action: 'certificate.deliver' } })).toBe(1);
+  }
+  expect(await db.apeCase.count({ where: { organizationId: { in: matrixOrgs }, status: 'DELIVERED' } })).toBe(10);
+ }, 120_000);
 });
