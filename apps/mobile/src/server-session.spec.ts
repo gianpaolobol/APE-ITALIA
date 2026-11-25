@@ -38,6 +38,43 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('mobile session concurrency', () => {
+ it('overwrites credentials with a non-session marker if native deletion fails, including after restart', async () => {
+  mocks.deleteItemAsync.mockRejectedValue(new Error('synthetic deletion failure'));
+  vi.stubGlobal('fetch', vi.fn(async () => noContent));
+  const s = await import('./server');
+  await s.logout();
+  expect(await s.getSession()).toBeNull();
+  expect(JSON.parse(stored!)).toEqual({ loggedOut: true });
+  vi.resetModules();
+  expect(await (await import('./server')).getSession()).toBeNull();
+ });
+ it('reports failure if both native deletion and marker storage fail', async () => {
+  mocks.deleteItemAsync.mockRejectedValue(new Error('synthetic deletion failure'));
+  mocks.setItemAsync.mockRejectedValue(new Error('synthetic write failure'));
+  const fetcher = vi.fn(async () => noContent);
+  vi.stubGlobal('fetch', fetcher);
+  const s = await import('./server');
+  await expect(s.logout()).rejects.toThrow('synthetic write failure');
+  expect(await s.getSession()).toBeNull();
+  expect(fetcher).toHaveBeenCalledWith(expect.stringContaining('/logout'), expect.anything());
+ });
+ it('serializes a failed-delete fallback with the next account login', async () => {
+  mocks.deleteItemAsync.mockRejectedValue(new Error('synthetic deletion failure'));
+  const writing = deferred<void>(), finish = deferred<void>();
+  mocks.setItemAsync.mockImplementation(async (_key: string, value: string) => {
+   if (JSON.parse(value).loggedOut) { writing.resolve(); await finish.promise; }
+   stored = value;
+  });
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/email/verify') ? ok(auth('user-b')) : noContent));
+  const s = await import('./server');
+  const logout = s.logout();
+  await writing.promise;
+  const login = s.verifyLogin('user-b@example.invalid', '123456');
+  finish.resolve();
+  await logout;
+  expect((await login).subject).toBe('user-b');
+  expect(JSON.parse(stored!).subject).toBe('user-b');
+ });
  it('does not resurrect a logged-out session when a refresh completes late; revokes the rotated token', async () => {
   const response = deferred<unknown>(), started = deferred<void>();
   const fetcher = vi.fn(async (url: string) => {

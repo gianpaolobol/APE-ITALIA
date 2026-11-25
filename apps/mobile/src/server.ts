@@ -47,7 +47,15 @@ function invalidate(): Promise<void> {
  cached = null;
  announceSession(null);
  clearRemoteCache();
- return persist(() => SecureStore.deleteItemAsync(KEY));
+ return persist(async () => {
+  try { await SecureStore.deleteItemAsync(KEY); }
+  catch {
+   // If native deletion fails, overwrite the same slot with a non-session marker.
+   // parseStoredSession rejects it on the next process start. The serialized queue
+   // ensures this cannot overwrite a newer login's credentials.
+   await SecureStore.setItemAsync(KEY, JSON.stringify({ loggedOut: true }));
+  }
+ });
 }
 
 export class ServerError extends Error { constructor(public status: number, message: string) { super(message); } }
