@@ -31,6 +31,40 @@ describe.skipIf(!enabled)('PostgreSQL: email-code login', () => {
   await expect(ctrl.verify({ email: target, code: right })).rejects.toBeInstanceOf(UnauthorizedException);
  });
 
+ it('concurrent issuances respect the hourly per-email cap and keep only one live code', async () => {
+  const target = `issue-race-${Date.now()}@example.test`;
+  const sentBefore = mailer.sent.length;
+  const results = await Promise.all(Array.from({ length: 12 }, () => ctrl.start({ email: target })));
+  expect(results.every(r => r.sent)).toBe(true);
+  expect(await db.loginCode.count({ where: { email: target } })).toBe(6);
+  expect(await db.loginCode.count({ where: { email: target, consumedAt: null } })).toBe(1);
+  expect(mailer.sent.length - sentBefore).toBe(6);
+ });
+
+ it('consuming a new code never reactivates an older code', async () => {
+  const target = `supersede-${Date.now()}@example.test`;
+  await ctrl.start({ email: target });
+  const older = codeOf();
+  const first = await db.loginCode.findFirstOrThrow({ where: { email: target } });
+  await ctrl.start({ email: target });
+  const latest = codeOf();
+  expect((await db.loginCode.findUniqueOrThrow({ where: { id: first.id } })).consumedAt).not.toBeNull();
+  await ctrl.verify({ email: target, code: latest });
+  await expect(ctrl.verify({ email: target, code: older })).rejects.toBeInstanceOf(UnauthorizedException);
+  expect(await db.loginCode.count({ where: { email: target, consumedAt: null } })).toBe(0);
+ });
+
+ it('expired codes do not consume an attempt or create an account', async () => {
+  const target = `expired-${Date.now()}@example.test`;
+  await ctrl.start({ email: target });
+  await db.loginCode.updateMany({ where: { email: target }, data: { expiresAt: new Date(Date.now() - 1000) } });
+  await expect(ctrl.verify({ email: target, code: codeOf() })).rejects.toBeInstanceOf(UnauthorizedException);
+  const row = await db.loginCode.findFirstOrThrow({ where: { email: target } });
+  expect(row.attempts).toBe(0);
+  expect(row.consumedAt).toBeNull();
+  expect(await db.platformUser.count({ where: { email: target } })).toBe(0);
+ });
+
  it('first login creates the account and a personal organization; the token authorizes it', async () => {
   await ctrl.start({ email });
   await expect(ctrl.verify({ email, code: codeOf() === '000000' ? '111111' : '000000' })).rejects.toBeInstanceOf(UnauthorizedException);
