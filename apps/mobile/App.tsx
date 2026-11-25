@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newDraft, persistPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, persistPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
 
@@ -31,7 +31,7 @@ export default function App() {
    const previous = ownerRef.current;
    ownerRef.current = s;
    setOwner(s);
-   if (previous && (!s || previous.subject !== s.subject || previous.organizationId !== s.organizationId)) setRoute({ name: 'home' });
+   if (!sameOwner(previous, s)) setRoute({ name: 'home' });
    else if (!s) setRoute(r => r.name === 'remote' ? { name: 'home' } : r);
   };
   const unsubscribe = subscribeSession(s => { observed = true; apply(s); });
@@ -85,7 +85,7 @@ export default function App() {
 
  const demo = !serverEnabled();
  const scopeKey = JSON.stringify([owner?.subject ?? null, owner?.organizationId ?? null, demo]);
- const visibleState: AppState = { version: 1, drafts: state.drafts.filter(d => canViewDraft(d, owner)), pro: visiblePro(state, owner, demo) };
+ const visibleState: AppState = { version: 1, drafts: state.drafts.filter(d => canViewDraft(d, owner, demo)), pro: visiblePro(state, owner, demo) };
  const savePro = (profile: ProProfile): boolean => {
   const cur = latest.current;
   if (!cur || !sameOwner(owner, ownerRef.current) || (!owner && !demo)) return false;
@@ -97,10 +97,10 @@ export default function App() {
   return true;
  };
  const draft = (id: string) => visibleState.drafts.find(d => d.id === id);
- const permitted = (id: string) => latest.current?.drafts.some(d => d.id === id && canViewDraft(d, ownerRef.current)) ?? false;
+ const permitted = (id: string) => latest.current?.drafts.some(d => d.id === id && canViewDraft(d, ownerRef.current, demo)) ?? false;
  const upsert = (d: Draft) => update(s => ({ ...s, drafts: [d, ...s.drafts.filter(x => x.id !== d.id)] }));
  const replace = (d: Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === d.id ? d : x)) }));
- const updateDraft = (id: string, fn: (d: Draft) => Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === id && canViewDraft(x, ownerRef.current) ? fn(x) : x)) }));
+ const updateDraft = (id: string, fn: (d: Draft) => Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === id && canViewDraft(x, ownerRef.current, demo) ? fn(x) : x)) }));
 
  // Retry only the latest archive; a failed checkpoint leaves the pending
  // intents available for another attempt. No file paths or other account data in the UI.
@@ -132,10 +132,17 @@ export default function App() {
   return true;
  };
 
+ const startDraft = () => {
+  if (!sameOwner(owner, ownerRef.current)) return;
+  const d = newScopedDraft(ownerRef.current, demo);
+  if (!d) return;
+  upsert(d); setRoute({ name: 'wizard', id: d.id });
+ };
+
  let screen: React.ReactNode = null;
  if (route.name === 'home') {
-  screen = <HomeScreen state={visibleState}
-   onNew={() => { const d = { ...newDraft(), ...(ownerRef.current ? { localOwner: { subject: ownerRef.current.subject, organizationId: ownerRef.current.organizationId } } : {}) }; upsert(d); setRoute({ name: 'wizard', id: d.id }); }}
+  screen = <HomeScreen key={scopeKey} state={visibleState} canStartDraft={demo || !!owner}
+   onNew={startDraft}
    onOpen={d => setRoute(d.status !== 'bozza' || Object.keys(d.answers).length > 8 ? { name: 'result', id: d.id } : { name: 'wizard', id: d.id })}
    onDelete={d => { removeDraft(d.id); }}
    onPro={() => setRoute({ name: 'pro' })} />;
@@ -149,7 +156,7 @@ export default function App() {
    onRemovePhoto={(qid, p) => {
     const cur = latest.current;
     const current = cur?.drafts.find(x => x.id === d.id);
-    if (!cur || !current || !canViewDraft(current, ownerRef.current)) return;
+    if (!cur || !current || !canViewDraft(current, ownerRef.current, demo)) return;
     const removal = removeDraftPhoto(current, qid, p.uri);
     if (!removal) return;
     const logical = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? removal.draft : x) };
@@ -171,7 +178,7 @@ export default function App() {
   screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
    onCheckpoint={async cp => {
     const cur = latest.current;
-    if (!cur || !permitted(d.id) || (cp.remoteOwner && !canViewDraft({ ...d, ...cp }, ownerRef.current))) throw new Error('Richiesta non più disponibile.');
+    if (!cur || !permitted(d.id) || (cp.remoteOwner && !canViewDraft({ ...d, ...cp }, ownerRef.current, demo))) throw new Error('Richiesta non più disponibile.');
     const next = { ...cur, drafts: cur.drafts.map(x => x.id === d.id ? { ...x, ...cp } : x) };
     latest.current = next; setState(next);
     autosave.schedule(next);
@@ -188,8 +195,8 @@ export default function App() {
   const d = draft(route.id)!;
   screen = <JobScreen draft={d} pro={visibleState.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)} />;
  } else {
-  screen = <HomeScreen state={visibleState}
-   onNew={() => { const d = { ...newDraft(), ...(ownerRef.current ? { localOwner: { subject: ownerRef.current.subject, organizationId: ownerRef.current.organizationId } } : {}) }; upsert(d); setRoute({ name: 'wizard', id: d.id }); }}
+  screen = <HomeScreen key={scopeKey} state={visibleState} canStartDraft={demo || !!owner}
+   onNew={startDraft}
    onOpen={d => setRoute({ name: 'result', id: d.id })} onDelete={d => { removeDraft(d.id); }} onPro={() => setRoute({ name: 'pro' })} />;
  }
 

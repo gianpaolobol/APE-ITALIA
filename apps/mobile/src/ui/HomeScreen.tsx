@@ -20,12 +20,16 @@ const STEPS_HOW = [
  { icon: 'shield-checkmark-outline', title: 'Certificatore accreditato', text: 'Un professionista SACE fa il sopralluogo, firma e deposita l’APE.' },
 ] as const;
 
-export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: AppState; onNew: () => void; onOpen: (d: Draft) => void; onDelete: (d: Draft) => void; onPro: () => void }) {
+export function HomeScreen({ state, canStartDraft, onNew, onOpen, onDelete, onPro }: { state: AppState; canStartDraft: boolean; onNew: () => void; onOpen: (d: Draft) => void; onDelete: (d: Draft) => void; onPro: () => void }) {
  const insets = useSafeAreaInsets();
  const minPrice = Math.min(...PRICE_LIST.tiers.map(t => t.price));
  const [login, setLogin] = useState(false);
  const [email, setEmail] = useState<string | null>(null);
- useEffect(() => { if (serverEnabled()) getSession().then(s => setEmail(s?.email ?? null)); }, [state]);
+ useEffect(() => {
+  let active = true;
+  if (serverEnabled()) void getSession().then(s => { if (active) setEmail(s?.email ?? null); }).catch(() => { if (active) setEmail(null); });
+  return () => { active = false; };
+ }, []);
  const removeAccount = () => Alert.alert('Eliminare l’account?', 'L’accesso e i dati di login saranno rimossi. Le pratiche dell’organizzazione, anche non inviate, non vengono cancellate automaticamente: la rimozione dei dati delle pratiche richiede una verifica separata. Le copie locali possono restare sul dispositivo.', [
   { text: 'Annulla', style: 'cancel' },
   { text: 'Elimina', style: 'destructive', onPress: () => deleteAccount().then(() => { setEmail(null); Alert.alert('Account eliminato'); }).catch(() => Alert.alert('Errore', 'Riprova tra poco.')) },
@@ -43,7 +47,8 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
     <View style={st.scaleRow}>
      {(['A4', 'A1', 'B', 'C', 'D', 'E', 'F', 'G'] as const).map(c => <ClassBadge key={c} value={c} size={22} />)}
     </View>
-    <Button title="Richiedi il tuo APE" icon="arrow-forward" onPress={onNew} style={{ backgroundColor: C.white, marginTop: S.l }} kind="secondary" />
+    <Button title="Richiedi il tuo APE" icon="arrow-forward" onPress={() => { if (canStartDraft) onNew(); else setLogin(true); }} style={{ backgroundColor: C.white, marginTop: S.l }} kind="secondary" />
+    {!canStartDraft && <Text style={st.priceNote}>Accedi prima di inserire indirizzi, documenti e foto: le richieste restano associate al tuo account.</Text>}
     <Text style={st.priceNote}>Prezzo fisso da {euro(minPrice)} · sopralluogo, IVA e deposito SACE inclusi</Text>
    </LinearGradient>
 
@@ -53,6 +58,7 @@ export function HomeScreen({ state, onNew, onOpen, onDelete, onPro }: { state: A
      {state.drafts.map(d => <DraftCard key={d.id} d={d} onOpen={() => onOpen(d)} onDelete={() => onDelete(d)} />)}
     </>) : null}
 
+    {serverEnabled() && <Text style={[F.small, { marginTop: S.m }]}>Le bozze di precedenti versioni senza account associato non vengono mostrate né cancellate automaticamente. Per il recupero contatta l’assistenza.</Text>}
     <SectionTitle>Come funziona</SectionTitle>
     <Card>
      {STEPS_HOW.map((s, i) => (

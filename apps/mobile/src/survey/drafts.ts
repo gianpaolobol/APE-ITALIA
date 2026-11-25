@@ -50,12 +50,13 @@ export function storePro(state: AppState, owner: DraftOwner | null, demo: boolea
  return { ...state, proProfiles: [...(state.proProfiles ?? []).filter(p => !sameOwner(p.owner, scope)), { owner: scope, profile }] };
 }
 /** Unattributed legacy remote drafts are quarantined, not assigned to a new account. */
-export function canViewDraft(d: Draft, owner: DraftOwner | null): boolean {
+export function canViewDraft(d: Draft, owner: DraftOwner | null, demo = false): boolean {
  const matches = (bound: DraftOwner) => owner !== null && bound.subject === owner.subject && bound.organizationId === owner.organizationId;
  if (d.localOwner && !matches(d.localOwner)) return false;
  if (d.remoteOwner) return matches(d.remoteOwner);
  if (d.remoteCreationKey || d.remoteCaseId || d.remotePropertyId || Object.keys(d.videoUploads ?? {}).length || d.uploaded?.length) return false;
- return true;
+ // Ownerless drafts cannot be attributed to whichever account logs in next.
+ return d.localOwner !== undefined ? matches(d.localOwner) : demo && owner === null;
 }
 
 const EMPTY: AppState = { version: 1, drafts: [] };
@@ -333,6 +334,12 @@ export function retryMediaCleanup(state: AppState): AppState {
  const next = remaining.length ? { ...rest, pendingMediaCleanup: remaining } : rest;
  saveStateNow(next);
  return next;
+}
+
+/** No personal survey is created without an account in server-connected mode. */
+export function newScopedDraft(owner: DraftOwner | null, demo: boolean): Draft | null {
+ if (owner) return { ...newDraft(), localOwner: { subject: owner.subject, organizationId: owner.organizationId } };
+ return demo ? newDraft() : null;
 }
 
 export function newDraft(): Draft {
