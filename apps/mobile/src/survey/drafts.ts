@@ -64,11 +64,62 @@ const backupFile = () => new File(dir(), 'state.bak.json');
 
 type SnapshotRead = { kind: 'missing' | 'invalid' } | { kind: 'valid'; state: AppState };
 
+// Validate persisted shape before exposing a snapshot to the UI or account filters.
+const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+const nonempty = (v: unknown): v is string => typeof v === 'string' && v.trim().length > 0;
+const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every(x => typeof x === 'string');
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const safeId = (v: unknown): v is string => typeof v === 'string' && /^[a-zA-Z0-9_-]+$/.test(v);
+const optional = (v: unknown, check: (x: unknown) => boolean) => v === undefined || check(v);
+const ownerShape = (v: unknown, allowNullOrg: boolean): boolean => record(v) && nonempty(v.subject) &&
+ (nonempty(v.organizationId) || (allowNullOrg && v.organizationId === null));
+const photoShape = (v: unknown): boolean => record(v) && nonempty(v.uri) &&
+ typeof v.name === 'string' && nonempty(v.mimeType) && nonempty(v.takenAt) &&
+ [v.width, v.height, v.durationSec].every(x => optional(x, finite));
+const answerShape = (v: unknown): boolean => typeof v === 'string' || typeof v === 'boolean' || finite(v) || strings(v);
+const profileShape = (v: unknown): boolean => {
+ if (!record(v) || !record(v.data) || !nonempty(v.submittedAt) ||
+     (v.status !== 'in_verifica' && v.status !== 'inviata_al_server')) return false;
+ const d = v.data;
+ return ['firstName', 'lastName', 'email', 'phone', 'vatNumber', 'taxCode', 'profession', 'professionalOrder',
+  'orderNumber', 'region', 'saceNumber'].every(k => typeof d[k] === 'string') &&
+  optional(d.pec, x => typeof x === 'string') && strings(d.provinces) && finite(d.maxMonthlyJobs) &&
+  typeof d.acceptsTerms === 'boolean' && typeof d.declaresAccreditation === 'boolean';
+};
+const jobShape = (v: unknown): boolean => {
+ if (!record(v) || !['nuova', 'accettata', 'rifiutata', 'consegnata'].some(s => s === v.status) ||
+     !record(v.certifier) || typeof v.certifier.name !== 'string' || typeof v.certifier.sace !== 'string') return false;
+ return optional(v.acceptedAt, nonempty) &&
+  optional(v.call, x => record(x) && nonempty(x.at) && nonempty(x.url)) &&
+  optional(v.visit, x => record(x) && nonempty(x.at)) &&
+  optional(v.verbale, x => record(x) && ['date', 'start', 'end', 'attendees', 'notes', 'ownerName', 'savedAt']
+   .every(k => typeof x[k] === 'string') && strings(x.checks) &&
+   typeof x.ownerConfirmed === 'boolean' && typeof x.declaration === 'boolean') &&
+  optional(v.ape, x => record(x) && nonempty(x.code) && nonempty(x.energyClass) && nonempty(x.deliveredAt) &&
+   optional(x.depositedAt, nonempty) && optional(x.pdf, photoShape));
+};
+function draftShape(v: unknown): v is Draft {
+ return record(v) && safeId(v.id) && nonempty(v.createdAt) && nonempty(v.updatedAt) &&
+  ['bozza', 'pronta', 'inviata'].some(s => s === v.status) &&
+  record(v.answers) && Object.values(v.answers).every(answerShape) &&
+  record(v.photos) && Object.values(v.photos).every(x => Array.isArray(x) && x.every(photoShape)) &&
+  [v.sentAt, v.remoteCaseId, v.remoteCreationKey, v.remotePropertyId].every(x => optional(x, nonempty)) &&
+  optional(v.localOwner, x => ownerShape(x, true)) && optional(v.remoteOwner, x => ownerShape(x, false)) &&
+  optional(v.uploaded, strings) && optional(v.videoUploads, x => record(x) && Object.values(x).every(nonempty)) &&
+  optional(v.job, jobShape);
+}
+function snapshotShape(v: unknown): v is AppState {
+ if (!record(v) || v.version !== 1 || !Array.isArray(v.drafts) || !v.drafts.every(draftShape)) return false;
+ if (new Set(v.drafts.map(d => d.id)).size !== v.drafts.length) return false;
+ return optional(v.pro, profileShape) && optional(v.proProfiles, x => Array.isArray(x) &&
+  x.every(p => record(p) && (p.owner === null || ownerShape(p.owner, true)) && profileShape(p.profile)));
+}
+
 async function read(f: File): Promise<SnapshotRead> {
  try {
   if (!f.exists) return { kind: 'missing' };
-  const parsed = JSON.parse(await f.text()) as AppState;
-  return parsed && parsed.version === 1 && Array.isArray(parsed.drafts)
+  const parsed: unknown = JSON.parse(await f.text());
+  return snapshotShape(parsed)
    ? { kind: 'valid', state: parsed } : { kind: 'invalid' };
  } catch {
   return { kind: 'invalid' };
@@ -132,6 +183,7 @@ export function persistPhoto(draftId: string, src: { uri: string; name: string; 
 }
 
 export function deleteMedia(draftId: string): void {
+ if (!safeId(draftId)) return;
  try { const d = new Directory(dir(), 'media', draftId); if (d.exists) d.delete(); } catch { /* best effort */ }
 }
 
