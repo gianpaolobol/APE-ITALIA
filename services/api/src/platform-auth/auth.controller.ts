@@ -32,10 +32,19 @@ export class PlatformAuthController {
   const { cfg, mailer } = this.ready();
   const email = typeof body?.email === 'string' ? normalizeEmail(body.email) : '';
   if (!EMAIL_RE.test(email)) throw new BadRequestException('Valid email required');
-  const recent = await this.db.loginCode.count({ where: { email, createdAt: { gt: new Date(Date.now() - 3600_000) } } });
-  if (recent >= 6) return { sent: true }; // silent cap: no enumeration, no mail bombing
   const code = newCode();
-  await this.db.loginCode.create({ data: { email, codeHash: hashCode(cfg, email, code), expiresAt: new Date(Date.now() + CODE_TTL_MINUTES * 60_000) } });
+  const issued = await this.db.$transaction(async tx => {
+   // Serialize issuance for a normalized email, including across API replicas using the same database.
+   await tx.$queryRaw<{ locked: number }[]>`SELECT 1 AS locked FROM pg_advisory_xact_lock(hashtextextended(${'ape-login-code:' + email}, 0))`;
+   const now = new Date();
+   const recent = await tx.loginCode.count({ where: { email, createdAt: { gt: new Date(now.getTime() - 3600_000) } } });
+   if (recent >= 6) return false;
+   // A new issuance invalidates previous codes; consuming the newest cannot resurrect an older one.
+   await tx.loginCode.updateMany({ where: { email, consumedAt: null }, data: { consumedAt: now } });
+   await tx.loginCode.create({ data: { email, codeHash: hashCode(cfg, email, code), expiresAt: new Date(now.getTime() + CODE_TTL_MINUTES * 60_000) } });
+   return true;
+  });
+  if (!issued) return { sent: true }; // silent cap: no enumeration, no mail bombing
   await mailer.send({ to: email, subject: `${code} è il tuo codice APE Italia`, text: `Il tuo codice di accesso ad APE Italia è ${code}.\nScade tra ${CODE_TTL_MINUTES} minuti. Se non l'hai richiesto, ignora questa email.` });
   return { sent: true };
  }
@@ -51,10 +60,11 @@ export class PlatformAuthController {
   if (!row) throw new UnauthorizedException('Code expired or invalid');
   // Reserve the attempt atomically BEFORE comparing: concurrent guesses cannot all read the same
   // counter and exceed CODE_MAX_ATTEMPTS. A correct code also spends one of the attempts.
-  const reserved = await this.db.loginCode.updateMany({ where: { id: row.id, consumedAt: null, attempts: { lt: CODE_MAX_ATTEMPTS } }, data: { attempts: { increment: 1 } } });
+  const reserved = await this.db.loginCode.updateMany({ where: { id: row.id, consumedAt: null, expiresAt: { gt: new Date() }, attempts: { lt: CODE_MAX_ATTEMPTS } }, data: { attempts: { increment: 1 } } });
   if (reserved.count !== 1) throw new UnauthorizedException('Code expired or invalid');
   if (!sameHash(row.codeHash, hashCode(cfg, email, code))) throw new UnauthorizedException('Code expired or invalid');
-  const consumed = await this.db.loginCode.updateMany({ where: { id: row.id, consumedAt: null }, data: { consumedAt: new Date() } });
+  const consumeAt = new Date();
+  const consumed = await this.db.loginCode.updateMany({ where: { id: row.id, consumedAt: null, expiresAt: { gt: consumeAt } }, data: { consumedAt: consumeAt } });
   if (consumed.count !== 1) throw new UnauthorizedException('Code already used');
   const user = await this.db.$transaction(async tx => {
    let u = await tx.platformUser.findUnique({ where: { email } });
