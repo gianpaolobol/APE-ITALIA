@@ -46,7 +46,7 @@ Il numero di build è il numero dell'esecuzione (`github.run_number`), quindi se
 | `ASC_ISSUER_ID` | Issuer ID |
 | `ASC_KEY_P8` | testo del file `.p8` incollato così com'è (comodo da iPhone: aprilo in File → copia tutto). In alternativa `ASC_KEY_P8_BASE64` con il file in base64 (PowerShell: `[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXX.p8"))`) |
 
-5. Dopo il primo caricamento: **TestFlight → Test interni** → aggiungi te stesso; installa l'app **TestFlight** sull'iPhone e accetta l'invito. L'app dichiara solo crittografia standard (`ITSAppUsesNonExemptEncryption = false`): conferma che è corretto per il tuo caso.
+5. Dopo il primo caricamento: **TestFlight → Test interni** → aggiungi te stesso; installa l'app **TestFlight** sull'iPhone e accetta l'invito. La cifratura locale XChaCha20-Poly1305 usa `@noble/ciphers`, non esclusivamente le API crittografiche del sistema Apple. Non presumere l'esenzione: il flag `ITSAppUsesNonExemptEncryption` non è più impostato automaticamente. Prima della distribuzione TestFlight verificare il questionario e l'eventuale documentazione richiesta in App Store Connect, incluse le regole per la Francia se pertinente. Riferimenti: https://developer.apple.com/help/app-store-connect/manage-app-information/overview-of-export-compliance e https://developer.apple.com/help/app-store-connect/reference/app-information/export-compliance-documentation-for-encryption/. Il titolare o un ruolo autorizzato deve convalidare la dichiarazione; non dichiarare esenzioni non verificate.
 
 ## 2. Google Play (test interno) — una tantum
 1. **Chiave di caricamento** (una volta, conservala con cura insieme alle password; con Play App Signing, se persa, si può chiedere il reset a Google):
