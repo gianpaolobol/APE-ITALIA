@@ -64,6 +64,39 @@ describe('draft snapshots and deletion', () => {
   expect(await loadState()).toEqual(state(a));
  });
 
+
+ it('recovers a valid backup when primary is parseable but structurally invalid', async () => {
+  const d = newDraft();
+  fs.files.set(backup, JSON.stringify(state(d)));
+  for (const bad of [null, {}, { ...d, photos: null }, { ...d, answers: [] },
+   { ...d, localOwner: null }, { ...d, remoteOwner: { subject: 'a' } },
+   { ...d, uploaded: 'uri' }, { ...d, videoUploads: [] }, { ...d, id: '../other' },
+   { ...d, photos: { wall: [null] } }, { ...d, job: { status: 'accettata' } }]) {
+   fs.files.set(primary, JSON.stringify({ version: 1, drafts: [bad] }));
+   expect(await loadState()).toEqual(state(d));
+  }
+ });
+ it('refuses duplicate draft identifiers or malformed profile scopes without rewriting either snapshot', async () => {
+  const d = newDraft();
+  for (const invalid of [state(d, d), { ...state(d), proProfiles: [null] },
+   { ...state(d), proProfiles: [{ owner: { subject: 'a' }, profile: {} }] }]) {
+   fs.files.set(primary, JSON.stringify(invalid));
+   fs.files.set(backup, JSON.stringify(invalid));
+   const before = [...fs.files];
+   await expect(loadState()).rejects.toThrow('Local snapshots could not be recovered');
+   expect([...fs.files]).toEqual(before);
+  }
+ });
+ it('preserves typed legacy survey data and account scopes across snapshot round trip', async () => {
+  const d = { ...newDraft(), answers: { a: false, b: 0, c: '', d: ['one'] },
+   localOwner: { subject: 'a', organizationId: null },
+   photos: { wall: [{ uri: 'file:///documents/photo.jpg', name: 'photo.jpg', mimeType: 'image/jpeg', takenAt: '2026-11-25', width: 20 }] },
+   uploaded: [], videoUploads: {} };
+  const s = state(d);
+  saveStateNow(s);
+  expect(await loadState()).toEqual(s);
+ });
+
  it('never restores a successfully deleted draft from backup', async () => {
   const a = newDraft(), b = newDraft();
   saveStateNow(state(a, b));
