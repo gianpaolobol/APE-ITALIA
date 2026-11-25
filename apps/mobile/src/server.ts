@@ -9,6 +9,20 @@ export const API_BASE = (process.env.EXPO_PUBLIC_API_BASE_URL ?? '').replace(/\/
 export const serverEnabled = (): boolean => /^https:\/\//.test(API_BASE);
 
 export type Session = { accessToken: string; expiresAt: number; refreshToken: string; email: string; subject: string; organizationId: string | null; isCertifier: boolean };
+/** Stored data is untrusted until its entire session shape has been checked. */
+export function parseStoredSession(value: string): Session | null {
+ try {
+  const v: unknown = JSON.parse(value);
+  if (!v || typeof v !== 'object' || Array.isArray(v)) return null;
+  const x = v as Record<string, unknown>;
+  const nonempty = (a: unknown): a is string => typeof a === 'string' && a.trim().length > 0;
+  if (!nonempty(x.accessToken) || !nonempty(x.refreshToken) || !nonempty(x.subject) || !nonempty(x.email) ||
+      typeof x.expiresAt !== 'number' || !Number.isFinite(x.expiresAt) ||
+      !(x.organizationId === null || nonempty(x.organizationId)) || typeof x.isCertifier !== 'boolean') return null;
+  return { accessToken: x.accessToken, refreshToken: x.refreshToken, subject: x.subject, email: x.email,
+   expiresAt: x.expiresAt, organizationId: x.organizationId, isCertifier: x.isCertifier };
+ } catch { return null; }
+}
 const KEY = 'ape.session.v1';
 let cached: Session | null | undefined;
 // A session boundary invalidates every in-flight read, refresh and login response.
@@ -83,7 +97,7 @@ export async function getSession(): Promise<Session | null> {
  if (cached !== undefined) return cached;
  const expected = generation;
  let s: Session | null = null;
- try { const v = await SecureStore.getItemAsync(KEY); s = v ? (JSON.parse(v) as Session) : null; } catch { /* no stored session */ }
+ try { const v = await SecureStore.getItemAsync(KEY); s = v ? parseStoredSession(v) : null; } catch { /* no stored session */ }
  if (generation === expected && cached === undefined) cached = s;
  return generation === expected ? cached ?? null : null;
 }
@@ -91,7 +105,7 @@ export async function getSession(): Promise<Session | null> {
 // Capture only the previous credentials for revocation; never restore them to the cache.
 async function previousSession(): Promise<Session | null> {
  if (cached !== undefined) return cached;
- try { const v = await SecureStore.getItemAsync(KEY); return v ? JSON.parse(v) as Session : null; } catch { return null; }
+ try { const v = await SecureStore.getItemAsync(KEY); return v ? parseStoredSession(v) : null; } catch { return null; }
 }
 
 export async function startLogin(email: string): Promise<void> {

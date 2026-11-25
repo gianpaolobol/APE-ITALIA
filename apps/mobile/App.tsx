@@ -188,7 +188,7 @@ export default function App() {
  } else if (route.name === 'pro') {
   screen = <ProScreen key={scopeKey} state={visibleState} canSaveLocally={!!owner || demo} onBack={() => setRoute({ name: 'home' })} onSaved={savePro} onInbox={() => { if (demo && sameOwner(owner, ownerRef.current)) setRoute({ name: 'inbox' }); }} onRemote={me => { if (ownerRef.current) setRoute(r => r.name === 'pro' ? { name: 'remote', me } : r); }} />;
  } else if (route.name === 'remote') {
-  screen = <RemoteCertifier me={route.me} onBack={() => setRoute({ name: 'pro' })} onLogout={() => { logout().finally(() => setRoute({ name: 'home' })); }} />;
+  screen = <RemoteCertifier me={route.me} onBack={() => setRoute({ name: 'pro' })} onLogout={() => { void logout().catch(() => Alert.alert('Uscita incompleta', 'La sessione locale è stata chiusa, ma non è stato possibile confermare la rimozione delle credenziali dal dispositivo. Riprova a uscire o contatta l’assistenza.')); }} />;
  } else if (route.name === 'inbox' && demo && visibleState.pro) {
   screen = <InboxScreen state={visibleState} onBack={() => setRoute({ name: 'pro' })} onOpen={d => setRoute({ name: 'job', id: d.id })} />;
  } else if (route.name === 'job' && demo && visibleState.pro && draft(route.id)) {
