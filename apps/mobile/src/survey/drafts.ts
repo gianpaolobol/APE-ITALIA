@@ -300,15 +300,48 @@ export async function saveState(s: AppState): Promise<void> {
  saveStateNow(s);
 }
 
-/** Copies a picked image/PDF into app storage so it survives cache cleanup. */
-export function persistPhoto(draftId: string, src: { uri: string; name: string; mimeType: string; width?: number; height?: number; durationSec?: number }): PhotoRef {
+type PhotoSource = { uri: string; name: string; mimeType: string; width?: number; height?: number; durationSec?: number };
+
+/** Journal an app-owned destination before copying private evidence. On interrupted
+ * capture the authenticated cleanup intent survives; once the new reference is
+ * committed both snapshots no longer carry that intent. Never delete a file
+ * based solely on a failed snapshot write (one copy may already reference it).
+ */
+export function addDraftPhoto(state: AppState, draftId: string, questionId: string, src: PhotoSource,
+ publish: (next: AppState, committed: boolean) => void): PhotoRef {
  if (!safeId(draftId)) throw new Error('Invalid draft identifier');
+ requireActiveArchive();
+ const draft = state.drafts.find(x => x.id === draftId);
+ if (!draft) throw new Error('Draft unavailable');
+ if (!safeId(questionId)) throw new Error('Invalid question identifier');
  const d = new Directory(dir(), 'media', draftId);
+ const ext = src.mimeType.startsWith('video/') ? (src.mimeType === 'video/quicktime' ? 'mov' : 'mp4') : src.mimeType === 'application/pdf' ? 'pdf' : src.mimeType === 'image/png' ? 'png' : src.mimeType === 'image/heic' ? 'heic' : src.mimeType === 'image/heif' ? 'heif' : 'jpg';
+ // A name must be unused on disk, in every draft, and in the cleanup journal.
+ // These are identifiers, not cryptographic randomness or an access boundary.
+ let chosen: { dest: File; queued: AppState } | undefined;
+ for (let i = 0; i < 8; i++) {
+  const dest = new File(d, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
+  if (dest.exists || state.drafts.some(x => mediaUris(x).includes(dest.uri))) continue;
+  const queued = enqueueMediaCleanup(state, draftId, dest.uri);
+  if (queued && queued !== state) { chosen = { dest, queued }; break; }
+ }
+ if (!chosen) throw new Error('Local evidence destination unavailable');
+ const { dest, queued } = chosen;
+ const ref: PhotoRef = { uri: dest.uri, name: src.name, mimeType: src.mimeType, takenAt: new Date().toISOString(), ...(src.width ? { width: src.width } : {}), ...(src.height ? { height: src.height } : {}), ...(src.durationSec ? { durationSec: src.durationSec } : {}) };
+ const nextDraft: Draft = { ...draft, photos: { ...draft.photos, [questionId]: [...(draft.photos[questionId] ?? []), ref] }, updatedAt: new Date().toISOString() };
+ const next = { ...state, drafts: state.drafts.map(x => x.id === draftId ? nextDraft : x) };
+ // If reservation fails, no sensitive file is copied. If the copy fails after
+ // creating a partial file, leave the durable reservation for cleanup.
+ saveStateNow(queued);
+ publish(queued, true);
  if (!d.exists) d.create({ intermediates: true });
- const ext = src.mimeType.startsWith('video/') ? (src.mimeType === 'video/quicktime' ? 'mov' : 'mp4') : src.mimeType === 'application/pdf' ? 'pdf' : src.mimeType === 'image/png' ? 'png' : src.mimeType === 'image/heic' ? 'heic' : 'jpg';
- const dest = new File(d, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`);
  new File(src.uri).copy(dest);
- return { uri: dest.uri, name: src.name, mimeType: src.mimeType, takenAt: new Date().toISOString(), ...(src.width ? { width: src.width } : {}), ...(src.height ? { height: src.height } : {}), ...(src.durationSec ? { durationSec: src.durationSec } : {}) };
+ // Keep the intended reference in memory even if writing the second snapshot
+ // fails; autosave can retry. On restart, recovery chooses a committed copy.
+ try { saveStateNow(next); }
+ catch { publish(next, false); return ref; }
+ publish(next, true);
+ return ref;
 }
 
 /** Local cleanup is separate from committing the logical deletion. */

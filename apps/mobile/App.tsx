@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, persistPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, addDraftPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
 
@@ -152,7 +152,15 @@ export default function App() {
    // Answers/photos of questions that become hidden are kept (the user may switch back); they are
    // excluded when sending.
    onUpdate={fn => updateDraft(d.id, fn)}
-   onAddPhoto={(qid, f) => { if (!permitted(d.id)) throw new Error('Richiesta non disponibile'); const ref = persistPhoto(d.id, f); updateDraft(d.id, cur => ({ ...cur, photos: { ...cur.photos, [qid]: [...(cur.photos[qid] ?? []), ref] }, updatedAt: new Date().toISOString() })); return ref; }}
+   onAddPhoto={(qid, f) => {
+    const cur = latest.current;
+    if (!cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
+    return addDraftPhoto(cur, d.id, qid, f, (next, committed) => {
+     if (committed) autosave.committed();
+     latest.current = next; setState(next);
+     if (!committed) { autosave.schedule(next); autosave.flush(); }
+    });
+   }}
    onRemovePhoto={(qid, p) => {
     const cur = latest.current;
     const current = cur?.drafts.find(x => x.id === d.id);
