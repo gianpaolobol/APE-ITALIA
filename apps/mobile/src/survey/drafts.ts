@@ -98,7 +98,8 @@ const jobShape = (v: unknown): boolean => {
   optional(v.verbale, x => record(x) && ['date', 'start', 'end', 'attendees', 'notes', 'ownerName', 'savedAt']
    .every(k => typeof x[k] === 'string') && strings(x.checks) &&
    typeof x.ownerConfirmed === 'boolean' && typeof x.declaration === 'boolean') &&
-  optional(v.ape, x => record(x) && nonempty(x.code) && nonempty(x.energyClass) && nonempty(x.deliveredAt) &&
+  optional(v.ape, x => record(x) && nonempty(x.code) && nonempty(x.energyClass) &&
+   (nonempty(x.deliveredAt) || (x.deliveredAt === '' && v.status === 'accettata' && nonempty(x.depositedAt))) &&
    optional(x.depositedAt, nonempty) && optional(x.pdf, photoShape));
 };
 function draftShape(v: unknown): v is Draft {
