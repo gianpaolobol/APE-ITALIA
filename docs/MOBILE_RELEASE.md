@@ -11,9 +11,19 @@
 ### Configurazione dal telefono, senza chiavi (consigliata)
 Workflow **Firebase bootstrap** (`.github/workflows/firebase-bootstrap.yml`), una sola volta:
 1. Viene avviato (da Claude o da Actions → Run workflow) e apre una issue con un link di accesso Google.
-2. Il titolare apre il link dall'iPhone, accede e copia il codice mostrato da Google; lo consegna a Claude in chat (Claude lo pubblica nella issue **cifrato** con la chiave pubblica effimera del runner) oppure lo scrive lui stesso nella issue come `CODE: <codice>`. L'accesso usa PKCE: il codice è inutile senza il segreto che resta nel runner. Sono accettati solo commenti del proprietario del repository.
+2. Il titolare verifica il workflow e la issue dell'esecuzione corrente, apre il link e accede. Salva **solo la chiave pubblica effimera** della issue in `runner-public.pem` su un terminale locale affidabile. Cifra il codice localmente (Bash con OpenSSL), senza inserirlo nella cronologia dei comandi:
+
+   ```bash
+   read -rsp 'Codice Google: ' code; printf '\n' >&2
+   if encrypted=$(printf '%s' "$code" | openssl pkeyutl -encrypt -pubin -inkey runner-public.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 | openssl base64 -A) && [ -n "$encrypted" ]; then
+     printf 'ENC:%s\n' "$encrypted"
+   fi
+   unset code encrypted
+   ```
+
+   Attivare `set -o pipefail` prima del comando. Pubblicare esclusivamente la riga `ENC:` risultante come commento del proprietario. Non pubblicare il codice in chiaro, non inserirlo in chat e non riutilizzare la chiave pubblica di una precedente esecuzione. Se manca un terminale locale affidabile, non usare questa procedura: configurare Firebase con un accesso autorizzato e un canale privato per gli eventuali secret. PKCE non giustifica l'esposizione di codici in chiaro. Non avviare il bootstrap se la creazione di risorse o il costo non sono stati verificati.
 3. Il runner esegue `deploy/firebase/bootstrap.sh`: progetto Google Cloud `ape-italia-*` (riusato se esiste), Firebase, API necessarie, app Android `it.apeitalia.app`, gruppo tester `interni` con l'account del titolare, account di servizio con il solo ruolo *Firebase App Distribution Admin* e **Workload Identity Federation** che accetta solo token OIDC di questo repository. Nessuna chiave viene creata o salvata.
-4. Le credenziali temporanee vengono revocate e cancellate; gli identificativi (non segreti) sono pubblicati nella issue e salvati in `deploy/firebase/config.json`, letto da "Mobile release".
+4. Il workflow tenta di revocare le credenziali temporanee e pulire il runner; se la revoca non è confermata, verificarla nell'account Google.  gli identificativi (non segreti) sono pubblicati nella issue e salvati in `deploy/firebase/config.json`, letto da "Mobile release".
 
 ### Alternativa con chiave di account di servizio
 Il workflow compila un APK di rilascio e, se trova il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, **registra da solo l'app Android** (`it.apeitalia.app`) nel progetto Firebase della chiave (solo la prima volta) e la **distribuisce ai tester**. Nessun caricamento manuale.
