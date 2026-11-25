@@ -17,6 +17,8 @@ WORKDIR /app
 # ffmpeg: walkthrough videos are re-muxed without metadata and audio before storage.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
+ARG APE_BUILD_REVISION=unknown
+RUN printf '%s\n' "$APE_BUILD_REVISION" > /app/ape-build-revision && chmod 0444 /app/ape-build-revision
 # Prisma CLI stays in the image so the same image can run `prisma migrate deploy` as a one-shot job.
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json

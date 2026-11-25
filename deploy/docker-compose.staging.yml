@@ -25,7 +25,11 @@ services:
     healthcheck: { test: ["CMD", "clamdcheck.sh"], interval: 15s, retries: 40, start_period: 120s }
     restart: unless-stopped
   migrate:
-    build: { context: .., dockerfile: services/api/Dockerfile }
+    build:
+      context: ..
+      dockerfile: services/api/Dockerfile
+      args:
+        APE_BUILD_REVISION: ${APE_BUILD_REVISION:-unknown}
     image: ape-italia-api
     command: ["npx", "prisma", "migrate", "deploy"]
     environment: &db { DATABASE_URL: "postgresql://ape:${POSTGRES_PASSWORD}@postgres:5432/ape_italia?schema=public" }
