@@ -49,7 +49,7 @@ vi.mock('./snapshot-crypto', () => ({
  openSnapshot: (text: string) => ({ text, encrypted: false }),
  sealSnapshot: (text: string) => text,
 }));
-import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -599,5 +599,53 @@ describe('durable media capture journal', () => {
   saveStateNow(pending!);
   expect((await loadState()).drafts[0].photos.wall).toEqual([ref]);
   expect((await loadState()).pendingMediaCleanup).toBeUndefined();
+ });
+});
+
+
+describe('durable offline demo APE delivery', () => {
+ const source = { uri: '/cache/ape.pdf', name: 'ape.pdf', mimeType: 'application/pdf' };
+ const ready = () => ({ ...newDraft(), job: {
+  status: 'accettata' as const, certifier: { name: 'Synthetic', sace: '00000' },
+  verbale: { date: '26/11/2026', start: '09:00', end: '10:00', attendees: 'Synthetic',
+   checks: ['misure', 'involucro', 'foto'], notes: '', ownerName: 'Synthetic',
+   ownerConfirmed: true, declaration: true, savedAt: '2026-11-26T09:00:00Z' },
+ } });
+ it('journals the PDF before copying and commits delivery in both snapshots', async () => {
+  const d = ready(); fs.files.set(source.uri, 'synthetic PDF');
+  deliverDraftApe(state(d), d.id, '00000-000000-2026', 'A1', source, (next, committed) => {
+   expect(committed).toBe(true);
+   if (next.pendingMediaCleanup?.length) expect(next.drafts[0].job?.ape).toBeUndefined();
+  });
+  const saved = await loadState();
+  const pdf = saved.drafts[0].job?.ape?.pdf;
+  expect(saved.drafts[0].job?.status).toBe('consegnata');
+  expect(pdf).toBeDefined();
+  expect(fs.files.get(pdf!.uri)).toBe('synthetic PDF');
+  expect(saved.pendingMediaCleanup).toBeUndefined();
+  fs.files.set(primary, 'corrupt');
+  expect((await loadState()).drafts[0].job?.ape?.pdf).toEqual(pdf);
+ });
+ it('rejects connected drafts and jobs without a verbale without copying', () => {
+  const d = ready(); fs.files.set(source.uri, 'synthetic PDF');
+  for (const candidate of [{ ...d, localOwner: { subject: 'a', organizationId: 'b' } },
+    { ...d, job: { ...d.job, verbale: undefined } }]) {
+   expect(() => deliverDraftApe(state(candidate), d.id, '00000-000000-2026', 'A1', source, () => {})).toThrow('Consegna dimostrativa non disponibile');
+  }
+  expect([...fs.files.keys()]).toEqual([source.uri]);
+ });
+ it('does not report successful delivery after a failed final commit', async () => {
+  const d = ready(); fs.files.set(source.uri, 'synthetic PDF');
+  let pending: AppState | undefined;
+  expect(() => deliverDraftApe(state(d), d.id, '00000-000000-2026', 'A1', source, (next, committed) => {
+   if (committed) fs.failMoveTo = backup;
+   else { pending = next; return false; }
+  })).toThrow('Consegna non confermata');
+  const pdf = pending?.drafts[0].job?.ape?.pdf;
+  expect(pdf).toBeDefined();
+  expect(fs.files.get(pdf!.uri)).toBe('synthetic PDF');
+  fs.failMoveTo = '';
+  saveStateNow(pending!);
+  expect((await loadState()).drafts[0].job?.status).toBe('consegnata');
  });
 });

@@ -3,7 +3,7 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { activateArchive, archiveIsActive, isEncryptedSnapshot, loadArchiveKey, openSnapshot, requireActiveArchive, sealSnapshot } from './snapshot-crypto';
 import type { Answers, PhotoRef, Photos } from './questions';
 import type { ProRegistration } from '../pro/registration';
-import type { Job } from '../job';
+import { APE_CODE, canDeliver, type Job } from '../job';
 
 export type Draft = {
  id: string;
@@ -307,13 +307,14 @@ type PhotoSource = { uri: string; name: string; mimeType: string; width?: number
  * committed both snapshots no longer carry that intent. Never delete a file
  * based solely on a failed snapshot write (one copy may already reference it).
  */
-export function addDraftPhoto(state: AppState, draftId: string, questionId: string, src: PhotoSource,
- publish: (next: AppState, committed: boolean) => void): PhotoRef {
+type PublishCapture = (next: AppState, committed: boolean) => void | boolean;
+
+function captureDraftMedia(state: AppState, draftId: string, src: PhotoSource,
+ update: (draft: Draft, ref: PhotoRef) => Draft, publish: PublishCapture): { ref: PhotoRef; committed: boolean } {
  if (!safeId(draftId)) throw new Error('Invalid draft identifier');
  requireActiveArchive();
  const draft = state.drafts.find(x => x.id === draftId);
  if (!draft) throw new Error('Draft unavailable');
- if (!safeId(questionId)) throw new Error('Invalid question identifier');
  const d = new Directory(dir(), 'media', draftId);
  const ext = src.mimeType.startsWith('video/') ? (src.mimeType === 'video/quicktime' ? 'mov' : 'mp4') : src.mimeType === 'application/pdf' ? 'pdf' : src.mimeType === 'image/png' ? 'png' : src.mimeType === 'image/heic' ? 'heic' : src.mimeType === 'image/heif' ? 'heif' : 'jpg';
  // A name must be unused on disk, in every draft, and in the cleanup journal.
@@ -328,7 +329,7 @@ export function addDraftPhoto(state: AppState, draftId: string, questionId: stri
  if (!chosen) throw new Error('Local evidence destination unavailable');
  const { dest, queued } = chosen;
  const ref: PhotoRef = { uri: dest.uri, name: src.name, mimeType: src.mimeType, takenAt: new Date().toISOString(), ...(src.width ? { width: src.width } : {}), ...(src.height ? { height: src.height } : {}), ...(src.durationSec ? { durationSec: src.durationSec } : {}) };
- const nextDraft: Draft = { ...draft, photos: { ...draft.photos, [questionId]: [...(draft.photos[questionId] ?? []), ref] }, updatedAt: new Date().toISOString() };
+ const nextDraft = { ...update(draft, ref), updatedAt: new Date().toISOString() };
  const next = { ...state, drafts: state.drafts.map(x => x.id === draftId ? nextDraft : x) };
  // If reservation fails, no sensitive file is copied. If the copy fails after
  // creating a partial file, leave the durable reservation for cleanup.
@@ -339,9 +340,36 @@ export function addDraftPhoto(state: AppState, draftId: string, questionId: stri
  // Keep the intended reference in memory even if writing the second snapshot
  // fails; autosave can retry. On restart, recovery chooses a committed copy.
  try { saveStateNow(next); }
- catch { publish(next, false); return ref; }
+ catch { return { ref, committed: publish(next, false) === true }; }
  publish(next, true);
- return ref;
+ return { ref, committed: true };
+}
+
+export function addDraftPhoto(state: AppState, draftId: string, questionId: string, src: PhotoSource,
+ publish: PublishCapture): PhotoRef {
+ if (!safeId(questionId)) throw new Error('Invalid question identifier');
+ return captureDraftMedia(state, draftId, src, (d, ref) => ({
+  ...d, photos: { ...d.photos, [questionId]: [...(d.photos[questionId] ?? []), ref] },
+ }), publish).ref;
+}
+
+/** Offline demo only: reserve the PDF in the same journal as other media.
+ * Never acknowledge delivery unless both snapshots (or an immediate retry)
+ * have been committed. A partial commit keeps the intended reference for retry.
+ */
+export function deliverDraftApe(state: AppState, draftId: string, code: string, energyClass: string,
+ src: PhotoSource, publish: PublishCapture): void {
+ const draft = state.drafts.find(d => d.id === draftId);
+ if (!draft || !canViewDraft(draft, null, true) || !canDeliver(draft.job) ||
+     !APE_CODE.test(code) || !energyClass || src.mimeType !== 'application/pdf') {
+  throw new Error('Consegna dimostrativa non disponibile');
+ }
+ const result = captureDraftMedia(state, draftId, src, (d, ref) => ({
+  ...d, job: { ...d.job!, status: 'consegnata', ape: {
+   code, energyClass, pdf: ref, deliveredAt: new Date().toISOString(),
+  } },
+ }), publish);
+ if (!result.committed) throw new Error('Consegna non confermata: riprova il salvataggio locale.');
 }
 
 /** Local cleanup is separate from committing the logical deletion. */

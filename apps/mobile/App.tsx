@@ -11,7 +11,7 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, addDraftPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, addDraftPhoto, deliverDraftApe, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
 
@@ -98,6 +98,13 @@ export default function App() {
  };
  const draft = (id: string) => visibleState.drafts.find(d => d.id === id);
  const permitted = (id: string) => latest.current?.drafts.some(d => d.id === id && canViewDraft(d, ownerRef.current, demo)) ?? false;
+ const publishCapture = (next: AppState, committed: boolean): boolean => {
+  if (committed) autosave.committed();
+  latest.current = next; setState(next);
+  if (committed) return true;
+  autosave.schedule(next);
+  return autosave.flush();
+ };
  const upsert = (d: Draft) => update(s => ({ ...s, drafts: [d, ...s.drafts.filter(x => x.id !== d.id)] }));
  const replace = (d: Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === d.id ? d : x)) }));
  const updateDraft = (id: string, fn: (d: Draft) => Draft) => update(s => ({ ...s, drafts: s.drafts.map(x => (x.id === id && canViewDraft(x, ownerRef.current, demo) ? fn(x) : x)) }));
@@ -155,11 +162,7 @@ export default function App() {
    onAddPhoto={(qid, f) => {
     const cur = latest.current;
     if (!cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
-    return addDraftPhoto(cur, d.id, qid, f, (next, committed) => {
-     if (committed) autosave.committed();
-     latest.current = next; setState(next);
-     if (!committed) { autosave.schedule(next); autosave.flush(); }
-    });
+    return addDraftPhoto(cur, d.id, qid, f, publishCapture);
    }}
    onRemovePhoto={(qid, p) => {
     const cur = latest.current;
@@ -201,7 +204,12 @@ export default function App() {
   screen = <InboxScreen state={visibleState} onBack={() => setRoute({ name: 'pro' })} onOpen={d => setRoute({ name: 'job', id: d.id })} />;
  } else if (route.name === 'job' && demo && visibleState.pro && draft(route.id)) {
   const d = draft(route.id)!;
-  screen = <JobScreen draft={d} pro={visibleState.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)} />;
+  screen = <JobScreen draft={d} pro={visibleState.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)}
+   onLocalDeliver={async (code, cls, pdf) => {
+    const cur = latest.current;
+    if (!demo || !cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
+    deliverDraftApe(cur, d.id, code, cls, pdf, publishCapture);
+   }} />;
  } else {
   screen = <HomeScreen key={scopeKey} state={visibleState} canStartDraft={demo || !!owner}
    onNew={startDraft}
