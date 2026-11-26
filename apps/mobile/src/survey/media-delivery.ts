@@ -88,23 +88,23 @@ export async function deliverEncryptedDemoApe(access: Access, draftId: string, c
 
 /** Plaintext stays in the dedicated private cache only during a bounded
  * consumer. Both the temporary file and its journal are recovered on startup. */
-async function withOpenedPdf(input: File, draftId: string, filename: string,
- guard: () => void, use: (file: File) => Promise<void>): Promise<void> {
+async function withOpenedMedia<T>(input: File, draftId: string, filename: string,
+ extension: string, guard: () => void, use: (file: File) => Promise<T>): Promise<T> {
  const { preparePrivateMediaCache } = await import('./media-native-storage');
  guard();
  preparePrivateMediaCache();
  const cache = new Directory(Paths.cache, 'ape-media-open');
- const temporaryName = name() + '.pdf';
+ const temporaryName = name() + '.' + extension;
  const stage = new File(cache, temporaryName);
  const journal = new File(cache, temporaryName + '.pending');
  if (stage.exists || journal.exists) throw new Error('Cache attestato non disponibile');
  let journalOwned = false;
  try {
-  await withOpenedNativeMedia({
+  return await withOpenedNativeMedia({
    input, stage, draftId, filename, guard, hasEncryptedEvidence: () => true,
    reserve: () => { guard(); journal.create({ overwrite: false }); journalOwned = true;
     if (!journal.exists) throw new Error('Prenotazione cache non confermata'); },
-  }, temporaryName, async file => { guard(); await use(file); guard(); });
+  }, temporaryName, async file => { guard(); const value = await use(file); guard(); return value; });
  } finally {
   if (journalOwned && !stage.exists && journal.exists) journal.delete();
  }
@@ -114,7 +114,7 @@ async function withOpenedPdf(input: File, draftId: string, filename: string,
  * source before committing a replacement reference. Bounded native reads. */
 async function verifyMigratedPdf(source: File, sealed: File, draftId: string, filename: string,
  guard: () => void): Promise<void> {
- await withOpenedPdf(sealed, draftId, filename, guard, async clear => {
+ await withOpenedMedia(sealed, draftId, filename, 'pdf', guard, async clear => {
   const a = source.open();
   try {
    const b = clear.open();
@@ -230,5 +230,38 @@ export async function shareLocalApe(access: Pick<Access, 'latest' | 'guard'>,
  if (!/^[a-zA-Z0-9_-]{1,128}\.apem$/.test(filename)) throw new Error('Percorso attestato non valido');
  const input = new File(folder(draftId), filename);
  if (input.uri !== uri || !input.exists) throw new Error('Attestato non disponibile');
- await withOpenedPdf(input, draftId, filename, guard, async file => { guard(); await share(file.uri); guard(); });
+ await withOpenedMedia(input, draftId, filename, 'pdf', guard, async file => { guard(); await share(file.uri); guard(); });
+}
+
+/** A current manifest reference is required throughout a bounded survey-media
+ * consumer. The durable URI remains the checkpoint identity, never the cache URI.
+ * Legacy app-owned files remain readable until their separate migration.
+ */
+export async function withSurveyMedia<T>(access: Pick<Access, 'latest' | 'guard'>,
+ draftId: string, questionId: string, photo: PhotoRef, use: (uri: string) => Promise<T>): Promise<T> {
+ const guard = () => {
+  access.guard();
+  const draft = access.latest()?.drafts.find(d => d.id === draftId);
+  if (!safe.test(draftId) || !safe.test(questionId) ||
+      !draft?.photos[questionId]?.some(p => p.uri === photo.uri && p.mimeType === photo.mimeType && p.name === photo.name))
+   throw new Error('Allegato non disponibile');
+ };
+ guard();
+ const filename = photo.uri.slice(photo.uri.lastIndexOf('/') + 1);
+ if (!/^[a-zA-Z0-9_-]{1,128}\.(apem|jpg|jpeg|png|heic|heif|pdf|mp4|mov)$/.test(filename))
+  throw new Error('Percorso allegato non valido');
+ const input = new File(folder(draftId), filename);
+ if (input.uri !== photo.uri || !input.exists) throw new Error('Allegato non disponibile');
+ if (!filename.endsWith('.apem')) {
+  const value = await use(input.uri);
+  guard();
+  return value;
+ }
+ const extensions: Record<string, string> = {
+  'image/jpeg': 'jpg', 'image/png': 'png', 'image/heic': 'heic', 'image/heif': 'heif',
+  'video/mp4': 'mp4', 'video/quicktime': 'mov', 'application/pdf': 'pdf',
+ };
+ const extension = extensions[photo.mimeType];
+ if (!extension) throw new Error('Tipo allegato non supportato');
+ return withOpenedMedia(input, draftId, filename, extension, guard, async file => use(file.uri));
 }

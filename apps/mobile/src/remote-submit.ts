@@ -1,7 +1,7 @@
 /** Sends a completed local request to the APE Italia API (only when the app is configured with a server). */
 import { randomUUID } from 'expo-crypto';
 import { api, freshSession, sessionBoundary, serverEnabled, uploadResumable } from './server';
-import { PROVINCES, pruneHidden, type Answers, type Photos } from './survey/questions';
+import { PROVINCES, pruneHidden, type Answers, type Photos, type PhotoRef } from './survey/questions';
 import { estimate } from './energy/estimate';
 import { quote } from './pricing';
 import type { EvidenceKind } from './evidence';
@@ -18,13 +18,14 @@ export type SubmitProgress = (label: string, ratio: number) => void;
 
 export type SubmitState = { remoteCreationKey?: string; remoteCaseId?: string; remotePropertyId?: string; uploaded?: string[]; videoUploads?: Record<string, string>; remoteOwner?: { subject: string; organizationId: string } };
 export type SubmitCheckpoint = (p: SubmitState) => void | Promise<void>;
+export type SubmitMediaReader = (questionId: string, photo: PhotoRef, use: (uri: string) => Promise<void>) => Promise<void>;
 
 /**
  * Reuses acknowledged IDs and a durable scoped key for property/case creation. Upload
  * initialization and other external operations have separate retry semantics.
  * Only answers and photos of visible questions are sent.
  */
-export async function submitToServer(input: { answers: Answers; photos: Photos } & SubmitState, onProgress: SubmitProgress, checkpoint: SubmitCheckpoint): Promise<{ caseId: string }> {
+export async function submitToServer(input: { answers: Answers; photos: Photos } & SubmitState, onProgress: SubmitProgress, checkpoint: SubmitCheckpoint, readMedia?: SubmitMediaReader): Promise<{ caseId: string }> {
  const { answers, photos } = pruneHidden(input.answers, input.photos);
  if (!serverEnabled()) throw new Error('Server non configurato');
  if (answers.dataNotice !== true || answers.privacy !== true) throw new Error('Accetta l’informativa e la condivisione prima di inviare.');
@@ -83,17 +84,28 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  let i = 0;
  for (const { q, p } of files) {
   onProgress(`Carico foto e documenti (${i + 1}/${files.length})`, 0.1 + (0.8 * i) / Math.max(1, files.length));
-  if (p.mimeType.startsWith('video/')) {
-   const base = 0.1 + (0.8 * i) / Math.max(1, files.length);
+  const upload = async (clearUri: string) => {
    guard();
-   await uploadResumable(caseId, 'video', p.uri, r => onProgress(`Carico il video (${Math.round(r * 100)}%)`, base + (0.8 / Math.max(1, files.length)) * r), videoUploads[p.uri], async id => { videoUploads[p.uri] = id; await save(); });
-   delete videoUploads[p.uri];
-  } else {
-   const form = new FormData();
-   form.append('kind', KIND[q] ?? 'document');
-   form.append('file', { uri: p.uri, name: p.name, type: p.mimeType } as unknown as Blob);
-   await call(`/v1/cases/${caseId}/evidence`, { org: true, form, timeoutMs: 120_000 });
+   if (/\.apem$/i.test(clearUri)) throw new Error('Allegato cifrato non aperto');
+   if (p.mimeType.startsWith('video/')) {
+    const base = 0.1 + (0.8 * i) / Math.max(1, files.length);
+    guard();
+    await uploadResumable(caseId!, 'video', clearUri, r => onProgress(`Carico il video (${Math.round(r * 100)}%)`, base + (0.8 / Math.max(1, files.length)) * r), videoUploads[p.uri], async id => { videoUploads[p.uri] = id; await save(); });
+    delete videoUploads[p.uri];
+   } else {
+    const form = new FormData();
+    form.append('kind', KIND[q] ?? 'document');
+    form.append('file', { uri: clearUri, name: p.name, type: p.mimeType } as unknown as Blob);
+    await call(`/v1/cases/${caseId}/evidence`, { org: true, form, timeoutMs: 120_000 });
+   }
+   guard();
+  };
+  if (readMedia) await readMedia(q, p, upload);
+  else {
+   if (/\.apem$/i.test(p.uri)) throw new Error('Lettura allegato cifrato non disponibile');
+   await upload(p.uri);
   }
+  guard();
   uploaded.push(p.uri);
   await save();
   i++;

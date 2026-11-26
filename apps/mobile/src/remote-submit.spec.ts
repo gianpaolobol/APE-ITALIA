@@ -105,3 +105,35 @@ describe('remote submission retry', () => {
   expect(m.api).not.toHaveBeenCalled();
  });
 });
+
+describe('authenticated survey upload reader', () => {
+ const encrypted = { ...video, uri: 'file:///archive/draft/unique.apem' };
+ it('never uploads encrypted bytes without a reader', async () => {
+  await expect(submitToServer({ answers, photos: { walkthrough: [encrypted] } }, progress, vi.fn())).rejects.toThrow('Lettura allegato cifrato');
+  expect(m.upload).not.toHaveBeenCalled();
+  expect(m.api.mock.calls.some(c => c[0].endsWith('/submit'))).toBe(false);
+ });
+ it('uses only the opened path and keeps the immutable encrypted reference for retry', async () => {
+  let cp: SubmitState = {};
+  const checkpoint = (s: SubmitState) => { cp = s; };
+  const read = vi.fn(async (_q, _photo, use) => { await use('file:///private-cache/one.mp4'); });
+  m.upload.mockImplementationOnce(async (_case, _kind, uri, _progress, _existing, started) => {
+   expect(uri).toBe('file:///private-cache/one.mp4'); await started('upload-a'); throw new Error('offline');
+  });
+  await expect(submitToServer({ answers, photos: { walkthrough: [encrypted] } }, progress, checkpoint, read)).rejects.toThrow('offline');
+  expect(cp.videoUploads).toEqual({ [encrypted.uri]: 'upload-a' });
+  const retry = vi.fn(async (_q, _photo, use) => { await use('file:///private-cache/two.mp4'); });
+  m.upload.mockImplementationOnce(async (_case, _kind, uri, _progress, existing) => {
+   expect(uri).toBe('file:///private-cache/two.mp4'); expect(existing).toBe('upload-a');
+  });
+  await submitToServer({ answers, photos: { walkthrough: [encrypted] }, ...cp }, progress, checkpoint, retry);
+  expect(cp.uploaded).toEqual([encrypted.uri]);
+  expect(cp.videoUploads).toEqual({});
+ });
+ it('does not submit when authentication or cache cleanup fails', async () => {
+  const reader = async () => { throw new Error('Authentication failed'); };
+  await expect(submitToServer({ answers, photos: { walkthrough: [encrypted] } }, progress, vi.fn(), reader)).rejects.toThrow('Authentication failed');
+  expect(m.upload).not.toHaveBeenCalled();
+  expect(m.api.mock.calls.some(c => c[0].endsWith('/submit'))).toBe(false);
+ });
+});

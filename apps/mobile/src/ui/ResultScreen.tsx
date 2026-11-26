@@ -14,12 +14,12 @@ import { estimate } from '../energy/estimate';
 import { checklist, onSiteChecks, progress, readyToSend } from '../survey/checklist';
 import { PROVINCES } from '../survey/questions';
 import { euro, quote } from '../pricing';
-import { serverConfigured, submitToServer, type SubmitCheckpoint } from '../remote-submit';
+import { serverConfigured, submitToServer, type SubmitCheckpoint, type SubmitMediaReader } from '../remote-submit';
 import type { Draft } from '../survey/drafts';
 
 const LOSS_LABEL = { muri: 'Muri', finestre: 'Finestre', tetto: 'Tetto', pavimento: 'Pavimento', ventilazione: 'Ricambi d’aria' } as const;
 
-export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint, onOpenLocalPdf }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint; onOpenLocalPdf: (uri: string) => Promise<void> }) {
+export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint, onOpenLocalPdf, onReadMedia }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint; onReadMedia: SubmitMediaReader; onOpenLocalPdf: (uri: string) => Promise<void> }) {
  const insets = useSafeAreaInsets();
  const est = useMemo(() => estimate(draft.answers), [draft.answers]);
  const items = checklist(draft.answers, draft.photos);
@@ -62,7 +62,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
   setSending('Preparo l’invio…');
   try {
    const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCreationKey: draft.remoteCreationKey, remoteCaseId: draft.remoteCaseId, remotePropertyId: draft.remotePropertyId, remoteOwner: draft.remoteOwner, uploaded: draft.uploaded, videoUploads: draft.videoUploads }, label => setSending(label),
-    onCheckpoint);
+    onCheckpoint, onReadMedia);
    onUpdate(d => ({ ...d, status: 'inviata', sentAt: new Date().toISOString(), remoteCaseId: r.caseId }));
    Alert.alert('Richiesta inviata', 'I certificatori della tua zona la stanno valutando. Ti contatteremo per fissare il sopralluogo.');
   } catch (e) {

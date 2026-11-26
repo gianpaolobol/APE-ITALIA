@@ -15,7 +15,7 @@ import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type Pr
 
 import { createAutosave } from './src/survey/autosave';
 import { preparePrivateMediaCache } from './src/survey/media-native-storage';
-import { deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe } from './src/survey/media-delivery';
+import { deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe, withSurveyMedia } from './src/survey/media-delivery';
 import * as Sharing from 'expo-sharing';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
@@ -212,6 +212,10 @@ export default function App() {
     latest.current = next; setState(next);
     autosave.schedule(next);
     if (!autosave.flush()) throw new Error('Salvataggio locale non riuscito. Riprova.');
+   }}
+   onReadMedia={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard }, d.id, qid, photo, use));
+    retryCleanup();
    }}
    onOpenLocalPdf={async uri => {
     await withMediaLease(d.id, async guard => {
