@@ -7,7 +7,6 @@ import { sealMedia, openMedia } from './media-envelope';
 import { nativeMediaKeys } from './media-key';
 import { transformToStage } from './media-staging';
 import type { File } from 'expo-file-system';
-import { hasNativeEncryptedMedia, markNativeEncryptedMedia, preparePrivateMediaCache } from './media-native-storage';
 
 type StageFile = Parameters<typeof transformToStage>[0];
 type Keys = Pick<typeof nativeMediaKeys, 'withKey'>;
@@ -105,6 +104,7 @@ export async function sealNativeMedia(op: NativeOperation): Promise<void> {
  if (!op.filename.endsWith('.apem')) throw new Error('Invalid encrypted media filename');
  const { File, Directory, Paths } = await import('expo-file-system');
  const crypto = await import('expo-crypto');
+ const { hasNativeEncryptedMedia, markNativeEncryptedMedia } = await import('./media-native-storage');
  op.guard();
  const expected = new File(new Directory(Paths.document, 'ape', 'media', op.draftId), op.filename);
  if (op.stage.uri !== expected.uri) throw new Error('Invalid durable media destination');
@@ -128,6 +128,8 @@ export async function withOpenedNativeMedia<T>(op: NativeOperation, temporaryNam
  const { File, Directory, Paths } = await import('expo-file-system');
  op.guard();
  const expected = new File(new Directory(Paths.document, 'ape', 'media', op.draftId), op.filename);
+ const { preparePrivateMediaCache } = await import('./media-native-storage');
+ op.guard();
  const temporary = new File(new Directory(Paths.cache, 'ape-media-open'), temporaryName);
  if (op.input.uri !== expected.uri || op.stage.uri !== temporary.uri)
   throw new Error('Invalid native media paths');

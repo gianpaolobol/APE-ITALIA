@@ -48,7 +48,10 @@ describe('bounded media envelope', () => {
   await openMedia(input2, output, context);
   expect(input2.reads).toEqual([28, 16, MEDIA_BLOCK + 16, 17 + 16]);
   expect(output.parts).toHaveLength(2);
-  expect(output.bytes()).toEqual(data);
+  const actual = output.bytes();
+  expect(actual.length).toBe(data.length);
+  // Linear byte comparison avoids Vitest enumerating over a million indexed properties.
+  expect(data.every((byte, index) => actual[index] === byte)).toBe(true);
  });
  it('uses the supplied fresh random prefix on every encryption', async () => {
   const data = Uint8Array.of(1, 2, 3);
