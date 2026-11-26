@@ -1,7 +1,8 @@
 # Distribuzione pilota / staging (container)
 
 Immagini:
-- `services/api/Dockerfile` → `ape-italia-api`: API (`node dist/main.js`), worker (`node dist/worker.js`) e job di migrazione (`npx prisma migrate deploy`) dalla stessa immagine; utente non root, healthcheck su `/health`.
+- `services/api/Dockerfile` → target `runtime`, immagine `ape-italia-api`: API (`node dist/main.js`) e worker (`node dist/worker.js`), dipendenze di produzione dal lockfile e client Prisma generato dal medesimo build; utente non root, healthcheck su `/health`.
+- Lo stesso Dockerfile ha target `migration`, immagine `ape-italia-migrate`, con Prisma CLI per il solo job di migrazione. Avvio con Compose completo e `--build` per costruire entrambi i target; nessuna installazione dinamica mediante npx durante il deploy.
 - `apps/web/Dockerfile` → `ape-italia-web`: Next.js in modalità `standalone`, utente non root.
 
 Stack: `deploy/docker-compose.staging.yml` — PostgreSQL 16, migrazione one-shot (gli altri servizi partono solo se termina con successo), API, worker, web. Porte esposte solo su `127.0.0.1`: **serve un reverse proxy con HTTPS** (es. Caddy, Nginx, Traefik) davanti ad API e web; `TRUST_PROXY=1` per vedere l'IP reale nei limiti di frequenza.

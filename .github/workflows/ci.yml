@@ -94,6 +94,9 @@ jobs:
       - name: Inventory selected advisory packages in final runtime images
         run: |
           C="docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env"
+          for service in api worker; do
+            $C exec -T "$service" node -e "require('@prisma/client'); for (const name of ['prisma','@nestjs/cli','vitest']) { try { require.resolve(name + '/package.json'); } catch (e) { if (e.code === 'MODULE_NOT_FOUND') continue; throw e; } throw Error('Unexpected development dependency: ' + name); }"
+          done
           for service in api worker web; do
             echo "Runtime package inventory: $service"
             $C exec -T "$service" node --input-type=module - /app < scripts/inventory-runtime-deps.mjs
