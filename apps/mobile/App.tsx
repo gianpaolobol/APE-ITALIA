@@ -182,6 +182,13 @@ export default function App() {
     if (!cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
     return addDraftPhoto(cur, d.id, qid, f, publishCapture);
    }}
+   onReadPhoto={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard: () => {
+     guard();
+     if (latest.current?.drafts.find(x => x.id === d.id)?.answers.aiConsent !== true) throw new Error('Consenso AI non disponibile');
+    } }, d.id, qid, photo, use));
+    retryCleanup();
+   }}
    onRemovePhoto={(qid, p) => {
     const cur = latest.current;
     const current = cur?.drafts.find(x => x.id === d.id);

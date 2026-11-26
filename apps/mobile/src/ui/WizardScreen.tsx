@@ -14,12 +14,13 @@ type Props = {
  startStepId?: string;
  onUpdate: (fn: (d: Draft) => Draft) => void;
  onAddPhoto: (qid: string, f: { uri: string; name: string; mimeType: string }) => PhotoRef;
+ onReadPhoto: (qid: string, p: PhotoRef, use: (uri: string) => Promise<void>) => Promise<void>;
  onRemovePhoto: (qid: string, p: PhotoRef) => void;
  onClose: () => void;
  onFinish: () => void;
 };
 
-export function WizardScreen({ draft, startStepId, onUpdate, onAddPhoto, onRemovePhoto, onClose, onFinish }: Props) {
+export function WizardScreen({ draft, startStepId, onUpdate, onAddPhoto, onReadPhoto, onRemovePhoto, onClose, onFinish }: Props) {
  const insets = useSafeAreaInsets();
  const steps = visibleSteps(draft.answers);
  const [index, setIndex] = useState(() => Math.max(0, steps.findIndex(s => s.id === startStepId)));
@@ -76,7 +77,7 @@ export function WizardScreen({ draft, startStepId, onUpdate, onAddPhoto, onRemov
     ) : null}
     {step.questions.filter(q => isVisible(q, draft.answers)).map(q => (
      <QuestionView key={q.id} q={q} answers={draft.answers} photos={draft.photos[q.id] ?? []} showErrors={showErrors}
-      onAnswer={setAnswer} onAddPhoto={onAddPhoto} onRemovePhoto={onRemovePhoto}
+      onAnswer={setAnswer} onAddPhoto={onAddPhoto} onReadPhoto={onReadPhoto} onRemovePhoto={onRemovePhoto}
       onAutoFill={(fields, summary, source) => {
        let filled = 0;
        onUpdate(d => {

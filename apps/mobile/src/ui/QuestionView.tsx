@@ -14,6 +14,7 @@ type Props = {
  photos: PhotoRef[];
  onAnswer: (id: string, v: AnswerValue | undefined) => void;
  onAddPhoto: (id: string, file: { uri: string; name: string; mimeType: string; durationSec?: number }) => PhotoRef;
+ onReadPhoto: (id: string, p: PhotoRef, use: (uri: string) => Promise<void>) => Promise<void>;
  onRemovePhoto: (id: string, p: PhotoRef) => void;
  onAutoFill: (fields: Answers, summary: string, source: PhotoRef) => void;
  showErrors: boolean;
@@ -105,7 +106,10 @@ function PhotoQ(p: Props & { q: PhotoQuestion }) {
    if (q.extract && p.answers.aiConsent === true) {
     setReading(true);
     try {
-     const r = await readPhoto(q.extract, ref);
+     const kind = q.extract;
+     const box: { result?: Awaited<ReturnType<typeof readPhoto>> } = {};
+     await p.onReadPhoto(q.id, ref, async uri => { box.result = await readPhoto(kind, { ...ref, uri }); });
+     const r = box.result;
      if (r && Object.keys(r.fields).length) onAutoFill(r.fields, r.summary, ref);
     } catch { /* reading is optional */ } finally { setReading(false); }
    }
