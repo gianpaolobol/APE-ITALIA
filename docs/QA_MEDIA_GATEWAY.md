@@ -20,3 +20,8 @@
 
 ## Next integration
 Prefer one cumulative review/CI instead of continuing to create isolated primitives. Preserve original PR history and avoid conflicts with Claude. Do not merge until independent review and CI requirements are met. Then prioritize a functional capture-to-read path plus restart migration, not additional speculative helpers.
+
+## 2026-11-26 — cumulative CI follow-up
+- Run [45756055133](https://github.com/gianpaolobol/APE-ITALIA/actions/runs/45756055133), head f22f56b6c9838bba4dd8b60e89c6061fef1318bc: containers, keycloak-e2e, clamav success; verify failed in mobile tests (job 139694810725). Gateway roundtrip exceeded 5000 ms, not an observed cryptographic mismatch. Seven of eight gateway cases passed; remaining web/bundle steps in verify skipped. No merge.
+- Corrective commit 8b793edbe31813b641e8de91f76a8c63f20391f3 replaces two expensive deep equality comparisons of million-byte typed arrays with explicit linear byte-for-byte comparison; same length, every byte, unchanged boundary size and timeout. Hypothesis to be confirmed by new CI, not a test result. No production logic changed.
+- Fresh compare: main 295fc3f464d10a3a7a184702a99600459b9b4135, candidate zero commits behind before correction. Backup ref independently fetched and matches 53b9c11cef75a4c4486318e963e6a8b3352a8b31. No independent review of #97 recorded; #93 still open. Do not merge until green cumulative CI on final head and security review. No confirmed live Work session or new staging/native build in this check.
