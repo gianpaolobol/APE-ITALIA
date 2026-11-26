@@ -87,7 +87,20 @@ test('both native jobs validate staging before prebuild and signing, without blo
  assert.equal(matches.length, 2);
  for (const m of matches) {
   assert.match(m[1], /^        if: inputs\.mode == 'distribute'$/m);
-  assert.ok(m[1].includes('node scripts/verify-mobile-test-config.mjs'));
+  assert.ok(m[1].includes('bash scripts/verify-mobile-staging.sh'));
   assert.ok(workflow.indexOf('Native project (expo prebuild)', m.index) > m.index);
  }
+});
+
+test('live staging preflight requires verified TLS, HTTP 200 and the full expected revision', () => {
+ const script = readFileSync(new URL('./verify-mobile-staging.sh', import.meta.url), 'utf8');
+ assert.match(script, /set -euo pipefail/);
+ assert.match(script, /node scripts\/verify-mobile-test-config\.mjs/);
+ assert.match(script, /--proto '=https'/);
+ assert.match(script, /--max-time 15/);
+ assert.match(script, /--max-filesize 65536/);
+ assert.doesNotMatch(script, /(?:--insecure|--location|(?:^|\s)-[kL](?:\s|$))/m);
+ assert.match(script, /"\$status" != 200/);
+ assert.match(script, /node scripts\/verify-staging-health\.mjs "\$\{GITHUB_SHA:\?Missing expected build revision\}" < "\$body"/);
+ assert.match(script, /trap 'rm -f "\$body"' EXIT/);
 });

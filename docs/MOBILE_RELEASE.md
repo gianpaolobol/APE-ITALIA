@@ -74,3 +74,5 @@ La modalità build-only resta dimostrativa, senza login né invio. La modalità 
 
 ## Sicurezza
 I secret non sono mai stampati nei log; la chiave `.p8` viene scritta solo in una cartella temporanea del runner e cancellata a fine job; il workflow ha permessi `contents: read`. Non committare mai `.p8`, `.jks` o JSON di service account (la scansione segreti in CI li blocca).
+
+**Preflight di distribuzione connessa:** prima di prebuild e firma entrambi i job richiedono anche `/health` via HTTPS senza redirect, HTTP 200 e la revisione API completa uguale allo SHA del workflow. Distribuire prima il candidato su staging con il relativo workflow dopo CI push verde. Il controllo non sostituisce gli smoke test su dati sintetici, l'isolamento dei servizi e il controllo delle quote. Build-only non contatta lo staging.

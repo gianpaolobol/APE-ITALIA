@@ -98,7 +98,7 @@ jobs:
         env:
           EXPECTED_STAGING_API: ${{ vars.STAGING_PUBLIC_API_URL }}
           EXPECTED_STAGING_OIDC: ${{ vars.STAGING_PUBLIC_OIDC_ISSUER }}
-        run: node scripts/verify-mobile-test-config.mjs
+        run: bash scripts/verify-mobile-staging.sh
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -228,7 +228,7 @@ jobs:
         env:
           EXPECTED_STAGING_API: ${{ vars.STAGING_PUBLIC_API_URL }}
           EXPECTED_STAGING_OIDC: ${{ vars.STAGING_PUBLIC_OIDC_ISSUER }}
-        run: node scripts/verify-mobile-test-config.mjs
+        run: bash scripts/verify-mobile-staging.sh
       - name: Xcode 26 (App Store Connect requires the iOS 26 SDK or later)
         run: |
           set -euo pipefail
