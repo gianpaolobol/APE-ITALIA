@@ -6,7 +6,8 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { APE_CODE, canDeliver } from '../job';
 import { canViewDraft, enqueueMediaCleanup, saveStateNow, type AppState } from './drafts';
 import { sealNativeMedia, withOpenedNativeMedia } from './media-gateway';
-import type { PhotoRef } from './questions';
+import { findQuestion, isVisible, type PhotoRef } from './questions';
+import { VIDEO_MAX_CLIPS, videoBudgetSeconds } from './video';
 
 type Source = { uri: string; name: string; mimeType: string };
 type Access = {
@@ -264,4 +265,71 @@ export async function withSurveyMedia<T>(access: Pick<Access, 'latest' | 'guard'
  const extension = extensions[photo.mimeType];
  if (!extension) throw new Error('Tipo allegato non supportato');
  return withOpenedMedia(input, draftId, filename, extension, guard, async file => use(file.uri));
+}
+
+/** Journaled capture transaction; activate only after preview consumers support
+ * encrypted references. Picker-owned sources are never unlinked here. */
+export async function captureEncryptedSurveyMedia(access: Access, draftId: string, questionId: string,
+ source: Source & Pick<PhotoRef, 'width' | 'height' | 'durationSec'>, seal = sealNativeMedia): Promise<PhotoRef> {
+ const current = () => {
+  access.guard();
+  const state = access.latest();
+  const draft = state?.drafts.find(d => d.id === draftId);
+  const q = findQuestion(questionId);
+  if (!safe.test(draftId) || !safe.test(questionId) || !state || !draft || !q ||
+      !isVisible(q, draft.answers) || draft.status !== 'bozza') throw new Error('Richiesta modificata durante acquisizione');
+  const list = draft.photos[questionId] ?? [];
+  if (q.kind === 'photo') {
+   if (list.length >= (q.max ?? 3) || !(/^image\/(jpeg|png|heic|heif)$/.test(source.mimeType) ||
+       (q.allowDocuments && source.mimeType === 'application/pdf'))) throw new Error('Allegato non consentito');
+  } else if (q.kind === 'video') {
+   const duration = source.durationSec;
+   const used = list.reduce((sum, p) => sum + (p.durationSec ?? 0), 0);
+   if (!/^video\/(mp4|quicktime)$/.test(source.mimeType) || duration === undefined || !Number.isFinite(duration) ||
+       duration <= 0 || list.length >= VIDEO_MAX_CLIPS || used + duration > videoBudgetSeconds(draft.answers) + 2)
+    throw new Error('Video non consentito');
+  } else throw new Error('Domanda non compatibile con allegati');
+  return { state, draft, list };
+ };
+ current();
+ const dir = folder(draftId);
+ let stage: File | undefined;
+ for (let i = 0; i < 8; i++) {
+  const f = new File(dir, name() + '.apem');
+  const { state } = current();
+  const queued = enqueueMediaCleanup(state, draftId, f.uri);
+  if (!f.exists && queued && queued !== state && !state.drafts.some(d => d.job?.ape?.pdf?.uri === f.uri ||
+     Object.values(d.photos).some(list => list?.some(p => p.uri === f.uri)))) { stage = f; break; }
+ }
+ if (!stage) throw new Error('Destinazione locale non disponibile');
+ const destination = stage;
+ const filename = destination.uri.slice(destination.uri.lastIndexOf('/') + 1);
+ let reserved = false;
+ await seal({ input: new File(source.uri), stage: destination, draftId, filename,
+  guard: () => { current(); },
+  hasEncryptedEvidence: () => current().state.drafts.some(d => d.job?.ape?.pdf?.uri.endsWith('.apem') ||
+   Object.values(d.photos).some(list => list?.some(p => p.uri.endsWith('.apem')))),
+  reserve: () => {
+   const { state } = current();
+   const queued = enqueueMediaCleanup(state, draftId, destination.uri);
+   if (!queued || queued === state || destination.exists) throw new Error('Destinazione già riservata');
+   saveStateNow(queued); access.publish(queued, true); reserved = true;
+   if (!dir.exists) dir.create({ intermediates: true });
+  },
+ });
+ const { state, draft, list } = current();
+ if (!reserved || !destination.exists || !state.pendingMediaCleanup?.some(t => t.draftId === draftId && t.filename === filename))
+  throw new Error('Prenotazione allegato non confermata');
+ const ref: PhotoRef = { uri: destination.uri, name: source.name, mimeType: source.mimeType, takenAt: new Date().toISOString(),
+  ...(source.width ? { width: source.width } : {}), ...(source.height ? { height: source.height } : {}),
+  ...(source.durationSec ? { durationSec: source.durationSec } : {}) };
+ const { pendingMediaCleanup, ...rest } = state;
+ const remaining = pendingMediaCleanup.filter(t => !(t.draftId === draftId && t.filename === filename));
+ const next: AppState = { ...rest, drafts: state.drafts.map(d => d.id === draftId ? {
+  ...draft, updatedAt: new Date().toISOString(), photos: { ...draft.photos, [questionId]: [...list, ref] },
+ } : d), ...(remaining.length ? { pendingMediaCleanup: remaining } : {}) };
+ try { saveStateNow(next); }
+ catch { if (access.publish(next, false) !== true) throw new Error('Acquisizione non confermata: riprova il salvataggio locale.'); return ref; }
+ access.publish(next, true);
+ return ref;
 }

@@ -51,7 +51,7 @@ vi.mock('./snapshot-crypto', () => ({
 }));
 import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
 
-import { deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe } from './media-delivery';
+import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe } from './media-delivery';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -766,5 +766,44 @@ describe('on-demand legacy demo PDF migration', () => {
   const s = setup(), share = vi.fn(async (_uri: string) => {});
   await expect(shareLocalApe(s.access, s.d.id, s.uri, share)).rejects.toThrow('Percorso attestato non valido');
   expect(share).not.toHaveBeenCalled();
+ });
+});
+
+describe('encrypted survey capture transaction', () => {
+ const source = { uri: '/cache/photo.jpg', name: 'photo.jpg', mimeType: 'image/jpeg', width: 100, height: 200 };
+ type Seal = NonNullable<Parameters<typeof captureEncryptedSurveyMedia>[4]>;
+ it('journals before sealing and preserves newer answers and unrelated cleanup intents', async () => {
+  const d = newDraft(); let current: AppState = { ...state(d), pendingMediaCleanup: [{ draftId: 'old' }] };
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => { await op.reserve(); expect(current.pendingMediaCleanup).toHaveLength(2);
+   current = { ...current, drafts: [{ ...current.drafts[0], answers: { note: 'new edit' } }] };
+   op.guard(); fs.files.set(op.stage.uri, 'sealed'); };
+  fs.files.set(source.uri, 'original');
+  const ref = await captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal);
+  expect(ref.uri).toMatch(/\.apem$/); expect(ref.width).toBe(100);
+  expect(current.drafts[0].photos.previousApe).toEqual([ref]); expect(current.drafts[0].answers.note).toBe('new edit');
+  expect(current.pendingMediaCleanup).toEqual([{ draftId: 'old' }]); expect(await loadState()).toEqual(current);
+  expect(fs.files.get(source.uri)).toBe('original');
+ });
+ it('does not publish a file after the draft is deleted during sealing', async () => {
+  const d = newDraft(); let current = state(d);
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => { await op.reserve(); current = { ...current, drafts: [] }; fs.files.set(op.stage.uri, 'sealed'); };
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Richiesta modificata');
+  expect(current.drafts).toEqual([]); expect(current.pendingMediaCleanup).toHaveLength(1);
+ });
+ it('rejects hidden evidence and incompatible MIME before reservation', async () => {
+  const d = newDraft(); const publish = vi.fn(); const seal = vi.fn();
+  const access = { latest: () => state(d), guard: () => {}, publish };
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'cadastralPlan', source, seal)).rejects.toThrow();
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', { ...source, mimeType: 'text/html' }, seal)).rejects.toThrow();
+  expect(seal).not.toHaveBeenCalled(); expect(publish).not.toHaveBeenCalled();
+ });
+ it('keeps possibly committed ciphertext when final checkpoint fails', async () => {
+  const d = newDraft(); let current = state(d);
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return false; } };
+  const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'sealed'); fs.failMoveTo = backup; };
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Acquisizione non confermata');
+  const ref = current.drafts[0].photos.previousApe?.[0]; expect(ref?.uri).toMatch(/\.apem$/); expect(fs.files.get(ref!.uri)).toBe('sealed');
  });
 });

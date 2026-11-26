@@ -55,3 +55,5 @@ Prefer one cumulative review/CI instead of continuing to create isolated primiti
 ## 26/11/2026 — guarded OCR consumer
 
 Previous head `58549f52499037051764731094c0dd06182c5ddf`: [CI 45810701941](https://github.com/gianpaolobol/APE-ITALIA/actions/runs/45810701941) completed/success, verify/containers/keycloak-e2e/clamav all green; 0 behind main `295fc3f464d10a3a7a184702a99600459b9b4135`. Wizard OCR now uses the bounded media reader with manifest, current session and live AI consent guards; autofill is applied only after the reader returns successfully. New capture encryption and wizard/certifier preview consumers remain pending; no claim of encrypted capture. No new native test, staging or build. Independent review list empty. Exact new SHA CI required. Backup untouched; no production or deliberate charges.
+
+Added capture transaction and four mocked regressions: reservation before ciphertext, re-read current manifest/visibility/type/limits, preserve concurrent changes, refuse deleted drafts, preserve possibly committed ciphertext on partial write. Not activated in wizard until encrypted previews are implemented. CI not executed here.
