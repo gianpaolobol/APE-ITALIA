@@ -51,6 +51,8 @@ vi.mock('./snapshot-crypto', () => ({
 }));
 import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
 
+import { deliverEncryptedDemoApe, shareLocalApe } from './media-delivery';
+
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
 const state = (...drafts: AppState['drafts']): AppState => ({ version: 1, drafts });
@@ -647,5 +649,66 @@ describe('durable offline demo APE delivery', () => {
   fs.failMoveTo = '';
   saveStateNow(pending!);
   expect((await loadState()).drafts[0].job?.status).toBe('consegnata');
+ });
+});
+
+describe('encrypted demo APE delivery transaction', () => {
+ const source = { uri: '/cache/ape.pdf', name: 'ape.pdf', mimeType: 'application/pdf' };
+ const ready = () => ({ ...newDraft(), job: {
+  status: 'accettata' as const, certifier: { name: 'Synthetic', sace: '00000' },
+  verbale: { date: '26/11/2026', start: '09:00', end: '10:00', attendees: 'Synthetic',
+   checks: ['misure','involucro','foto'], notes: '', ownerName: 'Synthetic',
+   ownerConfirmed: true, declaration: true, savedAt: '2026-11-26T09:00:00Z' },
+ } });
+ type Seal = NonNullable<Parameters<typeof deliverEncryptedDemoApe>[5]>;
+ it('reserves before writing and commits against the newest snapshot, preserving edits and other cleanup intents', async () => {
+  const d = ready(), other = newDraft();
+  let current: AppState = { ...state(d, other), pendingMediaCleanup: [{ draftId: 'old' }] };
+  fs.files.set(source.uri, 'source PDF');
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => {
+   await op.reserve();
+   expect(current.pendingMediaCleanup).toHaveLength(2);
+   expect(current.drafts[0].job?.ape).toBeUndefined();
+   current = { ...current, drafts: current.drafts.map(x => x.id === d.id ? { ...x, answers: { note: 'new edit' } } : x) };
+   op.guard();
+   fs.files.set(op.stage.uri, 'synthetic encrypted stage');
+  };
+  await deliverEncryptedDemoApe(access, d.id, '00000-000000-2026', 'A1', source, seal);
+  expect(current.drafts[0].job?.status).toBe('consegnata');
+  expect(current.drafts[0].answers.note).toBe('new edit');
+  expect(current.drafts[0].job?.ape?.pdf?.uri).toMatch(/\.apem$/);
+  expect(current.pendingMediaCleanup).toEqual([{ draftId: 'old' }]);
+  expect(await loadState()).toEqual(current);
+  expect(fs.files.get(source.uri)).toBe('source PDF');
+ });
+ it('does not commit after a job update while encryption is in flight; retains the cleanup reservation', async () => {
+  const d = ready(); let current = state(d);
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => {
+   await op.reserve();
+   current = { ...current, drafts: [{ ...d, job: { ...d.job, status: 'rifiutata' } }] };
+   fs.files.set(op.stage.uri, 'synthetic encrypted stage');
+  };
+  await expect(deliverEncryptedDemoApe(access, d.id, '00000-000000-2026', 'A1', source, seal)).rejects.toThrow('Incarico modificato');
+  expect(current.drafts[0].job?.status).toBe('rifiutata');
+  expect(current.pendingMediaCleanup).toHaveLength(1);
+ });
+ it('does not acknowledge a failed final snapshot commit or remove a possibly referenced encrypted stage', async () => {
+  const d = ready(); let current = state(d);
+  const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'synthetic encrypted stage'); fs.failMoveTo = backup; };
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return false; } };
+  await expect(deliverEncryptedDemoApe(access, d.id, '00000-000000-2026', 'A1', source, seal)).rejects.toThrow('Consegna non confermata');
+  const pdf = current.drafts[0].job?.ape?.pdf;
+  expect(pdf?.uri).toMatch(/\.apem$/);
+  expect(fs.files.get(pdf!.uri)).toBe('synthetic encrypted stage');
+ });
+ it('rejects an arbitrary or cross-draft legacy path instead of sending it to the share consumer', async () => {
+  const d = ready(); const uri = '/documents/ape/media/other/ape.pdf';
+  const delivered = { ...d, job: { ...d.job, status: 'consegnata' as const, ape: { code: 'SYNTH', energyClass: 'A1', deliveredAt: '2026-11-26', pdf: { uri, name: 'ape.pdf', mimeType: 'application/pdf', takenAt: '2026-11-26' } } } };
+  fs.files.set(uri, 'other draft');
+  const share = vi.fn(async (_uri: string) => {});
+  await expect(shareLocalApe({ latest: () => state(delivered), guard: () => {} }, d.id, uri, share)).rejects.toThrow();
+  expect(share).not.toHaveBeenCalled();
  });
 });

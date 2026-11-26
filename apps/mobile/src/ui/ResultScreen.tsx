@@ -19,7 +19,7 @@ import type { Draft } from '../survey/drafts';
 
 const LOSS_LABEL = { muri: 'Muri', finestre: 'Finestre', tetto: 'Tetto', pavimento: 'Pavimento', ventilazione: 'Ricambi d’aria' } as const;
 
-export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint }) {
+export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint, onOpenLocalPdf }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint; onOpenLocalPdf: (uri: string) => Promise<void> }) {
  const insets = useSafeAreaInsets();
  const est = useMemo(() => estimate(draft.answers), [draft.answers]);
  const items = checklist(draft.answers, draft.photos);
@@ -112,7 +112,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
        <View style={[st.step, { borderBottomWidth: 0 }]}>
         <ClassBadge value={draft.job.ape.energyClass as never} size={36} />
         <View style={{ flex: 1, marginLeft: 10 }}><Text style={F.h3}>APE pronto · classe {draft.job.ape.energyClass}</Text><Text style={F.small}>Codice {draft.job.ape.code}</Text>{draft.job.ape.depositedAt ? <Text style={F.small}>Depositato: {fmtWhen(draft.job.ape.depositedAt)}</Text> : null}{draft.remoteCaseId ? <Text style={F.small}>{draft.job.ape.deliveredAt ? 'Ricezione registrata: ' + fmtWhen(draft.job.ape.deliveredAt) : 'Ricezione non ancora confermata'}</Text> : null}</View>
-        {draft.job.ape.pdf ? <Pressable onPress={() => Sharing.shareAsync(draft.job!.ape!.pdf!.uri).catch(() => undefined)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable>
+        {draft.job.ape.pdf ? <Pressable onPress={() => onOpenLocalPdf(draft.job!.ape!.pdf!.uri).catch(() => Alert.alert('Attestato non disponibile', 'Non è stato possibile aprire il PDF locale.'))} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable>
          : draft.remoteCaseId ? <Pressable onPress={() => { const guard = sessionBoundary(); downloadCertificate(draft.remoteCaseId!).then(async uri => { guard(); await Sharing.shareAsync(uri); guard(); const r = await fetchRemoteJob(draft.remoteCaseId!); guard(); if (r.job) onUpdate(d => ({ ...d, job: r.job })); }).catch(() => Alert.alert('Download non riuscito', 'Riprova tra poco.')); }} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Scarica</Text></Pressable> : null}
        </View>
       ) : null}
