@@ -195,3 +195,7 @@ Workflow `mobile-release.yml`: build iOS su macOS con firma automatica tramite c
 
 ## 54. Android di prova con Firebase App Distribution (Claude, 23/11/2026)
 Scelta del titolare. Il workflow costruisce anche l'APK e, con il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, registra l'app nel progetto Firebase (idempotente) e la distribuisce ai tester indicati in `FIREBASE_TESTERS`. Le API Google non sono raggiungibili dall'ambiente di Claude: tutte le operazioni Firebase avvengono nei runner GitHub.
+
+
+## [Codex] Interoperabilità Catasto Italia — 26/11/2026
+Ricevente locale Building Core v0.2 proposto per il certificatore, geometrie esclusivamente da revisionare, senza import in pratica o calcolo energetico automatico. Vedi docs/CATASTO_CERTIFIER_REVIEW.md. CI da verificare.
