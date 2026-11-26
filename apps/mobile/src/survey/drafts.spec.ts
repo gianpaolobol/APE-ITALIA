@@ -52,7 +52,7 @@ vi.mock('./snapshot-crypto', () => ({
 }));
 import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
 
-import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe } from './media-delivery';
+import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, migrateLegacySurveyMedia, shareLocalApe } from './media-delivery';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -816,5 +816,51 @@ describe('encrypted survey capture transaction', () => {
   fs.files.set(source.uri, 'original');
   await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Acquisizione non confermata');
   const ref = current.drafts[0].photos.previousApe?.[0]; expect(ref?.uri).toMatch(/\.apem$/); expect(fs.files.get(ref!.uri)).toBe('sealed');
+ });
+});
+
+
+describe('legacy survey evidence migration', () => {
+ const setup = () => {
+  const d = newDraft(), uri = '/documents/ape/media/' + d.id + '/old.mp4';
+  const p = { uri, name: 'old.mp4', mimeType: 'video/mp4', takenAt: '2026-11-25', durationSec: 12 };
+  let current = state({ ...d, photos: { hidden: [p], walkthrough: [p] }, uploaded: [uri], videoUploads: { [uri]: 'upload-1' } });
+  fs.files.set(uri, 'legacy bytes');
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return true; } };
+  const seal: NonNullable<Parameters<typeof migrateLegacySurveyMedia>[2]> = async op => {
+   await op.reserve(); fs.files.set(op.stage.uri, 'sealed');
+  };
+  return { d, uri, p, access, seal, get current() { return current; }, set current(s: AppState) { current = s; } };
+ };
+ it('moves all same-draft references and retry checkpoints atomically, preserves metadata, then cleans', async () => {
+  const s = setup();
+  expect(await migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => {})).toBe(1);
+  const d = s.current.drafts[0], next = d.photos.hidden![0].uri;
+  expect(next).toMatch(/\.apem$/); expect(d.photos.walkthrough).toEqual([{ ...s.p, uri: next }]);
+  expect(d.uploaded).toEqual([next]); expect(d.videoUploads).toEqual({ [next]: 'upload-1' });
+  expect(await loadState()).toEqual(s.current); expect(fs.files.has(s.uri)).toBe(true);
+  retryMediaCleanup(s.current);
+  expect(fs.files.has(s.uri)).toBe(false); expect(fs.files.has(next)).toBe(true);
+  expect(await migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => {})).toBe(0);
+ });
+ it('keeps the original and checkpoint when verification fails', async () => {
+  const s = setup();
+  await expect(migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => { throw Error('verification failed'); })).rejects.toThrow('verification failed');
+  expect(s.current.drafts[0].uploaded).toEqual([s.uri]); expect(fs.files.has(s.uri)).toBe(true);
+  expect(s.current.pendingMediaCleanup).toHaveLength(1);
+ });
+ it('does not migrate a cross-draft reference', async () => {
+  const s = setup(), other = newDraft();
+  s.current = { ...s.current, drafts: [...s.current.drafts, { ...other, photos: { hidden: [s.p] } }] };
+  const seal = vi.fn();
+  await expect(migrateLegacySurveyMedia(s.access, s.d.id, seal, async () => {})).rejects.toThrow();
+  expect(seal).not.toHaveBeenCalled(); expect(fs.files.has(s.uri)).toBe(true);
+ });
+ it('refuses a concurrently removed attachment without deleting its source', async () => {
+  const s = setup();
+  await expect(migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => {
+   s.current = { ...s.current, drafts: [{ ...s.current.drafts[0], photos: {} }] };
+  })).rejects.toThrow('Allegato modificato');
+  expect(fs.files.has(s.uri)).toBe(true);
  });
 });

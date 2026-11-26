@@ -113,9 +113,9 @@ async function withOpenedMedia<T>(input: File, draftId: string, filename: string
 
 /** Authenticate the entire new envelope and compare all bytes to the legacy
  * source before committing a replacement reference. Bounded native reads. */
-async function verifyMigratedPdf(source: File, sealed: File, draftId: string, filename: string,
+async function verifyMigratedMedia(source: File, sealed: File, draftId: string, filename: string,
  guard: () => void): Promise<void> {
- await withOpenedMedia(sealed, draftId, filename, 'pdf', guard, async clear => {
+ await withOpenedMedia(sealed, draftId, filename, 'bin', guard, async clear => {
   const a = source.open();
   try {
    const b = clear.open();
@@ -144,7 +144,7 @@ async function verifyMigratedPdf(source: File, sealed: File, draftId: string, fi
  * both snapshots before unlinking any unreferenced old file.
  * An already encrypted reference never falls back to the legacy source. */
 export async function migrateLocalDemoApe(access: Access, draftId: string, uri: string,
- seal = sealNativeMedia, verify = verifyMigratedPdf): Promise<string> {
+ seal = sealNativeMedia, verify = verifyMigratedMedia): Promise<string> {
  access.guard();
  const original = access.latest()?.drafts.find(d => d.id === draftId)?.job?.ape?.pdf;
  if (!safe.test(draftId) || !original || original.uri !== uri || original.mimeType !== 'application/pdf')
@@ -335,4 +335,93 @@ export async function captureEncryptedSurveyMedia(access: Access, draftId: strin
  catch { if (access.publish(next, false) !== true) throw new Error('Acquisizione non confermata: riprova il salvataggio locale.'); return ref; }
  access.publish(next, true);
  return ref;
+}
+
+
+// Explicit per-draft migration, under the App media lease. Unlike capture this
+// preserves the original metadata, including hidden and already uploaded evidence.
+export async function migrateLegacySurveyMedia(access: Access, draftId: string,
+ seal = sealNativeMedia, verify = verifyMigratedMedia): Promise<number> {
+ access.guard();
+ const initial = access.latest()?.drafts.find(d => d.id === draftId);
+ if (!safe.test(draftId) || !initial) throw new Error('Richiesta non disponibile');
+ const originals = [...new Set(Object.values(initial.photos).flatMap(list =>
+  (list ?? []).map(p => p.uri)).filter(uri => !uri.endsWith('.apem')))];
+ let count = 0;
+ for (const uri of originals) {
+  access.guard();
+  const first = access.latest()?.drafts.find(d => d.id === draftId);
+  const refs = Object.values(first?.photos ?? {}).flatMap(list => (list ?? []).filter(p => p.uri === uri));
+  if (!first || !refs.length) throw new Error('Allegato modificato durante la migrazione');
+  const oldName = uri.slice(uri.lastIndexOf('/') + 1);
+  if (!/^[a-zA-Z0-9_-]{1,128}\.(jpg|jpeg|png|heic|heif|pdf|mp4|mov)$/.test(oldName))
+   throw new Error('Percorso allegato non valido');
+  const dir = folder(draftId), source = new File(dir, oldName);
+  if (source.uri !== uri || !source.exists) throw new Error('Allegato non disponibile');
+  if (first.job?.ape?.pdf?.uri === uri) throw new Error('Riferimento attestato condiviso: assistenza necessaria');
+  const current = () => {
+   access.guard();
+   const state = access.latest();
+   const draft = state?.drafts.find(d => d.id === draftId);
+   const now = Object.values(draft?.photos ?? {}).flatMap(list => (list ?? []).filter(p => p.uri === uri));
+   if (!state || !draft || now.length !== refs.length || now.some((p, i) => p !== refs[i]) ||
+       draft.job?.ape?.pdf?.uri === uri ||
+       state.drafts.some(d => d.id !== draftId && (d.job?.ape?.pdf?.uri === uri ||
+        Object.values(d.photos).some(list => list?.some(p => p.uri === uri)))))
+    throw new Error('Allegato modificato durante la migrazione');
+   return { state, draft };
+  };
+  let stage: File | undefined;
+  for (let i = 0; i < 8; i++) {
+   const f = new File(dir, name() + '.apem');
+   const { state } = current();
+   const queued = enqueueMediaCleanup(state, draftId, f.uri);
+   if (!f.exists && queued && queued !== state && !state.drafts.some(d => d.job?.ape?.pdf?.uri === f.uri ||
+      d.uploaded?.includes(f.uri) || Object.prototype.hasOwnProperty.call(d.videoUploads ?? {}, f.uri) ||
+      Object.values(d.photos).some(list => list?.some(p => p.uri === f.uri)))) { stage = f; break; }
+  }
+  if (!stage) throw new Error('Destinazione migrazione non disponibile');
+  const dest = stage, filename = dest.uri.slice(dest.uri.lastIndexOf('/') + 1);
+  const guard = () => { current(); };
+  let reserved = false;
+  await seal({ input: source, stage: dest, draftId, filename, guard,
+   hasEncryptedEvidence: () => current().state.drafts.some(d => d.job?.ape?.pdf?.uri.endsWith('.apem') ||
+    Object.values(d.photos).some(list => list?.some(p => p.uri.endsWith('.apem')))),
+   reserve: () => {
+    const { state } = current();
+    const queued = enqueueMediaCleanup(state, draftId, dest.uri);
+    if (!queued || queued === state || dest.exists) throw new Error('Destinazione già riservata');
+    saveStateNow(queued); access.publish(queued, true); reserved = true;
+   },
+  });
+  guard();
+  if (!reserved || !dest.exists) throw new Error('Migrazione non confermata');
+  await verify(source, dest, draftId, filename, guard);
+  const { state, draft } = current();
+  if (!dest.exists || !state.pendingMediaCleanup?.some(t => t.draftId === draftId && t.filename === filename))
+   throw new Error('Prenotazione migrazione non confermata');
+  if (draft.uploaded?.includes(dest.uri) || Object.prototype.hasOwnProperty.call(draft.videoUploads ?? {}, dest.uri))
+   throw new Error('Checkpoint allegato in conflitto');
+  const photos = { ...draft.photos };
+  for (const q of Object.keys(photos)) photos[q] = photos[q]?.map(p => p.uri === uri ? { ...p, uri: dest.uri } : p);
+  const videoUploads = draft.videoUploads ? { ...draft.videoUploads } : undefined;
+  if (videoUploads && Object.prototype.hasOwnProperty.call(videoUploads, uri)) {
+   videoUploads[dest.uri] = videoUploads[uri]; delete videoUploads[uri];
+  }
+  const nextDraft = { ...draft, photos, ...(draft.uploaded ? { uploaded: draft.uploaded.map(p => p === uri ? dest.uri : p) } : {}),
+   ...(videoUploads ? { videoUploads } : {}) };
+  const { pendingMediaCleanup, ...rest } = state;
+  const remaining = pendingMediaCleanup.filter(t => !(t.draftId === draftId && t.filename === filename));
+  const logical: AppState = { ...rest, drafts: state.drafts.map(d => d.id === draftId ? nextDraft : d),
+   ...(remaining.length ? { pendingMediaCleanup: remaining } : {}) };
+  const next = enqueueMediaCleanup(logical, draftId, uri);
+  if (!next) throw new Error('Pulizia allegato non registrabile');
+  try { saveStateNow(next); }
+  catch {
+   if (access.publish(next, false) !== true) throw new Error('Migrazione non confermata: riprova il salvataggio locale.');
+   count++; continue;
+  }
+  access.publish(next, true); count++;
+ }
+ return count;
 }

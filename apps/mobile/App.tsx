@@ -15,7 +15,7 @@ import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type Pr
 
 import { createAutosave } from './src/survey/autosave';
 import { preparePrivateMediaCache } from './src/survey/media-native-storage';
-import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe, withSurveyMedia } from './src/survey/media-delivery';
+import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, migrateLegacySurveyMedia, shareLocalApe, withSurveyMedia } from './src/survey/media-delivery';
 import * as Sharing from 'expo-sharing';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
@@ -217,6 +217,10 @@ export default function App() {
  } else if (route.name === 'result' && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
+   onMigrateMedia={async () => {
+    const count = await withMediaLease(d.id, guard => migrateLegacySurveyMedia({ latest: () => latest.current, guard, publish: publishCapture }, d.id));
+    retryCleanup(); return count;
+   }}
    onCheckpoint={async cp => {
     const cur = latest.current;
     if (!cur || !permitted(d.id) || (cp.remoteOwner && !canViewDraft({ ...d, ...cp }, ownerRef.current, demo))) throw new Error('Richiesta non più disponibile.');
