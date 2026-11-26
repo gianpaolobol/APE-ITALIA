@@ -1,0 +1,15 @@
+# QA — acquisizione locale allegati (26 novembre 2026)
+
+Base: 06f94834426b8776f37d07e21b398cf87e1b1f7e. Macroblocco indipendente dal gate staging mobile.
+
+Problema: prima la copia di foto, PDF o video precedeva la registrazione del riferimento, che era delegata all'autosave ritardato. Un arresto dopo la copia poteva lasciare file personali senza riferimento e senza intento di pulizia. Un errore durante la copia poteva lasciare un file parziale.
+
+Correzione: riservare un percorso app-owned non referenziato, senza creare il file; persistere l'intento di pulizia in entrambe le copie autenticate prima della copia; dopo la copia persistere il riferimento e rimuovere solo l'intento appena creato. In caso di errore di copia, l'intento rimane recuperabile; in caso di errore del commit finale mantenere il riferimento in memoria e ritentare il salvataggio, senza cancellare il file perché una copia del manifest potrebbe già referenziarlo. In caso di arresto, il recupero esistente e la pulizia verificano lo snapshot prima di cancellare. Non toccare file sorgente o riferimenti di altri fascicoli.
+
+Quattro test sintetici con filesystem simulato: acquisizione e recupero dalla copia secondaria, fallimento della prenotazione, copia parziale e pulizia, fallimento del commit finale e retry. CI non ancora verificata. Non sono prove su filesystem nativo, di resistenza a manomissione, di perdita di alimentazione o di cancellazione fisica. Occorre testare memoria e latenza con video fino a 300 MB, perdita di spazio, sospensione, device locked e riapertura.
+
+Limiti: i file persistenti foto/video/PDF restano in chiaro a livello applicativo; la cifratura del manifest non equivale a cifratura dei media. Il picker può lasciare cache proprie, non si cancellano file senza origine app-owned certa. Gli orfani creati da versioni precedenti non vengono cancellati alla cieca. La migrazione cifrata richiede una strategia verificata di lettura in streaming e URI temporanei per preview/OCR/upload, gestione chiave, recupero e collaudo nativo; non è implementata da questo macroblocco. V1.0 non validata.
+
+## 26 novembre 2026 — [Codex] Correzione del percorso consegna demo
+
+CI 45722126201 sullo SHA 2e2d2777267c16a9614769145128d87def53d544: tre job verdi, verify fallito al typecheck mobile TS2305 perché JobScreen importava ancora persistPhoto. Anche il PDF dell'APE demo deve passare attraverso il journal. Collegato il percorso locale al medesimo archivio tramite App, mantenendo ops remote invariate; nessun successo di consegna se non risultano confermate entrambe le copie o il retry immediato. Tre regressioni aggiunte (PDF recuperabile, demo isolata/verbale, fallimento commit). CI del nuovo SHA da verificare; nessuna prova fisica, cifratura dei file media ancora aperta. PR #91 staging integrata su main 99a92a538bb4f4e64fb66f00fcbda4eb2adeb4e5 dopo 4/4 job verdi nella run 45721899693 e confronto 1 avanti/0 indietro, expected head. PR #93 Claude documentale aperta, CI verde ma stato da rettificare (PR #88 già integrata e CI funzionante); registro centrale non accessibile (404). Backup verificato immutato 53b9c11cef75a4c4486318e963e6a8b3352a8b31.

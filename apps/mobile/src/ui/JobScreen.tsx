@@ -13,7 +13,7 @@ import { PROVINCES, findQuestion, type PhotoRef } from '../survey/questions';
 import { quote, euro } from '../pricing';
 import { APE_CODE, VERBALE_CHECKS, canDeliver, dossier, fmtWhen, newCallUrl, verbaleErrors, type Job, type Verbale } from '../job';
 import { pickDocument } from '../pickers';
-import { persistPhoto, type Draft } from '../survey/drafts';
+import type { Draft } from '../survey/drafts';
 import type { ProRegistration } from '../pro/registration';
 import { KIND_LABELS } from '../evidence';
 
@@ -23,9 +23,9 @@ export type JobOps = {
  verbale(v: Verbale): Promise<void>; deliver(code: string, cls: string, pdf: { uri: string; name: string; mimeType: string }): Promise<void>;
  videoUri?(uri: string): Promise<string>;
 };
-type Props = { draft: Draft; pro: ProRegistration; onBack: () => void; onUpdate: (fn: (d: Draft) => Draft) => void; ops?: JobOps; remote?: boolean };
+type Props = { draft: Draft; pro: ProRegistration; onBack: () => void; onUpdate: (fn: (d: Draft) => Draft) => void; ops?: JobOps; remote?: boolean; onLocalDeliver?: JobOps['deliver'] };
 
-export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote }: Props) {
+export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote, onLocalDeliver }: Props) {
  const insets = useSafeAreaInsets();
  const a = draft.answers;
  const job = draft.job;
@@ -50,7 +50,10 @@ export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote
   call: async at => setJob(j => ({ ...j, call: { at, url: j.call?.url ?? newCallUrl() } })),
   visit: async at => setJob(j => ({ ...j, visit: { at } })),
   verbale: async v => setJob(j => ({ ...j, verbale: v })),
-  deliver: async (code, cls, pdf) => { const ref = persistPhoto(draft.id, pdf); setJob(j => ({ ...j, status: 'consegnata', ape: { code, energyClass: cls, pdf: ref, deliveredAt: new Date().toISOString() } })); },
+  deliver: async (code, cls, pdf) => {
+   if (!onLocalDeliver) throw new Error('Consegna locale non disponibile');
+   await onLocalDeliver(code, cls, pdf);
+  },
  };
  const ops = remoteOps ?? localOps;
  const [busy, setBusy] = useState(false);

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const fs = vi.hoisted(() => ({ files: new Map<string, string>(), dirs: new Set<string>(), failMoveTo: '', failDeleteAt: '', failReadAt: '' }));
+const fs = vi.hoisted(() => ({ files: new Map<string, string>(), dirs: new Set<string>(), failMoveTo: '', failDeleteAt: '', failReadAt: '', failCopy: false }));
 vi.mock('expo-file-system', () => {
  class Directory {
   uri: string;
@@ -25,6 +25,11 @@ vi.mock('expo-file-system', () => {
    return fs.files.get(this.uri) ?? '';
   }
   delete() { if (this.uri === fs.failDeleteAt) throw new Error('simulated delete failure'); fs.files.delete(this.uri); }
+  copy(dest: File) {
+   if (!this.exists || dest.exists) throw new Error('invalid copy');
+   fs.files.set(dest.uri, fs.files.get(this.uri)!);
+   if (fs.failCopy) throw new Error('simulated interrupted copy');
+  }
   move(dest: File) {
    if (dest.uri === fs.failMoveTo) throw new Error('simulated move failure');
    if (!this.exists || dest.exists) throw new Error('invalid move');
@@ -44,13 +49,13 @@ vi.mock('./snapshot-crypto', () => ({
  openSnapshot: (text: string) => ({ text, encrypted: false }),
  sealSnapshot: (text: string) => text,
 }));
-import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, persistPhoto, type AppState } from './drafts';
+import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
 const state = (...drafts: AppState['drafts']): AppState => ({ version: 1, drafts });
 
-beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; fs.failDeleteAt = ''; fs.failReadAt = ''; });
+beforeEach(() => { fs.files.clear(); fs.dirs.clear(); fs.failMoveTo = ''; fs.failDeleteAt = ''; fs.failReadAt = ''; fs.failCopy = false; });
 
 describe('draft snapshots and deletion', () => {
  it('initializes only when there is no evidence of an existing archive', async () => {
@@ -173,7 +178,7 @@ describe('draft snapshots and deletion', () => {
  });
  it('rejects unsafe draft identifiers before copying evidence or creating directories', () => {
   for (const id of ['', '..', '../other', 'a/b', 'a\\b', '%2e%2e', ' a ']) {
-   expect(() => persistPhoto(id, { uri: '/cache/test.jpg', name: 'test.jpg', mimeType: 'image/jpeg' }))
+   expect(() => addDraftPhoto(state(), id, 'wall', { uri: '/cache/test.jpg', name: 'test.jpg', mimeType: 'image/jpeg' }, () => {}))
     .toThrow('Invalid draft identifier');
   }
   expect(fs.files.size).toBe(0);
@@ -532,5 +537,115 @@ describe('deposited APE snapshot', () => {
    expect(() => saveStateNow(state({ ...newDraft(), job: invalid }))).toThrow('Invalid local snapshot');
    expect([...fs.files]).toEqual(before);
   }
+ });
+});
+
+describe('durable media capture journal', () => {
+ const source = { uri: '/cache/capture.jpg', name: 'capture.jpg', mimeType: 'image/jpeg' };
+ it('commits the cleanup reservation before copy and commits the reference in both snapshots', async () => {
+  const d = newDraft(), initial = state(d);
+  fs.files.set(source.uri, 'synthetic bytes');
+  const updates: { next: AppState; committed: boolean }[] = [];
+  const ref = addDraftPhoto(initial, d.id, 'wall', source, (next, committed) => {
+   updates.push({ next, committed });
+   if (updates.length === 1) {
+    expect(next.pendingMediaCleanup).toHaveLength(1);
+    expect(next.drafts[0].photos.wall).toBeUndefined();
+    expect([...fs.files.keys()].some(k => k.startsWith('/documents/ape/media/'))).toBe(false);
+   }
+  });
+  expect(updates.map(x => x.committed)).toEqual([true, true]);
+  expect((await loadState()).drafts[0].photos.wall).toEqual([ref]);
+  expect((await loadState()).pendingMediaCleanup).toBeUndefined();
+  expect(fs.files.get(ref.uri)).toBe('synthetic bytes');
+  fs.files.set(primary, 'corrupt');
+  expect((await loadState()).drafts[0].photos.wall).toEqual([ref]);
+ });
+ it('does not create a private file if reserving the cleanup journal fails', () => {
+  const d = newDraft(), initial = state(d);
+  saveStateNow(initial);
+  fs.files.set(source.uri, 'synthetic bytes');
+  fs.failMoveTo = backup;
+  const publish = vi.fn();
+  expect(() => addDraftPhoto(initial, d.id, 'wall', source, publish)).toThrow();
+  expect(publish).not.toHaveBeenCalled();
+  expect([...fs.files.keys()].some(k => k.startsWith('/documents/ape/media/'))).toBe(false);
+ });
+ it('recovers an interrupted copy from the journal without adding a broken reference', async () => {
+  const d = newDraft(), initial = state(d);
+  fs.files.set(source.uri, 'synthetic bytes');
+  fs.failCopy = true;
+  expect(() => addDraftPhoto(initial, d.id, 'wall', source, () => {})).toThrow('simulated interrupted copy');
+  const recovered = await loadState();
+  expect(recovered.pendingMediaCleanup).toHaveLength(1);
+  expect(recovered.drafts[0].photos.wall).toBeUndefined();
+  expect([...fs.files.keys()].filter(k => k.startsWith('/documents/ape/media/'))).toHaveLength(1);
+  const cleaned = retryMediaCleanup(recovered);
+  expect(cleaned.pendingMediaCleanup).toBeUndefined();
+  expect([...fs.files.keys()].filter(k => k.startsWith('/documents/ape/media/'))).toHaveLength(0);
+  expect(fs.files.get(source.uri)).toBe('synthetic bytes');
+ });
+ it('retains the intended reference and file after a final snapshot write fails, allowing retry', async () => {
+  const d = newDraft(), initial = state(d);
+  fs.files.set(source.uri, 'synthetic bytes');
+  let pending: AppState | undefined;
+  const ref = addDraftPhoto(initial, d.id, 'wall', source, (next, committed) => {
+   if (committed) fs.failMoveTo = backup;
+   else pending = next;
+  });
+  expect(pending?.drafts[0].photos.wall).toEqual([ref]);
+  expect(fs.files.get(ref.uri)).toBe('synthetic bytes');
+  fs.failMoveTo = '';
+  saveStateNow(pending!);
+  expect((await loadState()).drafts[0].photos.wall).toEqual([ref]);
+  expect((await loadState()).pendingMediaCleanup).toBeUndefined();
+ });
+});
+
+
+describe('durable offline demo APE delivery', () => {
+ const source = { uri: '/cache/ape.pdf', name: 'ape.pdf', mimeType: 'application/pdf' };
+ const ready = () => ({ ...newDraft(), job: {
+  status: 'accettata' as const, certifier: { name: 'Synthetic', sace: '00000' },
+  verbale: { date: '26/11/2026', start: '09:00', end: '10:00', attendees: 'Synthetic',
+   checks: ['misure', 'involucro', 'foto'], notes: '', ownerName: 'Synthetic',
+   ownerConfirmed: true, declaration: true, savedAt: '2026-11-26T09:00:00Z' },
+ } });
+ it('journals the PDF before copying and commits delivery in both snapshots', async () => {
+  const d = ready(); fs.files.set(source.uri, 'synthetic PDF');
+  deliverDraftApe(state(d), d.id, '00000-000000-2026', 'A1', source, (next, committed) => {
+   expect(committed).toBe(true);
+   if (next.pendingMediaCleanup?.length) expect(next.drafts[0].job?.ape).toBeUndefined();
+  });
+  const saved = await loadState();
+  const pdf = saved.drafts[0].job?.ape?.pdf;
+  expect(saved.drafts[0].job?.status).toBe('consegnata');
+  expect(pdf).toBeDefined();
+  expect(fs.files.get(pdf!.uri)).toBe('synthetic PDF');
+  expect(saved.pendingMediaCleanup).toBeUndefined();
+  fs.files.set(primary, 'corrupt');
+  expect((await loadState()).drafts[0].job?.ape?.pdf).toEqual(pdf);
+ });
+ it('rejects connected drafts and jobs without a verbale without copying', () => {
+  const d = ready(); fs.files.set(source.uri, 'synthetic PDF');
+  for (const candidate of [{ ...d, localOwner: { subject: 'a', organizationId: 'b' } },
+    { ...d, job: { ...d.job, verbale: undefined } }]) {
+   expect(() => deliverDraftApe(state(candidate), d.id, '00000-000000-2026', 'A1', source, () => {})).toThrow('Consegna dimostrativa non disponibile');
+  }
+  expect([...fs.files.keys()]).toEqual([source.uri]);
+ });
+ it('does not report successful delivery after a failed final commit', async () => {
+  const d = ready(); fs.files.set(source.uri, 'synthetic PDF');
+  let pending: AppState | undefined;
+  expect(() => deliverDraftApe(state(d), d.id, '00000-000000-2026', 'A1', source, (next, committed) => {
+   if (committed) fs.failMoveTo = backup;
+   else { pending = next; return false; }
+  })).toThrow('Consegna non confermata');
+  const pdf = pending?.drafts[0].job?.ape?.pdf;
+  expect(pdf).toBeDefined();
+  expect(fs.files.get(pdf!.uri)).toBe('synthetic PDF');
+  fs.failMoveTo = '';
+  saveStateNow(pending!);
+  expect((await loadState()).drafts[0].job?.status).toBe('consegnata');
  });
 });
