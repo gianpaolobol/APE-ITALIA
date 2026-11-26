@@ -717,10 +717,10 @@ describe('on-demand legacy demo PDF migration', () => {
  const setup = () => {
   const d = newDraft();
   const uri = '/documents/ape/media/' + d.id + '/old.pdf';
-  const delivered = { ...d, job: { status: 'consegnata' as const, ape: {
+  const delivered = { ...d, job: { status: 'consegnata' as const, certifier: { name: 'Synthetic', sace: '00000' }, ape: {
    code: '00000-000000-2026', energyClass: 'A1', deliveredAt: '2026-11-26',
    pdf: { uri, name: 'ape.pdf', mimeType: 'application/pdf', takenAt: '2026-11-26' },
-  } } } as typeof d;
+  } } };
   let current = state(delivered);
   fs.files.set(uri, 'legacy source');
   const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return true; } };
