@@ -1,0 +1,23 @@
+# [Codex] Local offline review integration; no service credentials.
+name: Catasto certifier review
+on:
+  pull_request:
+    paths:
+      - 'scripts/catasto-geometry-review*'
+      - 'scripts/catasto-v02/**'
+      - '.github/workflows/catasto-certifier-review.yml'
+permissions:
+  contents: read
+jobs:
+  offline-review:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --test scripts/catasto-geometry-review.test.mjs
