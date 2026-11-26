@@ -130,6 +130,28 @@ describe('authenticated survey upload reader', () => {
   expect(cp.uploaded).toEqual([encrypted.uri]);
   expect(cp.videoUploads).toEqual({});
  });
+ it('keeps a confirmed receipt when the reader fails during cleanup and avoids a second direct upload', async () => {
+  let cp: SubmitState = {};
+  const checkpoint = (s: SubmitState) => { cp = s; };
+  const photo = { ...encrypted, mimeType: 'image/jpeg', name: 'photo.jpg' };
+  const reader = async (_q: string, _p: unknown, use: (uri: string) => Promise<void>) => {
+   await use('file:///private-cache/photo.jpg');
+   throw new Error('cleanup failed');
+  };
+  await expect(submitToServer({ answers, photos: { wallPhotos: [photo] } }, progress, checkpoint, reader)).rejects.toThrow('cleanup failed');
+  expect(cp.uploaded).toEqual([photo.uri]);
+  expect(m.api.mock.calls.filter(c => c[0].endsWith('/evidence'))).toHaveLength(1);
+  expect(m.api.mock.calls.some(c => c[0].endsWith('/submit'))).toBe(false);
+  const retryReader = vi.fn();
+  await submitToServer({ answers, photos: { wallPhotos: [photo] }, ...cp }, progress, checkpoint, retryReader);
+  expect(retryReader).not.toHaveBeenCalled();
+  expect(m.api.mock.calls.filter(c => c[0].endsWith('/evidence'))).toHaveLength(1);
+ });
+ it('rejects a reader that returns without uploading', async () => {
+  await expect(submitToServer({ answers, photos: { walkthrough: [encrypted] } }, progress, vi.fn(), async () => {})).rejects.toThrow('Invio allegato non confermato');
+  expect(m.upload).not.toHaveBeenCalled();
+  expect(m.api.mock.calls.some(c => c[0].endsWith('/submit'))).toBe(false);
+ });
  it('does not submit when authentication or cache cleanup fails', async () => {
   const reader = async () => { throw new Error('Authentication failed'); };
   await expect(submitToServer({ answers, photos: { walkthrough: [encrypted] } }, progress, vi.fn(), reader)).rejects.toThrow('Authentication failed');

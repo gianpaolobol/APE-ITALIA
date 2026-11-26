@@ -153,7 +153,10 @@ export default function App() {
     throw new Error('Sessione o richiesta modificata');
   };
   mediaBusy.current = true;
-  try { guard(); const result = await use(guard); guard(); return result; }
+  try {
+   guard(); preparePrivateMediaCache(true); guard();
+   const result = await use(guard); guard(); return result;
+  }
   finally { mediaBusy.current = false; }
  };
 
@@ -217,6 +220,7 @@ export default function App() {
  } else if (route.name === 'result' && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
+   onPrepareSend={async () => { await withMediaLease(d.id, async guard => { guard(); }); }}
    onMigrateMedia={async () => {
     const count = await withMediaLease(d.id, guard => migrateLegacySurveyMedia({ latest: () => latest.current, guard, publish: publishCapture }, d.id));
     retryCleanup(); return count;

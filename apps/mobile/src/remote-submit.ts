@@ -84,8 +84,11 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
  let i = 0;
  for (const { q, p } of files) {
   onProgress(`Carico foto e documenti (${i + 1}/${files.length})`, 0.1 + (0.8 * i) / Math.max(1, files.length));
+  let started = false, acknowledged = false;
   const upload = async (clearUri: string) => {
    guard();
+   if (started) throw new Error('Lettura allegato duplicata');
+   started = true;
    if (/\.apem$/i.test(clearUri)) throw new Error('Allegato cifrato non aperto');
    if (p.mimeType.startsWith('video/')) {
     const base = 0.1 + (0.8 * i) / Math.max(1, files.length);
@@ -99,6 +102,12 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
     await call(`/v1/cases/${caseId}/evidence`, { org: true, form, timeoutMs: 120_000 });
    }
    guard();
+   // Record a confirmed server receipt before the reader releases its cache.
+   // If cleanup fails, this attempt still fails, but a retry need not upload
+   // the already acknowledged attachment a second time.
+   uploaded.push(p.uri);
+   await save();
+   acknowledged = true;
   };
   if (readMedia) await readMedia(q, p, upload);
   else {
@@ -106,8 +115,7 @@ export async function submitToServer(input: { answers: Answers; photos: Photos }
    await upload(p.uri);
   }
   guard();
-  uploaded.push(p.uri);
-  await save();
+  if (!acknowledged) throw new Error('Invio allegato non confermato');
   i++;
  }
  onProgress('Invio ai certificatori', 0.95);

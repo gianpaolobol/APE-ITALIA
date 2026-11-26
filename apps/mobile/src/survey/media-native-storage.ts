@@ -1,13 +1,17 @@
 /** Native private media namespace. Never clear the durable evidence directory.
  * All opened plaintext is disposable and must live only under ape-media-open.
- * Recovery runs once per JS runtime, before any consumer may obtain a URI.
+ * Recovery runs at startup and at the beginning of each exclusive App media
+ * lease, before any consumer may obtain a URI. Nested callers do not resweep.
  */
 import { Directory, File, Paths } from 'expo-file-system';
 
 type CacheDirectory = { readonly exists: boolean; delete(): void; create(options: { intermediates: true }): void };
 export function createCacheRecovery(directory: () => CacheDirectory) {
  let prepared = false;
- return () => {
+ return (newExclusiveLease = false) => {
+  // Only the App lease owner may request a new sweep. A previous failed
+  // unlink or OS cache eviction can invalidate a once-per-runtime recovery.
+  if (newExclusiveLease) prepared = false;
   if (prepared) return;
   const dir = directory();
   if (dir.exists) dir.delete();

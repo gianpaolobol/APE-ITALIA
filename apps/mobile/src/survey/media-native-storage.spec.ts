@@ -52,6 +52,14 @@ describe('native media namespace', () => {
   expect(fs.files.has('/doc/ape/media.encrypted.v1')).toBe(true);
   expect(hasNativeEncryptedMedia()).toBe(true);
  });
+ it('resweeps after an exclusive lease boundary and retries a failed sweep', () => {
+  let exists = true, fail = false, deletions = 0;
+  const recover = createCacheRecovery(() => ({ get exists() { return exists; }, delete() { deletions++; if (!fail) exists = false; }, create() { exists = true; } }));
+  recover(); recover(); expect(deletions).toBe(1);
+  fail = true; expect(() => recover(true)).toThrow('cleanup incomplete');
+  fail = false; recover(); expect(deletions).toBe(3);
+  exists = false; recover(true); expect(exists).toBe(true);
+ });
  it('fails closed on unreadable or unexpected archive layout', () => {
   fs.dirs.add('/doc/ape/media'); fs.failList = true;
   expect(() => hasNativeEncryptedMedia()).toThrow();
