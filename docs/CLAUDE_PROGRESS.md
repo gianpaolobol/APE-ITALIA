@@ -6,6 +6,10 @@
 - Test eseguiti: test unitari senza DB invariati; **test PostgreSQL non eseguiti in locale** (binari Prisma non scaricabili dall'ambiente). CI GitHub non avviata: blocco di fatturazione/limite di spesa dell'account.
 - Dipendenze: 18 vulnerabilità npm (6 high) solo in strumenti di build (metro, next/postcss, prisma CLI), non nel runtime API.
 
+## 2026-11-26 [Claude] Linee guida comuni v1.1.0
+
+Il repository adotta le linee guida comuni (`LINEE_GUIDA.md`, sincronizzate da `gianpaolobol/registro-delle-idee`): sezione `[Gian] Protocollo comune` in `AGENTS.md`, file di ingresso per Claude, Gemini e Copilot, riquadro nel README, `STATO.md` e controllo automatico `verifica-linee-guida`. Solo documentazione: nessun codice, test o dato modificato.
+
 ## Riepilogo consolidato (aggiornato al 23/11/2026, ~11:50)
 **Stato**: tutto il lavoro è in `main` (ultimo commit verificato `140b4ff`). Nella notte le PR #7–#27 erano impilate e il merge era negato alla sessione; alle 10:20 il titolare ha autorizzato il push diretto su `main`: fast-forward a `a3550e0` (PR #7 *merged*, #8–#27 chiuse con riferimento). Da allora: branch → PR → CI verde (4 job) → fast-forward di `main` (PR #28–#35 risultano *merged*).
 
