@@ -33,6 +33,10 @@ function file(uri: string, initial: Uint8Array | null = null) {
   },
  };
 }
+// Avoid Vitest deep comparison of a million indexed properties; still compare every byte.
+function equalBytes(actual: Uint8Array | undefined, expected: Uint8Array): boolean {
+ return actual !== undefined && actual.length === expected.length && expected.every((byte, index) => actual[index] === byte);
+}
 function setup() {
  let record: string | null = null, nonce = 0, active = true, reserved = 0;
  const keyManager = createMediaKeyManager({
@@ -56,10 +60,10 @@ describe('composed authenticated media pipeline', () => {
   const f = setup();
   await f.gateway.seal(f.encrypt);
   expect(f.sealed.size).toBe(sealedMediaSize(f.original.length));
-  expect(f.input.bytes()).toEqual(f.original);
+  expect(equalBytes(f.input.bytes(), f.original)).toBe(true);
   expect(f.sealed.bytes()?.slice(0, 8)).toEqual(Uint8Array.from([65,80,69,77,69,68,48,49]));
   const length = await f.gateway.withOpened(f.decrypt, () => {
-   expect(f.temp.bytes()).toEqual(f.original);
+   expect(equalBytes(f.temp.bytes(), f.original)).toBe(true);
    return f.temp.size;
   });
   expect(length).toBe(f.original.length);
