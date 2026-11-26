@@ -14,6 +14,7 @@ import { getSession, logout, serverEnabled, subscribeSession } from './src/serve
 import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, addDraftPhoto, deliverDraftApe, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
+import { preparePrivateMediaCache } from './src/survey/media-native-storage';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
@@ -44,7 +45,7 @@ export default function App() {
 
  useEffect(() => {
   let active = true;
-  void loadState().then(s => {
+  void Promise.resolve().then(() => preparePrivateMediaCache()).then(() => loadState()).then(s => {
    if (!active) return;
    // A committed deletion may have been interrupted before unlinking its files.
    // Keep the pending intent visible if retry or its checkpoint fails.

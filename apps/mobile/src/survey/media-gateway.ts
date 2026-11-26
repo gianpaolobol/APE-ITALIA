@@ -7,6 +7,7 @@ import { sealMedia, openMedia } from './media-envelope';
 import { nativeMediaKeys } from './media-key';
 import { transformToStage } from './media-staging';
 import type { File } from 'expo-file-system';
+import { hasNativeEncryptedMedia, markNativeEncryptedMedia, preparePrivateMediaCache } from './media-native-storage';
 
 type StageFile = Parameters<typeof transformToStage>[0];
 type Keys = Pick<typeof nativeMediaKeys, 'withKey'>;
@@ -101,17 +102,27 @@ function nativeIdentity(op: NativeOperation): string {
  * The caller must create parent directories and journal the exact destination. */
 export async function sealNativeMedia(op: NativeOperation): Promise<void> {
  const identity = nativeIdentity(op);
+ if (!op.filename.endsWith('.apem')) throw new Error('Invalid encrypted media filename');
  const { File, Directory, Paths } = await import('expo-file-system');
  const crypto = await import('expo-crypto');
  op.guard();
  const expected = new File(new Directory(Paths.document, 'ape', 'media', op.draftId), op.filename);
  if (op.stage.uri !== expected.uri) throw new Error('Invalid durable media destination');
- await createMediaGateway(nativeMediaKeys, n => crypto.getRandomValues(new Uint8Array(n))).seal({ ...op, identity });
+ await createMediaGateway(nativeMediaKeys, n => crypto.getRandomValues(new Uint8Array(n))).seal({
+  ...op, identity,
+  hasEncryptedEvidence: () => hasNativeEncryptedMedia() || op.hasEncryptedEvidence(),
+  reserve: async () => {
+   await op.reserve();
+   op.guard();
+   markNativeEncryptedMedia();
+  },
+ });
 }
 
 export async function withOpenedNativeMedia<T>(op: NativeOperation, temporaryName: string,
  use: (file: File) => IO<T>): Promise<T> {
  const identity = nativeIdentity(op);
+ if (!op.filename.endsWith('.apem')) throw new Error('Invalid encrypted media filename');
  if (!/^[a-zA-Z0-9_-]{1,128}\.[a-zA-Z0-9]{1,12}$/.test(temporaryName))
   throw new Error('Invalid temporary media name');
  const { File, Directory, Paths } = await import('expo-file-system');
@@ -120,6 +131,8 @@ export async function withOpenedNativeMedia<T>(op: NativeOperation, temporaryNam
  const temporary = new File(new Directory(Paths.cache, 'ape-media-open'), temporaryName);
  if (op.input.uri !== expected.uri || op.stage.uri !== temporary.uri)
   throw new Error('Invalid native media paths');
+ preparePrivateMediaCache();
+ op.guard();
  return createMediaGateway(nativeMediaKeys, () => { throw new Error('Unexpected random request'); })
   .withOpened({ ...op, identity }, () => use(op.stage));
 }
