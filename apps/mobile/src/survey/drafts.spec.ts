@@ -17,6 +17,7 @@ vi.mock('expo-file-system', () => {
   uri: string;
   constructor(parent: string | { uri: string }, ...parts: string[]) { this.uri = [typeof parent === 'string' ? parent : parent.uri, ...parts].join('/'); }
   get exists() { return fs.files.has(this.uri); }
+  get size() { return fs.files.get(this.uri)?.length ?? 0; }
   create() { fs.files.set(this.uri, ''); }
   write(data: string) { fs.files.set(this.uri, data); }
   async text() { return this.textSync(); }
@@ -789,6 +790,7 @@ describe('encrypted survey capture transaction', () => {
   const d = newDraft(); let current = state(d);
   const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
   const seal: Seal = async op => { await op.reserve(); current = { ...current, drafts: [] }; fs.files.set(op.stage.uri, 'sealed'); };
+  fs.files.set(source.uri, 'original');
   await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Richiesta modificata');
   expect(current.drafts).toEqual([]); expect(current.pendingMediaCleanup).toHaveLength(1);
  });
@@ -799,10 +801,19 @@ describe('encrypted survey capture transaction', () => {
   await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', { ...source, mimeType: 'text/html' }, seal)).rejects.toThrow();
   expect(seal).not.toHaveBeenCalled(); expect(publish).not.toHaveBeenCalled();
  });
+ it('rejects missing or oversized actual source before reservation', async () => {
+  const d = newDraft(); const publish = vi.fn(); const seal = vi.fn();
+  const access = { latest: () => state(d), guard: () => {}, publish };
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Dimensione allegato');
+  fs.files.set(source.uri, 'x'.repeat(15 * 1024 * 1024 + 1));
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Dimensione allegato');
+  expect(seal).not.toHaveBeenCalled(); expect(publish).not.toHaveBeenCalled();
+ });
  it('keeps possibly committed ciphertext when final checkpoint fails', async () => {
   const d = newDraft(); let current = state(d);
   const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return false; } };
   const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'sealed'); fs.failMoveTo = backup; };
+  fs.files.set(source.uri, 'original');
   await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Acquisizione non confermata');
   const ref = current.drafts[0].photos.previousApe?.[0]; expect(ref?.uri).toMatch(/\.apem$/); expect(fs.files.get(ref!.uri)).toBe('sealed');
  });

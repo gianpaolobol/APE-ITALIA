@@ -267,8 +267,7 @@ export async function withSurveyMedia<T>(access: Pick<Access, 'latest' | 'guard'
  return withOpenedMedia(input, draftId, filename, extension, guard, async file => use(file.uri));
 }
 
-/** Journaled capture transaction; activate only after preview consumers support
- * encrypted references. Picker-owned sources are never unlinked here. */
+/** Journaled capture transaction. Picker-owned sources are never unlinked here. */
 export async function captureEncryptedSurveyMedia(access: Access, draftId: string, questionId: string,
  source: Source & Pick<PhotoRef, 'width' | 'height' | 'durationSec'>, seal = sealNativeMedia): Promise<PhotoRef> {
  const current = () => {
@@ -292,6 +291,10 @@ export async function captureEncryptedSurveyMedia(access: Access, draftId: strin
   return { state, draft, list };
  };
  current();
+ const input = new File(source.uri);
+ const maxBytes = (source.mimeType.startsWith('video/') ? 300 : 15) * 1024 * 1024;
+ if (!input.exists || !Number.isSafeInteger(input.size) || input.size < 1 || input.size > maxBytes)
+  throw new Error('Dimensione allegato non valida');
  const dir = folder(draftId);
  let stage: File | undefined;
  for (let i = 0; i < 8; i++) {
@@ -305,7 +308,7 @@ export async function captureEncryptedSurveyMedia(access: Access, draftId: strin
  const destination = stage;
  const filename = destination.uri.slice(destination.uri.lastIndexOf('/') + 1);
  let reserved = false;
- await seal({ input: new File(source.uri), stage: destination, draftId, filename,
+ await seal({ input, stage: destination, draftId, filename,
   guard: () => { current(); },
   hasEncryptedEvidence: () => current().state.drafts.some(d => d.job?.ape?.pdf?.uri.endsWith('.apem') ||
    Object.values(d.photos).some(list => list?.some(p => p.uri.endsWith('.apem')))),

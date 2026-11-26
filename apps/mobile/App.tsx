@@ -11,11 +11,11 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, addDraftPhoto, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
 import { preparePrivateMediaCache } from './src/survey/media-native-storage';
-import { deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe, withSurveyMedia } from './src/survey/media-delivery';
+import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe, withSurveyMedia } from './src/survey/media-delivery';
 import * as Sharing from 'expo-sharing';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
@@ -145,7 +145,7 @@ export default function App() {
   return true;
  };
 
- const withMediaLease = async (id: string, use: (guard: () => void) => Promise<void>) => {
+ const withMediaLease = async <T,>(id: string, use: (guard: () => void) => Promise<T>): Promise<T> => {
   if (mediaBusy.current || !permitted(id) || !sameOwner(owner, ownerRef.current)) throw new Error('Allegato non disponibile');
   const epoch = scopeEpoch.current;
   const guard = () => {
@@ -153,7 +153,7 @@ export default function App() {
     throw new Error('Sessione o richiesta modificata');
   };
   mediaBusy.current = true;
-  try { guard(); await use(guard); guard(); }
+  try { guard(); const result = await use(guard); guard(); return result; }
   finally { mediaBusy.current = false; }
  };
 
@@ -177,10 +177,15 @@ export default function App() {
    // Answers/photos of questions that become hidden are kept (the user may switch back); they are
    // excluded when sending.
    onUpdate={fn => updateDraft(d.id, fn)}
-   onAddPhoto={(qid, f) => {
-    const cur = latest.current;
-    if (!cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
-    return addDraftPhoto(cur, d.id, qid, f, publishCapture);
+   onAddPhoto={async (qid, f) => {
+    const result = await withMediaLease(d.id, guard => captureEncryptedSurveyMedia({
+     latest: () => latest.current, guard, publish: publishCapture,
+    }, d.id, qid, f));
+    retryCleanup(); return result;
+   }}
+   onPreviewMedia={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard }, d.id, qid, photo, use));
+    retryCleanup();
    }}
    onReadPhoto={async (qid, photo, use) => {
     await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard: () => {
@@ -242,6 +247,10 @@ export default function App() {
  } else if (route.name === 'job' && demo && visibleState.pro && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <JobScreen draft={d} pro={visibleState.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)}
+   onReadLocalMedia={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard }, d.id, qid, photo, use));
+    retryCleanup();
+   }}
    onLocalDeliver={async (code, cls, pdf) => {
     if (!demo) throw new Error('Richiesta non disponibile');
     await withMediaLease(d.id, guard => deliverEncryptedDemoApe({
