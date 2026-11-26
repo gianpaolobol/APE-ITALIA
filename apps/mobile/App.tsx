@@ -15,7 +15,7 @@ import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type Pr
 
 import { createAutosave } from './src/survey/autosave';
 import { preparePrivateMediaCache } from './src/survey/media-native-storage';
-import { deliverEncryptedDemoApe, shareLocalApe } from './src/survey/media-delivery';
+import { deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe } from './src/survey/media-delivery';
 import * as Sharing from 'expo-sharing';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
@@ -213,7 +213,14 @@ export default function App() {
     autosave.schedule(next);
     if (!autosave.flush()) throw new Error('Salvataggio locale non riuscito. Riprova.');
    }}
-   onOpenLocalPdf={uri => withMediaLease(d.id, guard => shareLocalApe({ latest: () => latest.current, guard }, d.id, uri, path => Sharing.shareAsync(path, { mimeType: 'application/pdf' })))}
+   onOpenLocalPdf={async uri => {
+    await withMediaLease(d.id, async guard => {
+     const access = { latest: () => latest.current, guard, publish: publishCapture };
+     const encrypted = await migrateLocalDemoApe(access, d.id, uri);
+     await shareLocalApe(access, d.id, encrypted, path => Sharing.shareAsync(path, { mimeType: 'application/pdf' }));
+    });
+    retryCleanup();
+   }}
    onDelete={() => { if (removeDraft(d.id)) setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
   screen = <ProScreen key={scopeKey} state={visibleState} canSaveLocally={!!owner || demo} onBack={() => setRoute({ name: 'home' })} onSaved={savePro} onInbox={() => { if (demo && sameOwner(owner, ownerRef.current)) setRoute({ name: 'inbox' }); }} onRemote={me => { if (ownerRef.current) setRoute(r => r.name === 'pro' ? { name: 'remote', me } : r); }} />;

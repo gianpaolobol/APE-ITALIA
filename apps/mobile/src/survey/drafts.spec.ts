@@ -51,7 +51,7 @@ vi.mock('./snapshot-crypto', () => ({
 }));
 import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
 
-import { deliverEncryptedDemoApe, shareLocalApe } from './media-delivery';
+import { deliverEncryptedDemoApe, migrateLocalDemoApe, shareLocalApe } from './media-delivery';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -709,6 +709,62 @@ describe('encrypted demo APE delivery transaction', () => {
   fs.files.set(uri, 'other draft');
   const share = vi.fn(async (_uri: string) => {});
   await expect(shareLocalApe({ latest: () => state(delivered), guard: () => {} }, d.id, uri, share)).rejects.toThrow();
+  expect(share).not.toHaveBeenCalled();
+ });
+});
+
+describe('on-demand legacy demo PDF migration', () => {
+ const setup = () => {
+  const d = newDraft();
+  const uri = '/documents/ape/media/' + d.id + '/old.pdf';
+  const delivered = { ...d, job: { status: 'consegnata' as const, ape: {
+   code: '00000-000000-2026', energyClass: 'A1', deliveredAt: '2026-11-26',
+   pdf: { uri, name: 'ape.pdf', mimeType: 'application/pdf', takenAt: '2026-11-26' },
+  } } } as typeof d;
+  let current = state(delivered);
+  fs.files.set(uri, 'legacy source');
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return true; } };
+  type Seal = NonNullable<Parameters<typeof migrateLocalDemoApe>[3]>;
+  const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'synthetic envelope'); };
+  return { d, uri, access, seal, get current() { return current; }, set current(s: AppState) { current = s; } };
+ };
+ it('commits verified replacement with old cleanup intent, then cleans only after checkpoint', async () => {
+  const s = setup();
+  const verify = vi.fn(async () => { expect(s.current.drafts[0].job?.ape?.pdf?.uri).toBe(s.uri); });
+  const encrypted = await migrateLocalDemoApe(s.access, s.d.id, s.uri, s.seal, verify);
+  expect(verify).toHaveBeenCalledOnce();
+  expect(encrypted).toMatch(/\.apem$/);
+  expect(s.current.drafts[0].job?.ape?.pdf?.uri).toBe(encrypted);
+  expect(s.current.drafts[0].job?.ape?.deliveredAt).toBe('2026-11-26');
+  expect(s.current.pendingMediaCleanup).toEqual([{ draftId: s.d.id, filename: 'old.pdf' }]);
+  expect(fs.files.get(s.uri)).toBe('legacy source');
+  expect(await loadState()).toEqual(s.current);
+  const cleaned = retryMediaCleanup(s.current);
+  expect(cleaned.pendingMediaCleanup).toBeUndefined();
+  expect(fs.files.has(s.uri)).toBe(false);
+  expect(fs.files.has(encrypted)).toBe(true);
+ });
+ it('keeps the legacy reference and original when authentication or comparison fails', async () => {
+  const s = setup();
+  await expect(migrateLocalDemoApe(s.access, s.d.id, s.uri, s.seal,
+   async () => { throw new Error('verification failed'); })).rejects.toThrow('verification failed');
+  expect(s.current.drafts[0].job?.ape?.pdf?.uri).toBe(s.uri);
+  expect(fs.files.has(s.uri)).toBe(true);
+  expect(s.current.pendingMediaCleanup).toHaveLength(1);
+  const recovered = retryMediaCleanup(s.current);
+  expect(recovered.pendingMediaCleanup).toBeUndefined();
+  expect(fs.files.has(s.uri)).toBe(true);
+ });
+ it('does not overwrite a concurrently removed draft or delete its source', async () => {
+  const s = setup();
+  await expect(migrateLocalDemoApe(s.access, s.d.id, s.uri, s.seal,
+   async () => { s.current = { ...s.current, drafts: [] }; })).rejects.toThrow('Attestato modificato');
+  expect(s.current.drafts).toEqual([]);
+  expect(fs.files.has(s.uri)).toBe(true);
+ });
+ it('does not send a legacy PDF directly to the sharing consumer', async () => {
+  const s = setup(), share = vi.fn(async (_uri: string) => {});
+  await expect(shareLocalApe(s.access, s.d.id, s.uri, share)).rejects.toThrow('Percorso attestato non valido');
   expect(share).not.toHaveBeenCalled();
  });
 });

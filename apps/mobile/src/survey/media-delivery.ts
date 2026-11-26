@@ -86,24 +86,10 @@ export async function deliverEncryptedDemoApe(access: Access, draftId: string, c
  access.publish(next, true);
 }
 
-/** Only the current authenticated manifest may authorize the PDF. Legacy
- * app-owned .pdf references remain readable pending migration. A corrupt
- * .apem never falls back to a plaintext path. */
-export async function shareLocalApe(access: Pick<Access, 'latest' | 'guard'>,
- draftId: string, uri: string, share: (uri: string) => Promise<void>): Promise<void> {
- const guard = () => {
-  access.guard();
-  const draft = access.latest()?.drafts.find(d => d.id === draftId);
-  if (!safe.test(draftId) || !draft || !canViewDraft(draft, null, true) ||
-      draft.job?.ape?.pdf?.uri !== uri || draft.job.ape.pdf.mimeType !== 'application/pdf')
-   throw new Error('Attestato non disponibile');
- };
- guard();
- const filename = uri.slice(uri.lastIndexOf('/') + 1);
- if (!/^[a-zA-Z0-9_-]{1,128}\.(pdf|apem)$/.test(filename)) throw new Error('Percorso attestato non valido');
- const input = new File(folder(draftId), filename);
- if (input.uri !== uri || !input.exists) throw new Error('Attestato non disponibile');
- if (filename.endsWith('.pdf')) { await share(input.uri); guard(); return; }
+/** Plaintext stays in the dedicated private cache only during a bounded
+ * consumer. Both the temporary file and its journal are recovered on startup. */
+async function withOpenedPdf(input: File, draftId: string, filename: string,
+ guard: () => void, use: (file: File) => Promise<void>): Promise<void> {
  const { preparePrivateMediaCache } = await import('./media-native-storage');
  guard();
  preparePrivateMediaCache();
@@ -118,10 +104,131 @@ export async function shareLocalApe(access: Pick<Access, 'latest' | 'guard'>,
    input, stage, draftId, filename, guard, hasEncryptedEvidence: () => true,
    reserve: () => { guard(); journal.create({ overwrite: false }); journalOwned = true;
     if (!journal.exists) throw new Error('Prenotazione cache non confermata'); },
-  }, temporaryName, async file => { guard(); await share(file.uri); guard(); });
+  }, temporaryName, async file => { guard(); await use(file); guard(); });
  } finally {
-  // If removal of the stage failed, leave the exact intent in the private
-  // namespace for unconditional startup recovery. Never delete durable media.
   if (journalOwned && !stage.exists && journal.exists) journal.delete();
  }
+}
+
+/** Authenticate the entire new envelope and compare all bytes to the legacy
+ * source before committing a replacement reference. Bounded native reads. */
+async function verifyMigratedPdf(source: File, sealed: File, draftId: string, filename: string,
+ guard: () => void): Promise<void> {
+ await withOpenedPdf(sealed, draftId, filename, guard, async clear => {
+  const a = source.open();
+  try {
+   const b = clear.open();
+   try {
+    const size = a.size;
+    if (size === null || !Number.isSafeInteger(size) || size <= 0 || b.size !== size)
+     throw new Error('Verifica migrazione attestato non riuscita');
+    for (let offset = 0; offset < size;) {
+     guard();
+     const n = Math.min(1024 * 1024, size - offset);
+     const x = await a.readBytes(n), y = await b.readBytes(n);
+     guard();
+     if (x.length !== n || y.length !== n) throw new Error('Lettura migrazione incompleta');
+     for (let i = 0; i < n; i++) if (x[i] !== y[i]) throw new Error('Verifica migrazione attestato non riuscita');
+     offset += n;
+    }
+    if (a.size !== size || b.size !== size) throw new Error('Dimensione attestato modificata');
+   } finally { await b.close(); }
+  } finally { await a.close(); }
+ });
+}
+
+/** On-demand migration of a currently authorized local demo certificate.
+ * Never delete the old source here. A verified replacement and its old-file
+ * cleanup intent must be committed together; retryMediaCleanup re-checkpoints
+ * both snapshots before unlinking any unreferenced old file.
+ * An already encrypted reference never falls back to the legacy source. */
+export async function migrateLocalDemoApe(access: Access, draftId: string, uri: string,
+ seal = sealNativeMedia, verify = verifyMigratedPdf): Promise<string> {
+ access.guard();
+ const original = access.latest()?.drafts.find(d => d.id === draftId)?.job?.ape?.pdf;
+ if (!safe.test(draftId) || !original || original.uri !== uri || original.mimeType !== 'application/pdf')
+  throw new Error('Attestato non disponibile');
+ const current = () => {
+  access.guard();
+  const state = access.latest();
+  const draft = state?.drafts.find(d => d.id === draftId);
+  if (!state || !draft || !canViewDraft(draft, null, true) || draft.job?.ape?.pdf !== original)
+   throw new Error('Attestato modificato durante la migrazione');
+  return { state, draft };
+ };
+ current();
+ const oldName = uri.slice(uri.lastIndexOf('/') + 1);
+ if (!/^[a-zA-Z0-9_-]{1,128}\.(pdf|apem)$/.test(oldName)) throw new Error('Percorso attestato non valido');
+ const dir = folder(draftId);
+ const source = new File(dir, oldName);
+ if (source.uri !== uri || !source.exists) throw new Error('Attestato non disponibile');
+ if (oldName.endsWith('.apem')) return uri;
+ let destination: File | undefined;
+ for (let i = 0; i < 8; i++) {
+  const candidate = new File(dir, name() + '.apem');
+  const { state } = current();
+  const queued = enqueueMediaCleanup(state, draftId, candidate.uri);
+  const used = state.drafts.some(d => d.job?.ape?.pdf?.uri === candidate.uri ||
+   Object.values(d.photos).some(list => list?.some(p => p.uri === candidate.uri)));
+  if (!candidate.exists && !used && queued && queued !== state) { destination = candidate; break; }
+ }
+ if (!destination) throw new Error('Destinazione migrazione non disponibile');
+ const stage = destination, filename = stage.uri.slice(stage.uri.lastIndexOf('/') + 1);
+ const guard = () => { current(); };
+ let reserved = false;
+ await seal({
+  input: source, stage, draftId, filename, guard,
+  hasEncryptedEvidence: () => {
+   const { state } = current();
+   return state.drafts.some(d => d.job?.ape?.pdf?.uri.endsWith('.apem') ||
+    Object.values(d.photos).some(list => list?.some(p => p.uri.endsWith('.apem'))));
+  },
+  reserve: () => {
+   const { state } = current();
+   const queued = enqueueMediaCleanup(state, draftId, stage.uri);
+   if (!queued || queued === state || stage.exists) throw new Error('Destinazione già riservata');
+   saveStateNow(queued);
+   access.publish(queued, true);
+   reserved = true;
+  },
+ });
+ guard();
+ if (!reserved || !stage.exists) throw new Error('Migrazione non confermata');
+ await verify(source, stage, draftId, filename, guard);
+ const { state, draft } = current();
+ if (!stage.exists || !state.pendingMediaCleanup?.some(t => t.draftId === draftId && t.filename === filename))
+  throw new Error('Prenotazione migrazione non confermata');
+ const { pendingMediaCleanup, ...rest } = state;
+ const remaining = pendingMediaCleanup.filter(t => !(t.draftId === draftId && t.filename === filename));
+ const nextDraft = { ...draft, job: { ...draft.job!, ape: { ...draft.job!.ape!, pdf: { ...original, uri: stage.uri } } } };
+ const logical: AppState = { ...rest, drafts: state.drafts.map(d => d.id === draftId ? nextDraft : d),
+  ...(remaining.length ? { pendingMediaCleanup: remaining } : {}) };
+ const next = enqueueMediaCleanup(logical, draftId, uri);
+ if (!next) throw new Error('Pulizia attestato non registrabile');
+ try { saveStateNow(next); }
+ catch {
+  if (access.publish(next, false) !== true) throw new Error('Migrazione non confermata: riprova il salvataggio locale.');
+  return stage.uri;
+ }
+ access.publish(next, true);
+ return stage.uri;
+}
+
+/** Only the current authenticated manifest may authorize the PDF. New and
+ * migrated certificates are opened only through the authenticated gateway. */
+export async function shareLocalApe(access: Pick<Access, 'latest' | 'guard'>,
+ draftId: string, uri: string, share: (uri: string) => Promise<void>): Promise<void> {
+ const guard = () => {
+  access.guard();
+  const draft = access.latest()?.drafts.find(d => d.id === draftId);
+  if (!safe.test(draftId) || !draft || !canViewDraft(draft, null, true) ||
+      draft.job?.ape?.pdf?.uri !== uri || draft.job.ape.pdf.mimeType !== 'application/pdf')
+   throw new Error('Attestato non disponibile');
+ };
+ guard();
+ const filename = uri.slice(uri.lastIndexOf('/') + 1);
+ if (!/^[a-zA-Z0-9_-]{1,128}\.apem$/.test(filename)) throw new Error('Percorso attestato non valido');
+ const input = new File(folder(draftId), filename);
+ if (input.uri !== uri || !input.exists) throw new Error('Attestato non disponibile');
+ await withOpenedPdf(input, draftId, filename, guard, async file => { guard(); await share(file.uri); guard(); });
 }
