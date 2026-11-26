@@ -33,3 +33,7 @@ Questa è una specifica, non una dichiarazione di controlli già implementati.
 
 ### Rischio residuo dipendenze (npm audit, 23/11/2026)
 `npm audit --omit=dev` segnala 18 avvisi (6 alti, 12 moderati), tutti in strumenti di build/CLI: catena `@expo/cli`/`@expo/config` (glob, minimatch, image-size), `prisma`/`@prisma/config` (effect, deepmerge-ts), `postcss` incluso in `next` per la compilazione CSS. `npm audit fix` non li risolve senza aggiornamenti major (Expo SDK 58, Next 16, Prisma 7), che richiedono una PR dedicata con verifica su dispositivi e test di regressione. Nessuno di questi pacchetti elabora input degli utenti a runtime nell'API.
+
+
+### Verifica inventario 26/11/2026 — issue #98
+La CI diagnostica [45891535675](https://github.com/gianpaolobol/APE-ITALIA/actions/runs/45891535675), head 819d8e2, ha rilevato manifest di deepmerge-ts 7.1.5, effect 3.21.0, glob 13.0.6, minimatch 3.1.5/10.2.6 e postcss 8.5.33 nelle immagini API/worker; web standalone contiene postcss 8.4.31 e copie incorporate Next di glob e image-size con versione non verificabile. La descrizione storica sopra non dimostra assenza di dipendenze vulnerabili nelle immagini. La separazione del job migrazione e l'installazione di sole dipendenze di produzione per API/worker sono una mitigazione da convalidare nella CI del nuovo SHA. Non risolvono automaticamente il web o l'audit del lockfile; restano necessarie verifica di raggiungibilità, versioni e aggiornamenti compatibili. Nessuna accettazione del rischio implicita.
