@@ -1,0 +1,13 @@
+# [Codex] QA — I/O nativo media in staging (26/11/2026, iterazione 52)
+
+## Evidenze
+- Main verificato identico a `295fc3f464d10a3a7a184702a99600459b9b4135`; run 45735799619: verify, containers, keycloak-e2e, clamav success. Backup verificato identico a `53b9c11cef75a4c4486318e963e6a8b3352a8b31`, non modificato.
+- PR #94 head 62c6607df87efc2f79ebf8ddef0f4e3fbd23a4dd, CI 45735958614 completed/success, 4/4 job. PR #95 head c371b39b6f1a0dc404a8865b3592a9ef7c4f4166, CI 45742493267 completed/success, 4/4 job. Entrambe ancora aperte, revisione incrociata richiesta e non confermata. #93 documentale ancora aperta, stato da rettificare. Nessun writer Work o revisore indipendente aggiuntivo confermato.
+- Macroblocco separato su main, senza importare moduli delle PR aperte: adapter File/handle per lettura e scrittura limitate a 1 MiB + tag, verifica conteggi e dimensioni, chiusura di entrambi gli handle, rifiuto destinazione esistente, eliminazione stage parziale, guardia sessione prima/dopo I/O. Commit 310ac0519275b341b514d7ea0a6ed67162019a4f.
+- Nove regressioni sintetiche in 2842ca8845d9c4c1ca884752186ea0d9b444b5f8; non ancora eseguite. Il typecheck deve verificare compatibilità con expo-file-system ~19.0.24 (SDK 54); le pagine Expo v54 pubbliche reindirizzano alla documentazione più recente, perciò non costituiscono prova dell'API esatta installata.
+
+## Contratto e limiti
+Il chiamante deve riservare un percorso privato app-owned unico nel journal persistente PR #92, impedire alias/symlink e altri writer, non pubblicare lo stage fino a commit autenticato del manifest; l'adapter non autentica, non cancella il sorgente, non cambia il manifest e non effettua rename. Il transform deve attendere sequenzialmente tutte le letture e scritture (contratto interno, non accettare callback non fidate); le dimensioni non proteggono da modifiche concorrenti di pari lunghezza. In caso di errore create ambiguo, cleanup fallito o kill, il journal deve recuperare il percorso; non cancellare alla cieca. Non implica fsync, eliminazione fisica, isolamento nativo o resistenza a rollback. Il chiamante deve gestire cache plaintext e logout, key lifecycle, migrazione con verifica AEAD prima della rimozione delle copie, anti-replay e test su device.
+
+## Gate successivo
+Integrare #94/#95 e questa PR solo dopo CI sullo SHA esatto, revisione di sicurezza e compatibilità; poi collegare i tre componenti a capture/migrazione/preview/upload/consegna, con recovery e test fisici. Lo staging remoto resta senza host idoneo e quota gratuita confermata; nessun nuovo deploy o build firmata, nessuna produzione o spesa deliberata. Il workflow build-only storico f5ecc9a4 non attesta la build corrente. V1.0 non validata.
