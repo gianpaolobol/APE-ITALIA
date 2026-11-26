@@ -1,5 +1,4 @@
-# API and worker image. Build from the repository root:
-#   docker build -f services/api/Dockerfile -t ape-italia-api .
+# Build, one-shot migration and minimal API/worker runtime from the same source.
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -12,18 +11,37 @@ RUN npm ci --workspace @ape/api --include-workspace-root --no-audit --no-fund
 COPY services/api services/api
 RUN npm run db:generate -w @ape/api && npm run build -w @ape/api
 
-FROM node:22-bookworm-slim
+# The CLI is needed for migrations only, not the long-running services.
+FROM build AS migration
+ENV NODE_ENV=production
+USER node
+WORKDIR /app/services/api
+CMD ["node", "/app/node_modules/prisma/build/index.js", "migrate", "deploy"]
+
+# Fresh install from the same lockfile, not a copy of the development tree.
+FROM node:22-bookworm-slim AS production-deps
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+COPY apps/mobile/package.json apps/mobile/
+COPY apps/web/package.json apps/web/
+COPY services/api/package.json services/api/
+COPY packages/shared/package.json packages/shared/
+RUN PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --workspace @ape/api --include-workspace-root --no-audit --no-fund
+# Generated client and native engine must match the exact client in the lockfile.
+COPY --from=build /app/node_modules/.prisma/client ./node_modules/.prisma/client
+RUN node -e "require('@prisma/client'); for (const name of ['prisma','@nestjs/cli','vitest']) { try { require.resolve(name + '/package.json'); } catch (e) { if (e.code === 'MODULE_NOT_FOUND') continue; throw e; } throw Error('Unexpected development dependency: ' + name); }"
+
+FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 # ffmpeg: walkthrough videos are re-muxed without metadata and audio before storage.
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates ffmpeg && rm -rf /var/lib/apt/lists/*
 ENV NODE_ENV=production
 ARG APE_BUILD_REVISION=unknown
 RUN printf '%s\n' "$APE_BUILD_REVISION" > /app/ape-build-revision && chmod 0444 /app/ape-build-revision
-# Prisma CLI stays in the image so the same image can run `prisma migrate deploy` as a one-shot job.
-COPY --from=build /app/node_modules ./node_modules
+COPY --from=production-deps /app/node_modules ./node_modules
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/services/api/package.json ./services/api/package.json
-COPY --from=build /app/services/api/prisma ./services/api/prisma
 COPY --from=build /app/services/api/dist ./services/api/dist
 RUN mkdir -p /var/lib/ape-italia/evidence && chown -R node:node /var/lib/ape-italia
 USER node
