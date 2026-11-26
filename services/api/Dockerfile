@@ -27,7 +27,9 @@ COPY apps/mobile/package.json apps/mobile/
 COPY apps/web/package.json apps/web/
 COPY services/api/package.json services/api/
 COPY packages/shared/package.json packages/shared/
-RUN PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --workspace @ape/api --include-workspace-root --no-audit --no-fund
+# Prisma CLI is devOptional via the client's optional peer; omit both categories.
+# The locked API required dependency closure has no optional-only packages.
+RUN PRISMA_SKIP_POSTINSTALL_GENERATE=true npm ci --omit=dev --omit=optional --workspace @ape/api --include-workspace-root --no-audit --no-fund
 # Generated client and native engine must match the exact client in the lockfile.
 COPY --from=build /app/node_modules/.prisma/client ./node_modules/.prisma/client
 RUN node -e "require('@prisma/client'); for (const name of ['prisma','@nestjs/cli','vitest']) { try { require.resolve(name + '/package.json'); } catch (e) { if (e.code === 'MODULE_NOT_FOUND') continue; throw e; } throw Error('Unexpected development dependency: ' + name); }"
