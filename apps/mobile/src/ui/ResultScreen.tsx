@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { LoginSheet } from './LoginSheet';
 import { getSession, sessionBoundary } from '../server';
 import { downloadCertificate, fetchPayment, fetchRemoteJob, startPayment, type PaymentState } from '../remote-status';
@@ -14,12 +14,12 @@ import { estimate } from '../energy/estimate';
 import { checklist, onSiteChecks, progress, readyToSend } from '../survey/checklist';
 import { PROVINCES } from '../survey/questions';
 import { euro, quote } from '../pricing';
-import { serverConfigured, submitToServer, type SubmitCheckpoint } from '../remote-submit';
+import { serverConfigured, submitToServer, type SubmitCheckpoint, type SubmitMediaReader } from '../remote-submit';
 import type { Draft } from '../survey/drafts';
 
 const LOSS_LABEL = { muri: 'Muri', finestre: 'Finestre', tetto: 'Tetto', pavimento: 'Pavimento', ventilazione: 'Ricambi d’aria' } as const;
 
-export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint }) {
+export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, onCheckpoint, onOpenLocalPdf, onReadMedia, onMigrateMedia, onPrepareSend }: { draft: Draft; onBack: () => void; onEditStep: (stepId: string) => void; onUpdate: (fn: (d: Draft) => Draft) => void; onDelete: () => void; onCheckpoint: SubmitCheckpoint; onReadMedia: SubmitMediaReader; onMigrateMedia: () => Promise<number>; onPrepareSend: () => Promise<void>; onOpenLocalPdf: (uri: string) => Promise<void> }) {
  const insets = useSafeAreaInsets();
  const est = useMemo(() => estimate(draft.answers), [draft.answers]);
  const items = checklist(draft.answers, draft.photos);
@@ -27,6 +27,16 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
  const ready = readyToSend(draft.answers, draft.photos);
  const q = quote(draft.answers);
  const [sending, setSending] = useState<string | null>(null);
+ const [migrating, setMigrating] = useState(false);
+ const operation = useRef(false);
+ const hasLegacyMedia = Object.values(draft.photos).some(list => list?.some(p => !p.uri.endsWith('.apem')));
+ const migrate = async () => {
+  if (operation.current) return;
+  operation.current = true; setMigrating(true);
+  try { const n = await onMigrateMedia(); Alert.alert('Aggiornamento allegati', n + ' allegati verificati e cifrati.'); }
+  catch { Alert.alert('Aggiornamento incompleto', 'Riprova. Gli originali non confermati vengono conservati.'); }
+  finally { operation.current = false; setMigrating(false); }
+ };
  const [login, setLogin] = useState(false);
  const [remoteNote, setRemoteNote] = useState<string | null>(null);
  const [pay, setPay] = useState<PaymentState | null>(null);
@@ -52,34 +62,38 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
  const where = [a.street, a.municipality, PROVINCES.find(p => p.value === a.province)?.label].filter(Boolean).join(', ');
 
  const send = async () => {
-  if (sending) return;
+  if (operation.current || hasLegacyMedia) return;
   if (!serverConfigured()) {
    onUpdate(d => ({ ...d, status: 'pronta' }));
    Alert.alert('Richiesta pronta', 'In questa versione di prova l’invio ai certificatori non è ancora attivo: la richiesta resta salvata sul telefono, completa di foto e stima, e potrai inviarla appena il servizio sarà online.');
    return;
   }
-  if (!(await getSession())) { setLogin(true); return; }
+  operation.current = true;
   setSending('Preparo l’invio…');
   try {
+   if (!(await getSession())) { setLogin(true); return; }
+   // Recover any abandoned plaintext even when every upload was already acknowledged.
+   await onPrepareSend();
    const r = await submitToServer({ answers: draft.answers, photos: draft.photos, remoteCreationKey: draft.remoteCreationKey, remoteCaseId: draft.remoteCaseId, remotePropertyId: draft.remotePropertyId, remoteOwner: draft.remoteOwner, uploaded: draft.uploaded, videoUploads: draft.videoUploads }, label => setSending(label),
-    onCheckpoint);
+    onCheckpoint, onReadMedia);
    onUpdate(d => ({ ...d, status: 'inviata', sentAt: new Date().toISOString(), remoteCaseId: r.caseId }));
    Alert.alert('Richiesta inviata', 'I certificatori della tua zona la stanno valutando. Ti contatteremo per fissare il sopralluogo.');
   } catch (e) {
    Alert.alert('Invio non riuscito', e instanceof Error ? e.message : 'Riprova tra poco.');
-  } finally { setSending(null); }
+  } finally { operation.current = false; setSending(null); }
  };
 
  return (
   <View style={{ flex: 1, backgroundColor: C.bg }}>
    <View style={[st.top, { paddingTop: insets.top + 6 }]}>
-    <Pressable accessibilityLabel="Indietro" hitSlop={12} onPress={() => { tap(); onBack(); }} style={st.round}><Ionicons name="chevron-back" size={22} color={C.ink} /></Pressable>
+    <Pressable accessibilityLabel="Indietro" hitSlop={12} disabled={!!sending || migrating} onPress={() => { if (!operation.current) { tap(); onBack(); } }} style={st.round}><Ionicons name="chevron-back" size={22} color={C.ink} /></Pressable>
     <Text style={st.topTitle}>Riepilogo</Text>
-    <Pressable accessibilityLabel="Elimina richiesta" hitSlop={12} style={st.round} onPress={() => Alert.alert('Eliminare la richiesta?', 'Foto e risposte verranno cancellate dal telefono.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Elimina', style: 'destructive', onPress: onDelete }])}>
+    <Pressable accessibilityLabel="Elimina richiesta" hitSlop={12} style={st.round} disabled={!!sending || migrating} onPress={() => Alert.alert('Eliminare la richiesta?', 'Foto e risposte verranno cancellate dal telefono.', [{ text: 'Annulla', style: 'cancel' }, { text: 'Elimina', style: 'destructive', onPress: () => { if (!operation.current) onDelete(); } }])}>
      <Ionicons name="trash-outline" size={20} color={C.danger} />
     </Pressable>
    </View>
    <ScrollView contentContainerStyle={{ padding: S.m, paddingBottom: 180 }}>
+    {hasLegacyMedia && <Card style={{ marginBottom: S.m }}><Text style={F.small}>Aggiorna gli allegati di una versione precedente prima di inviarli. Le copie originali vengono rimosse solo dopo verifica e salvataggio.</Text><Button title="Proteggi allegati precedenti" busy={migrating} disabled={!!sending} onPress={migrate} /></Card>}
     {where ? <Text style={[F.small, { marginBottom: 6 }]}>{where}</Text> : null}
     {remoteNote ? <Card style={{ marginBottom: S.m, flexDirection: 'row', alignItems: 'center' }}><Ionicons name="search-outline" size={20} color={C.brand} /><Text style={[F.small, { flex: 1, marginLeft: 10 }]}>{remoteNote}</Text></Card> : null}
     {draft.job && draft.job.status !== 'rifiutata' && draft.job.status !== 'nuova' ? (
@@ -112,7 +126,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
        <View style={[st.step, { borderBottomWidth: 0 }]}>
         <ClassBadge value={draft.job.ape.energyClass as never} size={36} />
         <View style={{ flex: 1, marginLeft: 10 }}><Text style={F.h3}>APE pronto · classe {draft.job.ape.energyClass}</Text><Text style={F.small}>Codice {draft.job.ape.code}</Text>{draft.job.ape.depositedAt ? <Text style={F.small}>Depositato: {fmtWhen(draft.job.ape.depositedAt)}</Text> : null}{draft.remoteCaseId ? <Text style={F.small}>{draft.job.ape.deliveredAt ? 'Ricezione registrata: ' + fmtWhen(draft.job.ape.deliveredAt) : 'Ricezione non ancora confermata'}</Text> : null}</View>
-        {draft.job.ape.pdf ? <Pressable onPress={() => Sharing.shareAsync(draft.job!.ape!.pdf!.uri).catch(() => undefined)} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable>
+        {draft.job.ape.pdf ? <Pressable onPress={() => onOpenLocalPdf(draft.job!.ape!.pdf!.uri).catch(() => Alert.alert('Attestato non disponibile', 'Non è stato possibile aprire il PDF locale.'))} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Apri</Text></Pressable>
          : draft.remoteCaseId ? <Pressable onPress={() => { const guard = sessionBoundary(); downloadCertificate(draft.remoteCaseId!).then(async uri => { guard(); await Sharing.shareAsync(uri); guard(); const r = await fetchRemoteJob(draft.remoteCaseId!); guard(); if (r.job) onUpdate(d => ({ ...d, job: r.job })); }).catch(() => Alert.alert('Download non riuscito', 'Riprova tra poco.')); }} hitSlop={8}><Text style={{ color: C.brand, fontWeight: '800' }}>Scarica</Text></Pressable> : null}
        </View>
       ) : null}
@@ -172,7 +186,7 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
      <ProgressBar ratio={prog.ratio} />
      <View style={{ height: 10 }} />
      {items.map(it => (
-      <Pressable key={it.questionId} onPress={() => { tap(); onEditStep(it.stepId); }} style={st.item}>
+      <Pressable key={it.questionId} disabled={!!sending || migrating} onPress={() => { if (!operation.current) { tap(); onEditStep(it.stepId); } }} style={st.item}>
        <Ionicons name={it.done ? 'checkmark-circle' : it.required ? 'ellipse-outline' : 'add-circle-outline'} size={22} color={it.done ? C.accent : it.required ? C.danger : C.muted} />
        <Text style={[F.body, { flex: 1, marginLeft: 10, color: it.done ? C.muted : C.ink }]}>{it.label}{!it.required ? ' (facoltativo)' : ''}</Text>
        <Ionicons name={it.kind === 'photo' ? 'camera-outline' : 'create-outline'} size={18} color={C.muted} />
@@ -203,11 +217,11 @@ export function ResultScreen({ draft, onBack, onEditStep, onUpdate, onDelete, on
     {draft.status !== 'bozza' ? <View style={{ marginTop: S.m }}><Pill tone={draft.status === 'inviata' ? 'brand' : 'warn'} icon="paper-plane" text={draft.status === 'inviata' ? 'Inviata ai certificatori' : 'Pronta: verrà inviata quando il servizio sarà online'} /></View> : null}
    </ScrollView>
    <LoginSheet visible={login} initialEmail={typeof a.email === 'string' ? a.email : undefined} title="Accedi per inviare la richiesta"
-    onClose={() => setLogin(false)} onDone={() => { setLogin(false); setTimeout(send, 300); }} />
+    onClose={() => setLogin(false)} onDone={() => { setLogin(false); }} />
    <View style={[st.bottom, { paddingBottom: insets.bottom + 10 }]}>
     {!ready ? <Text style={st.hint}>Completa i punti obbligatori per inviare la richiesta</Text> : null}
     <Button title={sending ?? (draft.status === 'inviata' ? 'Richiesta già inviata' : 'Invia ai certificatori')} icon="paper-plane" busy={!!sending}
-     disabled={!ready || draft.status === 'inviata'} onPress={send} />
+     disabled={!ready || draft.status === 'inviata' || migrating || hasLegacyMedia} onPress={send} />
    </View>
   </View>
  );
