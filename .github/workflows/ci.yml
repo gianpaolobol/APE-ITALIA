@@ -33,7 +33,7 @@ jobs:
       - run: node scripts/check-secrets.mjs
       - run: python3 scripts/check-ios-protection.test.py
       - run: node --test scripts/verify-release-ci.test.mjs scripts/verify-staging-config.test.mjs scripts/check-mobile-build-mode.test.mjs scripts/verify-staging-health.test.mjs
-      - name: Dependency audit (report only; see docs/SECURITY.md for accepted residual risk)
+      - name: Dependency audit (critical threshold; residual findings require review)
         run: npm audit --omit=dev --audit-level=critical
       - run: npm exec --workspace @ape/api -- prisma validate
       - run: npm run db:generate -w @ape/api
@@ -45,6 +45,14 @@ jobs:
           npm exec --workspace @ape/api -- prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url postgresql://ape:ci_only_password@localhost:5432/ape_shadow --exit-code
       - run: npm run typecheck -w @ape/api
       - run: npm run build -w @ape/api
+      - name: Require media tools for video privacy and frame tests
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
       - run: npm run test -w @ape/api
         env:
           RUN_DB_INTEGRATION: '1'
