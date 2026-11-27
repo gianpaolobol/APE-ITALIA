@@ -34,7 +34,7 @@ Passi una tantum del titolare (fattibili anche da browser del telefono, in modal
 3. **console.cloud.google.com → IAM e amministrazione → IAM** (stesso progetto) → modifica l'account `firebase-adminsdk-…` → aggiungi i ruoli **Amministratore Firebase** e **Amministratore Firebase App Distribution**.
 4. **GitHub → Settings → Secrets and variables → Actions**:
    - *Secrets* → `FIREBASE_SERVICE_ACCOUNT_JSON` = intero contenuto del JSON;
-   - *Variables* → `FIREBASE_TESTERS` = email dei tester separate da virgola (es. la tua).
+   - *Secrets* → `FIREBASE_TESTERS` = email dei tester separate da virgola (es. la tua); non usare una variabile pubblica. Registrare prima l'app Android di test in Firebase, con package `it.apeitalia.app`: il workflow non crea app.
 5. **Actions → Mobile release → Run workflow → android**. Arriva un'email di invito: dal telefono Android si installa l'app *Firebase App Tester* e poi APE Italia.
 
 Senza chiave di caricamento l'APK è firmato con la chiave di debug del progetto, sempre la stessa: va bene per i tester (gli aggiornamenti si installano sopra), non per Google Play.
@@ -76,3 +76,10 @@ La modalità build-only resta dimostrativa, senza login né invio. La modalità 
 I secret non sono mai stampati nei log; la chiave `.p8` viene scritta solo in una cartella temporanea del runner e cancellata a fine job; il workflow ha permessi `contents: read`. Non committare mai `.p8`, `.jks` o JSON di service account (la scansione segreti in CI li blocca).
 
 **Preflight di distribuzione connessa:** prima di prebuild e firma entrambi i job richiedono anche `/health` via HTTPS senza redirect, HTTP 200 e la revisione API completa uguale allo SHA del workflow. Distribuire prima il candidato su staging con il relativo workflow dopo CI push verde. Il controllo non sostituisce gli smoke test su dati sintetici, l'isolamento dei servizi e il controllo delle quote. Build-only non contatta lo staging.
+
+## Verifica interna TestFlight sullo SHA esatto
+
+Dopo Mobile release in modalità distribute e upload iOS effettivamente riuscito, avviare **TestFlight internal testers** su main indicando il run ID di Mobile release. Il controllo richiede lo SHA esatto e lo step di upload iOS riuscito, quindi consulta il numero build corrispondente in sola lettura. Non si avvia dopo build-only o Android-only. Configurare gruppo Interni e titolare in App Store Connect; nessuna dichiarazione automatica di esenzione crittografica, modifica di gruppi o invito. Se il flag di cifratura non è false, la verifica è manuale; non implica che una build non esente sia inammissibile. Il titolare deve verificare la correttezza della dichiarazione Apple. Stato VALID e appartenenza al gruppo non dimostrano installazione fisica. Un vecchio workflow tester non prova una nuova build.
+
+
+**Evidenza Android e privacy dei log:** il comando Firebase in entrambe le modalità non stampa output CLI nel log pubblico (anche in caso di errore); un codice non-zero interrompe il job con messaggio generico. Verificare eventuali dettagli soltanto nella console Firebase autorizzata. La modalità service account richiede un'app già registrata e una lista tester non vuota nel secret `FIREBASE_TESTERS`. Il successo del comando o dell'upload Play internal non prova che il pacchetto sia installabile da un tester: controllare numero di build, note di rilascio con SHA, gruppo/track e stato effettivo nella console prima di dichiarare la distribuzione disponibile. Una release Play draft non è disponibile ai tester finché non viene resa tale tramite la console.

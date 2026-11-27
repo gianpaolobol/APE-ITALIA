@@ -1,7 +1,8 @@
 # Distribuzione pilota / staging (container)
 
 Immagini:
-- `services/api/Dockerfile` → `ape-italia-api`: API (`node dist/main.js`), worker (`node dist/worker.js`) e job di migrazione (`npx prisma migrate deploy`) dalla stessa immagine; utente non root, healthcheck su `/health`.
+- `services/api/Dockerfile` → target `runtime`, immagine `ape-italia-api`: API (`node dist/main.js`) e worker (`node dist/worker.js`), dipendenze di produzione dal lockfile e client Prisma generato dal medesimo build; utente non root, healthcheck su `/health`.
+- Lo stesso Dockerfile ha target `migration`, immagine `ape-italia-migrate`, con Prisma CLI per il solo job di migrazione. Avvio con Compose completo e `--build` per costruire entrambi i target; nessuna installazione dinamica mediante npx durante il deploy.
 - `apps/web/Dockerfile` → `ape-italia-web`: Next.js in modalità `standalone`, utente non root.
 
 Stack: `deploy/docker-compose.staging.yml` — PostgreSQL 16, migrazione one-shot (gli altri servizi partono solo se termina con successo), API, worker, web. Porte esposte solo su `127.0.0.1`: **serve un reverse proxy con HTTPS** (es. Caddy, Nginx, Traefik) davanti ad API e web; `TRUST_PROXY=1` per vedere l'IP reale nei limiti di frequenza.
@@ -45,3 +46,6 @@ Il compose include `clamav/clamav:stable` (scarica le firme all'avvio: alcuni mi
 6. **Certificatori:** approva le candidature dopo il controllo sull'elenco SACE:
    `docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec api node dist/admin/provision-cli.js approve-application --id <id> --operator <tuo-id>`
 7. **Stripe:** webhook verso `https://api.…/v1/payments/webhook` per l'evento `checkout.session.completed`; il segreto di firma va in `STRIPE_WEBHOOK_SECRET`.
+
+## Portale web HTTPS separato (gate di staging)
+Il reverse proxy Caddy serve anche Next.js sulla seconda origine, distinta dall'API. Prima del deploy configurare il DNS del portale verso la VM esistente, senza acquistare nuovi servizi, e impostare nell'environment staging `STAGING_PUBLIC_WEB_URL` (es. `https://web-staging.example.test`, esempio non operativo). Nel dotenv impostare `WEB_DOMAIN=web-staging.example.test`, `WEB_BASE_URL` uguale all'origine web e `API_BASE_URL` uguale all'origine API già verificata. I due host devono essere distinti e avere etichetta staging. Registrare l'esatto callback OIDC `<WEB_BASE_URL>/auth/callback` nel client web di staging; verificare separatamente issuer, MFA e isolamento. Il fallback HTTP localhost:8080 esiste esclusivamente nel container per CI sintetica e non è esposto dall'host. Il deploy reale rifiuta configurazioni mancanti, non di staging o discordanti. Dopo il gate API sullo SHA esatto il workflow controlla risposta HTTPS 200 del portale e marker della landing page, senza redirect o bypass TLS. Il gate verifica inoltre `/health` del web con identificativo `ape-italia-web` e SHA completo incorporato in un file di sola lettura nell'immagine. La stessa verifica viene eseguita via Caddy nella CI sintetica; risposte di una revisione precedente, dell'API o senza SHA valido sono rifiutate. Questa è una prova di instradamento e coerenza della revisione, non un'attestazione crittografica dell'immagine né una prova di login reale, autorizzazioni o collaudo integrato: questi restano gate separati.
