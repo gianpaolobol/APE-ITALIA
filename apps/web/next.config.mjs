@@ -8,6 +8,8 @@ const securityHeaders = [
 ];
 export default {
  poweredByHeader: false,
+ // Evidence is served through authorized, no-store routes; no on-demand image transformation.
+ images: { unoptimized: true },
  // Self-contained server bundle for the container image (apps/web/Dockerfile).
  output: 'standalone',
  outputFileTracingRoot: new URL('../../', import.meta.url).pathname,
