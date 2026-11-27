@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { C, F, R, S } from './theme';
 import { ChoiceCards, Chips, Field, Help, Label, ToggleRow, tap } from './kit';
@@ -7,13 +7,16 @@ import { questionError, type AnswerValue, type Answers, type NumberQuestion, typ
 import { PermissionDeniedError, pickDocument, pickImage, pickVideo, recordVideo, takePhoto } from '../pickers';
 import { VIDEO_MAX_CLIPS, fmtDuration, videoBudgetSeconds } from '../survey/video';
 import { readPhoto } from '../ai';
+import { LocalMediaPreview, shareSurveyPdf, type MediaReader } from './LocalMediaPreview';
 
 type Props = {
  q: Question;
  answers: Answers;
  photos: PhotoRef[];
  onAnswer: (id: string, v: AnswerValue | undefined) => void;
- onAddPhoto: (id: string, file: { uri: string; name: string; mimeType: string; durationSec?: number }) => PhotoRef;
+ onAddPhoto: (id: string, file: { uri: string; name: string; mimeType: string; durationSec?: number }) => Promise<PhotoRef>;
+ onPreviewMedia: MediaReader;
+ onReadPhoto: (id: string, p: PhotoRef, use: (uri: string) => Promise<void>) => Promise<void>;
  onRemovePhoto: (id: string, p: PhotoRef) => void;
  onAutoFill: (fields: Answers, summary: string, source: PhotoRef) => void;
  showErrors: boolean;
@@ -94,6 +97,7 @@ function NumberQ({ q, answers, onAnswer, showErrors }: Props & { q: NumberQuesti
 function PhotoQ(p: Props & { q: PhotoQuestion }) {
  const { q, photos, onAddPhoto, onRemovePhoto, onAutoFill, showErrors } = p;
  const [reading, setReading] = useState(false);
+ const [preview, setPreview] = useState<PhotoRef | null>(null);
  const max = q.max ?? 3;
  const full = photos.length >= max;
  const add = async (source: 'camera' | 'library' | 'file') => {
@@ -101,11 +105,14 @@ function PhotoQ(p: Props & { q: PhotoQuestion }) {
    const f = source === 'camera' ? await takePhoto() : source === 'library' ? await pickImage() : await pickDocument();
    if (!f) return;
    if (f.size !== undefined && f.size > 15 * 1024 * 1024) { Alert.alert('File troppo grande', 'Massimo 15 MB.'); return; }
-   const ref = onAddPhoto(q.id, f);
+   const ref = await onAddPhoto(q.id, f);
    if (q.extract && p.answers.aiConsent === true) {
     setReading(true);
     try {
-     const r = await readPhoto(q.extract, ref);
+     const kind = q.extract;
+     const box: { result?: Awaited<ReturnType<typeof readPhoto>> } = {};
+     await p.onReadPhoto(q.id, ref, async uri => { box.result = await readPhoto(kind, { ...ref, uri }); });
+     const r = box.result;
      if (r && Object.keys(r.fields).length) onAutoFill(r.fields, r.summary, ref);
     } catch { /* reading is optional */ } finally { setReading(false); }
    }
@@ -125,9 +132,12 @@ function PhotoQ(p: Props & { q: PhotoQuestion }) {
     <View style={st.thumbs}>
      {photos.map(ph => (
       <View key={ph.uri} style={st.thumb}>
-       {ph.mimeType === 'application/pdf'
-        ? <View style={[st.thumbImg, { alignItems: 'center', justifyContent: 'center', backgroundColor: C.surfaceAlt }]}><Ionicons name="document-text" size={30} color={C.brand} /><Text style={F.small}>PDF</Text></View>
-        : <Image source={{ uri: ph.uri }} style={st.thumbImg} />}
+       <Pressable accessibilityLabel={ph.mimeType === 'application/pdf' ? 'Apri o condividi PDF' : 'Apri anteprima foto'}
+        onPress={() => ph.mimeType === 'application/pdf' ? void shareSurveyPdf(p.onPreviewMedia, q.id, ph) : setPreview(ph)}
+        style={[st.thumbImg, { alignItems: 'center', justifyContent: 'center', backgroundColor: C.surfaceAlt }]}>
+        <Ionicons name={ph.mimeType === 'application/pdf' ? 'document-text' : 'image-outline'} size={30} color={C.brand} />
+        <Text style={F.small}>{ph.mimeType === 'application/pdf' ? 'PDF' : 'Apri foto'}</Text>
+       </Pressable>
        <Pressable accessibilityLabel="Rimuovi" hitSlop={10} onPress={() => { tap(); onRemovePhoto(q.id, ph); }} style={st.remove}><Ionicons name="close" size={14} color={C.white} /></Pressable>
       </View>
      ))}
@@ -142,11 +152,13 @@ function PhotoQ(p: Props & { q: PhotoQuestion }) {
     </View>
    ) : <Text style={F.small}>Hai aggiunto il numero massimo di file ({max}).</Text>}
    {showErrors && q.required && photos.length === 0 ? <Text style={st.warn}>Serve almeno una foto</Text> : null}
+   {preview && <LocalMediaPreview qid={q.id} photo={preview} read={p.onPreviewMedia} onClose={() => setPreview(null)} />}
   </View>
  );
 }
 
-function VideoQ({ q, answers, photos, onAddPhoto, onRemovePhoto, showErrors }: Props & { q: VideoQuestion }) {
+function VideoQ({ q, answers, photos, onAddPhoto, onPreviewMedia, onRemovePhoto, showErrors }: Props & { q: VideoQuestion }) {
+ const [preview, setPreview] = useState<PhotoRef | null>(null);
  const budget = videoBudgetSeconds(answers);
  const used = photos.reduce((s, v) => s + (v.durationSec ?? 0), 0);
  const left = Math.max(0, budget - used);
@@ -157,7 +169,7 @@ function VideoQ({ q, answers, photos, onAddPhoto, onRemovePhoto, showErrors }: P
    if (!v) return;
    if (v.durationSec > left + 2) { Alert.alert('Video troppo lungo', `Hai ancora ${fmtDuration(left)} disponibili. Accorcia il video o registrane uno nuovo.`); return; }
    if (v.size !== undefined && v.size > 300 * 1024 * 1024) { Alert.alert('File troppo grande', 'Massimo 300 MB: registra a qualità standard (720p).'); return; }
-   onAddPhoto(q.id, v);
+   await onAddPhoto(q.id, v);
   } catch (e) {
    if (e instanceof PermissionDeniedError) Alert.alert('Permesso negato', 'Consenti l’accesso alla fotocamera dalle Impostazioni di iOS.');
    else Alert.alert('Errore', 'Non è stato possibile aggiungere il video.');
@@ -180,8 +192,7 @@ function VideoQ({ q, answers, photos, onAddPhoto, onRemovePhoto, showErrors }: P
    </View>
    {photos.map((v, i) => (
     <View key={v.uri} style={st.clip}>
-     <Ionicons name="film-outline" size={22} color={C.brand} />
-     <Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink, fontWeight: '600' }]}>Parte {i + 1} · {fmtDuration(v.durationSec ?? 0)}</Text>
+     <Pressable accessibilityLabel="Riproduci video" onPress={() => setPreview(v)} style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}><Ionicons name="play-circle-outline" size={22} color={C.brand} /><Text style={[F.body, { flex: 1, marginLeft: 10, color: C.ink, fontWeight: '600' }]}>Parte {i + 1} · {fmtDuration(v.durationSec ?? 0)}</Text></Pressable>
      <Pressable accessibilityLabel="Rimuovi video" hitSlop={10} onPress={() => { tap(); onRemovePhoto(q.id, v); }}><Ionicons name="trash-outline" size={20} color={C.danger} /></Pressable>
     </View>
    ))}
@@ -193,6 +204,7 @@ function VideoQ({ q, answers, photos, onAddPhoto, onRemovePhoto, showErrors }: P
     </View>
    ) : <Text style={F.small}>Hai usato tutto il tempo disponibile.</Text>}
    {showErrors && q.required && photos.length === 0 ? <Text style={st.warn}>Serve il video dell’immobile</Text> : null}
+   {preview && <LocalMediaPreview qid={q.id} photo={preview} read={onPreviewMedia} onClose={() => setPreview(null)} />}
   </View>
  );
 }
