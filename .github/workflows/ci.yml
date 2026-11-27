@@ -33,7 +33,7 @@ jobs:
       - run: node scripts/check-secrets.mjs
       - run: python3 scripts/check-ios-protection.test.py
       - run: node --test scripts/verify-release-ci.test.mjs scripts/verify-staging-config.test.mjs scripts/check-mobile-build-mode.test.mjs scripts/verify-staging-health.test.mjs
-      - name: Dependency audit (report only; see docs/SECURITY.md for accepted residual risk)
+      - name: Dependency audit (critical threshold; residual findings require review)
         run: npm audit --omit=dev --audit-level=critical
       - run: npm exec --workspace @ape/api -- prisma validate
       - run: npm run db:generate -w @ape/api
@@ -45,6 +45,14 @@ jobs:
           npm exec --workspace @ape/api -- prisma migrate diff --from-migrations prisma/migrations --to-schema-datamodel prisma/schema.prisma --shadow-database-url postgresql://ape:ci_only_password@localhost:5432/ape_shadow --exit-code
       - run: npm run typecheck -w @ape/api
       - run: npm run build -w @ape/api
+      - name: Require media tools for video privacy and frame tests
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version
+          ffprobe -version
       - run: npm run test -w @ape/api
         env:
           RUN_DB_INTEGRATION: '1'
@@ -86,6 +94,8 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3001/v1/me)" = 401
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:3000/ >/dev/null && break; sleep 2; done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 200
+          # The standalone portal must not expose the on-demand image optimizer.
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:3000/_next/image?url=%2F&w=640&q=75')" = 404
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/auth/login)" = 503
           docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env ps
           test "$(docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env ps -a --format '{{.Service}} {{.ExitCode}}' | grep '^migrate ' | cut -d' ' -f2)" = 0
