@@ -133,3 +133,20 @@ test('TestFlight verifier is explicit and read-only', () => {
  assert.match(py, /method="GET"/);
  assert.doesNotMatch(py, /["'](?:POST|PATCH|DELETE)["']/);
 });
+
+
+test('public Firebase release logs suppress all CLI output and fail closed', () => {
+ for (const name of ['Distribute APK with Firebase App Distribution (keyless)', 'Distribute APK with Firebase App Distribution (service account key)']) {
+  const body = step(name);
+  assert.ok(body.includes('>/dev/null 2>&1; then'));
+  assert.ok(body.includes('Firebase distribution command failed'));
+  assert.ok(body.includes('exit 1'));
+  assert.ok(!body.includes('grep -v'));
+ }
+ const fallback = step('Distribute APK with Firebase App Distribution (service account key)');
+ assert.ok(fallback.includes('TESTERS: $' + '{{ secrets.FIREBASE_TESTERS }}'));
+ assert.ok(!fallback.includes('apps:create'));
+ assert.ok(fallback.includes('Existing Firebase test app and non-empty tester list are required'));
+ assert.ok(step('Require Android test distribution configuration').includes('FIREBASE_TESTERS secret'));
+ assert.ok(!workflow.includes('vars.FIREBASE_TESTERS'));
+});
