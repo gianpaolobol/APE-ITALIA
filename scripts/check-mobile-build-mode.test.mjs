@@ -104,3 +104,32 @@ test('live staging preflight requires verified TLS, HTTP 200 and the full expect
  assert.match(script, /node scripts\/verify-staging-health\.mjs "\$\{GITHUB_SHA:\?Missing expected build revision\}" < "\$body"/);
  assert.match(script, /trap 'rm -f "\$body"' EXIT/);
 });
+
+import { verifyTestFlightUpload } from './verify-testflight-upload.mjs';
+test('TestFlight verification only accepts exact successful signed iOS upload', () => {
+ const sha = 'a'.repeat(40);
+ const run = { head_sha: sha, head_branch: 'main', path: '.github/workflows/mobile-release.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'success', run_number: 15 };
+ const upload = { name: 'Export and upload to TestFlight', status: 'completed', conclusion: 'success' };
+ const ios = { name: 'ios', status: 'completed', conclusion: 'success', steps: [upload] };
+ const jobs = { jobs: [ios] };
+ assert.equal(verifyTestFlightUpload(run, jobs, sha), '15');
+ for (const patch of [{ head_sha: 'b'.repeat(40) }, { head_branch: 'feature' }, { event: 'push' }, { conclusion: 'failure' }, { path: 'other.yml' }, { run_number: 0 }]) {
+  assert.throws(() => verifyTestFlightUpload({ ...run, ...patch }, jobs, sha));
+ }
+ for (const list of [[], [{ ...ios, name: 'android' }], [{ ...ios, steps: [] }], [{ ...ios, steps: [{ ...upload, conclusion: 'skipped' }] }], [ios, ios]]) {
+  assert.throws(() => verifyTestFlightUpload(run, { jobs: list }, sha));
+ }
+});
+test('TestFlight verifier is explicit and read-only', () => {
+ const tf = readFileSync(new URL('../.github/workflows/testflight-testers.yml', import.meta.url), 'utf8');
+ const py = readFileSync(new URL('./release/testflight_internal.py', import.meta.url), 'utf8');
+ assert.match(tf, /workflow_dispatch:/);
+ assert.doesNotMatch(tf, /workflow_run:/);
+ assert.match(tf, /verify-testflight-upload\.mjs/);
+ assert.match(tf, /EXPECTED_BUILD_NUMBER=\$build/);
+ assert.match(py, /"filter\[version\]": expected/);
+ assert.match(py, /attrs\.get\("expired"\) is not False/);
+ assert.match(py, /attrs\.get\("usesNonExemptEncryption"\) is not False/);
+ assert.match(py, /method="GET"/);
+ assert.doesNotMatch(py, /["'](?:POST|PATCH|DELETE)["']/);
+});
