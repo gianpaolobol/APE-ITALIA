@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { BadRequestException, ConflictException, NotFoundException, StreamableFile } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, NotFoundException, StreamableFile } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair, type CryptoKey } from 'jose';
 import { AuthService } from '../auth.service';
@@ -105,5 +105,25 @@ describe.skipIf(!enabled)('PostgreSQL: inspection scheduling and immutable repor
   expect(csv).toBeInstanceOf(StreamableFile);
   await expect(cert.export(assignmentId, 'xml', await bearer(certSub))).rejects.toBeInstanceOf(BadRequestException);
   expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.export' } })).toBe(2);
+ });
+ it('cannot export another certifier\'s completed assignment in either format', async () => {
+  const otherSub = 'synthetic-other-cert-' + randomUUID();
+  const other = await registerVerifiedCertifier(db, {
+   subject: otherSub, displayName: 'Other Synthetic Certifier', registrationId: 'TEST-' + randomUUID(),
+   regions: [REGION], operator: 'ci-test',
+  });
+  try {
+   const otherToken = await bearer(otherSub);
+   const customerToken = await bearer(customer);
+   expect((await cert.me(otherToken)).id).toBe(other.id);
+   const before = await db.auditEvent.count({ where: { organizationId: org, action: 'case.export' } });
+   for (const format of ['json', 'csv']) {
+    await expect(cert.export(assignmentId, format, otherToken)).rejects.toBeInstanceOf(NotFoundException);
+    await expect(cert.export(assignmentId, format, customerToken)).rejects.toBeInstanceOf(ForbiddenException);
+   }
+   expect(await db.auditEvent.count({ where: { organizationId: org, action: 'case.export' } })).toBe(before);
+  } finally {
+   await db.certifier.delete({ where: { id: other.id } });
+  }
  });
 });

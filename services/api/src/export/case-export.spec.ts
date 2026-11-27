@@ -48,4 +48,20 @@ describe('calculation export', () => {
   expect(lines[1]).toContain(`"'=HYPERLINK(""http://evil"")"`);
   expect(lines[2]).toContain('"Nessun saggio, ""parete"" intonacata"');
  });
+ it.each(['=1+1', '+1+1', '-1+1', '@SUM(1)', '  =1+1', '\t1', '\r1', '\n1', '\u200b=1+1', '＝1+1', '＋1+1', '－1+1', '＠SUM(1)', '\u00a0＝1+1'])('neutralizes a formula-like note %j without changing JSON', note => {
+  const i = input();
+  i.inspection.report.findings[0].note = note;
+  const doc = buildCaseExport(i);
+  expect(doc.inspection.findings[0].note).toBe(note);
+  const literal = "'" + note;
+  const encoded = /[",\r\n;]/.test(literal) ? '"' + literal.replace(/"/g, '""') + '"' : literal;
+  expect(findingsCsv(doc)).toContain(',' + encoded + '\r\n');
+ });
+ it('preserves ordinary notes and numeric cells', () => {
+  const i = input();
+  i.inspection.report.findings[0].note = 'Misura: 24 kW';
+  const csv = findingsCsv(buildCaseExport(i));
+  expect(csv).toContain(',24,kW,');
+  expect(csv).toContain(',Misura: 24 kW\r\n');
+ });
 });

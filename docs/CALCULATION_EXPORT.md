@@ -12,7 +12,7 @@
 - Nessun campo per classe energetica o indici di prestazione.
 
 ## CSV dei rilievi
-UTF-8 con BOM, RFC 4180, una riga per voce; celle che iniziano con `= + - @` prefissate da apostrofo (protezione da formula injection nei fogli di calcolo).
+UTF-8 con BOM, RFC 4180, una riga per voce; le celle che iniziano con tabulazione, CR o LF, oppure con operatori `= + - @` anche dopo spazi/caratteri di controllo o normalizzazione Unicode NFKC, sono prefissate da apostrofo. La normalizzazione serve solo a riconoscere il prefisso: il testo originale rimane invariato nel JSON e nel contenuto della cella dopo l'apostrofo. È una mitigazione conservativa, non una garanzia per tutti i programmi o per la riesportazione da fogli elettronici; importare le note come testo, verificare il comportamento nel software reale e preferire il JSON per lo scambio macchina-macchina.
 
 ## Da decidere
 Il formato d'importazione del software scelto (es. tracciato proprietario o XML regionale) non è ancora noto: il fornitore di calcolo è una decisione aperta del MASTER PLAN §18. Questo documento è il formato neutro da cui scrivere l'adattatore, previa verifica di licenze e compatibilità.
