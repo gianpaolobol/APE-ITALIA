@@ -33,3 +33,12 @@ test('web requires a distinct dedicated staging HTTPS host and matching literal 
     assert.throws(() => validateStaging({ ...valid, envFile }));
   }
 });
+
+test('expected OIDC issuer is safe for remote shell and dedicated staging', () => {
+  assert.doesNotThrow(() => validateStaging({ ...valid, expectedIssuer: 'https://auth-staging.example.test/realms/ape' }));
+  for (const expectedIssuer of ['https://auth.example.test/realms/ape',
+    'https://auth-staging.example.test/../ape', 'https://auth-staging.example.test/realms/ape?x=1',
+    "https://auth-staging.example.test/realms/a'b", 'https://auth-staging.example.test/realms/$HOME']) {
+    assert.throws(() => validateStaging({ ...valid, expectedIssuer }));
+  }
+});
