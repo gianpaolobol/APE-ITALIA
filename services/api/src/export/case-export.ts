@@ -55,7 +55,10 @@ export function buildCaseExport(i: ExportInput) {
 export function findingsCsv(doc: ReturnType<typeof buildCaseExport>): string {
  const cell = (v: unknown) => {
   let s = v === null || v === undefined ? '' : String(v);
-  if (/^[=+\-@\t\r]/.test(s)) s = "'" + s;
+  // Normalize only for detection: preserve the original report text and JSON export.
+  // Some spreadsheet imports ignore leading whitespace/control characters or fold full-width operators.
+  const probe = s.normalize('NFKC');
+  if (/^[\t\r\n]|^[\s\p{Cc}\p{Cf}]*[=+\-@]/u.test(probe)) s = "'" + s;
   return /[",\r\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
  };
  const head = ['field', 'label', 'value', 'unit', 'verification', 'source', 'evidence_sha256', 'note'];
