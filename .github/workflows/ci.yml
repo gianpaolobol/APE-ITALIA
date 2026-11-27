@@ -32,6 +32,7 @@ jobs:
       - run: npm ci --no-audit --no-fund
       - run: node scripts/check-secrets.mjs
       - run: python3 scripts/check-ios-protection.test.py
+      - run: python3 scripts/verify-staging-runtime-config.test.py
       - run: node --test scripts/verify-release-ci.test.mjs scripts/verify-staging-config.test.mjs scripts/check-mobile-build-mode.test.mjs scripts/verify-staging-health.test.mjs
       - name: Dependency audit (critical threshold; residual findings require review)
         run: npm audit --omit=dev --audit-level=critical

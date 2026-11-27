@@ -26,7 +26,7 @@ Workflow **Firebase bootstrap** (`.github/workflows/firebase-bootstrap.yml`), un
 4. Il workflow tenta di revocare le credenziali temporanee e pulire il runner; se la revoca non è confermata, verificarla nell'account Google.  gli identificativi (non segreti) sono pubblicati nella issue e salvati in `deploy/firebase/config.json`, letto da "Mobile release".
 
 ### Alternativa con chiave di account di servizio
-Il workflow compila un APK di rilascio e, se trova il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, **registra da solo l'app Android** (`it.apeitalia.app`) nel progetto Firebase della chiave (solo la prima volta) e la **distribuisce ai tester**. Nessun caricamento manuale.
+Il workflow compila un APK di rilascio e, se trova il secret `FIREBASE_SERVICE_ACCOUNT_JSON`, richiede un'app Android di test già registrata (`it.apeitalia.app`) nel progetto Firebase della chiave e una lista tester privata. Non registra nuove app né crea risorse Firebase durante il rilascio.
 
 Passi una tantum del titolare (fattibili anche da browser del telefono, in modalità desktop):
 1. **console.firebase.google.com** → apri o crea il progetto (es. "APE Italia") → menu **Release & Monitor → App Distribution → Inizia**.
