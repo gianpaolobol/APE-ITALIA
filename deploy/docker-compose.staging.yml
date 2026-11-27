@@ -84,7 +84,11 @@ services:
     depends_on: { migrate: { condition: service_completed_successfully } }
     restart: unless-stopped
   web:
-    build: { context: .., dockerfile: apps/web/Dockerfile }
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        APE_BUILD_REVISION: ${APE_BUILD_REVISION:-unknown}
     image: ape-italia-web
     environment:
       OIDC_ISSUER: ${OIDC_ISSUER:-}

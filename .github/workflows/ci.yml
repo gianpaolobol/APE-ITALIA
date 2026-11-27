@@ -96,6 +96,7 @@ jobs:
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/)" = 200
           # Exercise the actual Caddy-to-web route, not just the loopback Next.js port.
           docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec -T caddy wget -qO- http://localhost:8080/ | grep -F 'Portale web' >/dev/null
+          docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env exec -T caddy wget -qO- http://localhost:8080/health | node scripts/verify-staging-health.mjs "$GITHUB_SHA" ape-italia-web
           # The standalone portal must not expose the on-demand image optimizer.
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:3000/_next/image?url=%2F&w=640&q=75')" = 404
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/auth/login)" = 503
