@@ -1,0 +1,114 @@
+name: V1 diagnostic - vendored Next and full npm audit
+on:
+  push:
+    branches: [diagnostics/v1-vendored-audit-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  npm-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Report full and production npm audits separately
+        run: |
+          for scope in full production; do
+            rc=0
+            if [ "$scope" = production ]; then
+              npm audit --omit=dev --json > "/tmp/audit-$scope.json" || rc=$?
+            else
+              npm audit --json > "/tmp/audit-$scope.json" || rc=$?
+            fi
+            node --input-type=commonjs - "$scope" "$rc" <<'JS'
+          const fs = require('node:fs');
+          const [scope, rc] = process.argv.slice(2);
+          const report = JSON.parse(fs.readFileSync('/tmp/audit-' + scope + '.json','utf8'));
+          if (report.error || !report.metadata?.vulnerabilities || !report.vulnerabilities) throw Error('Audit unavailable, not a clean report');
+          console.log(JSON.stringify({scope, exitCode: Number(rc), counts: report.metadata.vulnerabilities}));
+          for (const [name, v] of Object.entries(report.vulnerabilities)) {
+            console.log(JSON.stringify({name, severity: v.severity, direct: v.isDirect, range: v.range, nodes: v.nodes, advisories: v.via.filter(x=>typeof x==='object').map(x=>({source:x.source,url:x.url,range:x.range})), viaPackages:v.via.filter(x=>typeof x==='string')}));
+          }
+          JS
+          done
+      - name: Identify upstream source pins for the published Next package
+        run: |
+          version=$(node -p "require('next/package.json').version")
+          echo "Installed Next: $version"
+          head=$(npm view "next@$version" gitHead --json | node -e "let s='';process.stdin.on('data',x=>s+=x);process.stdin.on('end',()=>{if(s.trim())console.log(JSON.parse(s))})")
+          if ! printf '%s' "$head" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "Published gitHead unavailable; upstream pin remains unknown"
+            exit 0
+          fi
+          echo "Published Next gitHead: $head"
+          if ! curl --fail --silent --show-error --max-time 30 "https://raw.githubusercontent.com/vercel/next.js/$head/packages/next/package.json" -o /tmp/next-source-package.json; then
+            echo "Upstream source manifest unavailable; do not infer vendored versions"
+            exit 0
+          fi
+          node --input-type=commonjs - <<'JS'
+          const p = require('/tmp/next-source-package.json');
+          for (const name of ['glob','image-size','postcss']) {
+            console.log(JSON.stringify({name, dependencies:p.dependencies?.[name]??null, devDependencies:p.devDependencies?.[name]??null, optionalDependencies:p.optionalDependencies?.[name]??null}));
+          }
+          console.log('Source manifest pins are evidence, not proof of exact bundled bytes.');
+          JS
+  standalone-inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Build the actual production-shaped web image without deployment
+        run: docker build -f apps/web/Dockerfile -t ape-v1-diagnostic .
+      - name: Inspect packaged vendored bytes and static inbound references
+        run: |
+          docker run --rm --network none -i --entrypoint node ape-v1-diagnostic --input-type=commonjs - <<'JS'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          const crypto = require('node:crypto');
+          const root = '/app';
+          const files = [];
+          function walk(d) {
+            for (const e of fs.readdirSync(d,{withFileTypes:true})) {
+              const p=path.join(d,e.name);
+              if(e.isDirectory()) walk(p);
+              else if(e.isFile()) files.push(p);
+            }
+          }
+          walk(root);
+          for(const name of ['glob','image-size']) {
+            const marker='/next/dist/compiled/'+name+'/';
+            const vendored=files.filter(p=>p.includes(marker));
+            const records=vendored.map(p=>{
+              const b=fs.readFileSync(p);
+              let version=null;
+              if(path.basename(p)==='package.json') {try{version=JSON.parse(b).version??null}catch{}}
+              return {path:path.relative(root,p),bytes:b.length,sha256:crypto.createHash('sha256').update(b).digest('hex'),version};
+            });
+            const refs=[];
+            for(const p of files) {
+              if(p.includes(marker)||!/\.(?:js|cjs|mjs|json)$/.test(p)) continue;
+              const s=fs.statSync(p);
+              if(s.size>32*1024*1024) continue;
+              const b=fs.readFileSync(p,'utf8');
+              const needles=['compiled/'+name+'"',"compiled/"+name+"'",'compiled/'+name+'/', 'compiled\\\\'+name+'\\\\'];
+              if(needles.some(n=>b.includes(n))) refs.push(path.relative(root,p));
+            }
+            console.log(JSON.stringify({name,vendored:records,staticReferenceCount:refs.length,staticReferences:refs.slice(0,80)}));
+          }
+          console.log('Static references are not a complete call graph; dynamic loads and large files may be missed.');
+          JS
+      - name: Confirm the image optimizer is not exposed on the running standalone portal
+        run: |
+          cid=$(docker run -d --rm -p 127.0.0.1:18080:3000 ape-v1-diagnostic)
+          trap 'docker rm -f "$cid" >/dev/null 2>&1 || true' EXIT
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1 && break; sleep 2; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18080/_next/image?url=%2F&w=640&q=75')" = 404
