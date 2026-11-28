@@ -11,9 +11,12 @@ import { InboxScreen } from './src/ui/InboxScreen';
 import { JobScreen } from './src/ui/JobScreen';
 import { RemoteCertifier } from './src/ui/RemoteCertifier';
 import { getSession, logout, serverEnabled, subscribeSession } from './src/server';
-import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, addDraftPhoto, deliverDraftApe, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
+import { canViewDraft, sameOwner, visiblePro, storePro, type DraftOwner, type ProProfile, enqueueMediaCleanup, retryMediaCleanup, removeDraftPhoto, loadState, newScopedDraft, saveStateNow, type AppState, type Draft } from './src/survey/drafts';
 
 import { createAutosave } from './src/survey/autosave';
+import { preparePrivateMediaCache } from './src/survey/media-native-storage';
+import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, migrateLegacySurveyMedia, shareLocalApe, withSurveyMedia } from './src/survey/media-delivery';
+import * as Sharing from 'expo-sharing';
 
 type Route = { name: 'home' } | { name: 'wizard'; id: string; step?: string } | { name: 'result'; id: string } | { name: 'pro' } | { name: 'inbox' } | { name: 'job'; id: string } | { name: 'remote'; me: { name: string; sace: string } };
 
@@ -24,6 +27,8 @@ export default function App() {
  const [route, setRoute] = useState<Route>({ name: 'home' });
  const [owner, setOwner] = useState<DraftOwner | null | undefined>(undefined);
  const ownerRef = useRef<DraftOwner | null>(null);
+ const scopeEpoch = useRef(0);
+ const mediaBusy = useRef(false);
  useEffect(() => {
   let active = true, observed = false;
   const apply = (s: DraftOwner | null) => {
@@ -31,7 +36,7 @@ export default function App() {
    const previous = ownerRef.current;
    ownerRef.current = s;
    setOwner(s);
-   if (!sameOwner(previous, s)) setRoute({ name: 'home' });
+   if (!sameOwner(previous, s)) { scopeEpoch.current++; setRoute({ name: 'home' }); }
    else if (!s) setRoute(r => r.name === 'remote' ? { name: 'home' } : r);
   };
   const unsubscribe = subscribeSession(s => { observed = true; apply(s); });
@@ -44,7 +49,7 @@ export default function App() {
 
  useEffect(() => {
   let active = true;
-  void loadState().then(s => {
+  void Promise.resolve().then(() => preparePrivateMediaCache()).then(() => loadState()).then(s => {
    if (!active) return;
    // A committed deletion may have been interrupted before unlinking its files.
    // Keep the pending intent visible if retry or its checkpoint fails.
@@ -112,6 +117,7 @@ export default function App() {
  // Retry only the latest archive; a failed checkpoint leaves the pending
  // intents available for another attempt. No file paths or other account data in the UI.
  const retryCleanup = () => {
+  if (mediaBusy.current) return;
   const cur = latest.current;
   if (!cur?.pendingMediaCleanup?.length) return;
   try {
@@ -139,6 +145,21 @@ export default function App() {
   return true;
  };
 
+ const withMediaLease = async <T,>(id: string, use: (guard: () => void) => Promise<T>): Promise<T> => {
+  if (mediaBusy.current || !permitted(id) || !sameOwner(owner, ownerRef.current)) throw new Error('Allegato non disponibile');
+  const epoch = scopeEpoch.current;
+  const guard = () => {
+   if (scopeEpoch.current !== epoch || !sameOwner(owner, ownerRef.current) || !permitted(id))
+    throw new Error('Sessione o richiesta modificata');
+  };
+  mediaBusy.current = true;
+  try {
+   guard(); preparePrivateMediaCache(true); guard();
+   const result = await use(guard); guard(); return result;
+  }
+  finally { mediaBusy.current = false; }
+ };
+
  const startDraft = () => {
   if (!sameOwner(owner, ownerRef.current)) return;
   const d = newScopedDraft(ownerRef.current, demo);
@@ -159,10 +180,22 @@ export default function App() {
    // Answers/photos of questions that become hidden are kept (the user may switch back); they are
    // excluded when sending.
    onUpdate={fn => updateDraft(d.id, fn)}
-   onAddPhoto={(qid, f) => {
-    const cur = latest.current;
-    if (!cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
-    return addDraftPhoto(cur, d.id, qid, f, publishCapture);
+   onAddPhoto={async (qid, f) => {
+    const result = await withMediaLease(d.id, guard => captureEncryptedSurveyMedia({
+     latest: () => latest.current, guard, publish: publishCapture,
+    }, d.id, qid, f));
+    retryCleanup(); return result;
+   }}
+   onPreviewMedia={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard }, d.id, qid, photo, use));
+    retryCleanup();
+   }}
+   onReadPhoto={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard: () => {
+     guard();
+     if (latest.current?.drafts.find(x => x.id === d.id)?.answers.aiConsent !== true) throw new Error('Consenso AI non disponibile');
+    } }, d.id, qid, photo, use));
+    retryCleanup();
    }}
    onRemovePhoto={(qid, p) => {
     const cur = latest.current;
@@ -187,6 +220,11 @@ export default function App() {
  } else if (route.name === 'result' && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <ResultScreen draft={d} onBack={() => setRoute({ name: 'home' })} onEditStep={step => setRoute({ name: 'wizard', id: d.id, step })} onUpdate={fn => updateDraft(d.id, fn)}
+   onPrepareSend={async () => { await withMediaLease(d.id, async guard => { guard(); }); }}
+   onMigrateMedia={async () => {
+    const count = await withMediaLease(d.id, guard => migrateLegacySurveyMedia({ latest: () => latest.current, guard, publish: publishCapture }, d.id));
+    retryCleanup(); return count;
+   }}
    onCheckpoint={async cp => {
     const cur = latest.current;
     if (!cur || !permitted(d.id) || (cp.remoteOwner && !canViewDraft({ ...d, ...cp }, ownerRef.current, demo))) throw new Error('Richiesta non più disponibile.');
@@ -194,6 +232,18 @@ export default function App() {
     latest.current = next; setState(next);
     autosave.schedule(next);
     if (!autosave.flush()) throw new Error('Salvataggio locale non riuscito. Riprova.');
+   }}
+   onReadMedia={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard }, d.id, qid, photo, use));
+    retryCleanup();
+   }}
+   onOpenLocalPdf={async uri => {
+    await withMediaLease(d.id, async guard => {
+     const access = { latest: () => latest.current, guard, publish: publishCapture };
+     const encrypted = await migrateLocalDemoApe(access, d.id, uri);
+     await shareLocalApe(access, d.id, encrypted, path => Sharing.shareAsync(path, { mimeType: 'application/pdf' }));
+    });
+    retryCleanup();
    }}
    onDelete={() => { if (removeDraft(d.id)) setRoute({ name: 'home' }); }} />;
  } else if (route.name === 'pro') {
@@ -205,10 +255,15 @@ export default function App() {
  } else if (route.name === 'job' && demo && visibleState.pro && draft(route.id)) {
   const d = draft(route.id)!;
   screen = <JobScreen draft={d} pro={visibleState.pro.data} onBack={() => setRoute({ name: 'inbox' })} onUpdate={fn => updateDraft(d.id, fn)}
+   onReadLocalMedia={async (qid, photo, use) => {
+    await withMediaLease(d.id, guard => withSurveyMedia({ latest: () => latest.current, guard }, d.id, qid, photo, use));
+    retryCleanup();
+   }}
    onLocalDeliver={async (code, cls, pdf) => {
-    const cur = latest.current;
-    if (!demo || !cur || !permitted(d.id)) throw new Error('Richiesta non disponibile');
-    deliverDraftApe(cur, d.id, code, cls, pdf, publishCapture);
+    if (!demo) throw new Error('Richiesta non disponibile');
+    await withMediaLease(d.id, guard => deliverEncryptedDemoApe({
+     latest: () => latest.current, guard, publish: publishCapture,
+    }, d.id, code, cls, pdf));
    }} />;
  } else {
   screen = <HomeScreen key={scopeKey} state={visibleState} canStartDraft={demo || !!owner}

@@ -55,6 +55,7 @@ jobs:
       HAS_KEYSTORE: ${{ inputs.mode == 'distribute' && secrets.ANDROID_KEYSTORE_BASE64 != '' }}
       HAS_PLAY: ${{ inputs.mode == 'distribute' && secrets.PLAY_SERVICE_ACCOUNT_JSON != '' }}
       HAS_FIREBASE: ${{ inputs.mode == 'distribute' && secrets.FIREBASE_SERVICE_ACCOUNT_JSON != '' }}
+      HAS_FIREBASE_TESTERS: ${{ inputs.mode == 'distribute' && secrets.FIREBASE_TESTERS != '' }}
     steps:
       - uses: actions/checkout@v4
       - name: Firebase configuration (keyless)
@@ -84,6 +85,10 @@ jobs:
           set -euo pipefail
           if [ "$HAS_PLAY" = true ] && [ "$HAS_KEYSTORE" != true ]; then
             echo "::error::Play internal is configured but the upload key is missing"
+            exit 1
+          fi
+          if [ "$HAS_FIREBASE" = true ] && [ -z "${FB_PROVIDER:-}" ] && [ "$HAS_FIREBASE_TESTERS" != true ]; then
+            echo "::error::Firebase service-account distribution requires the FIREBASE_TESTERS secret"
             exit 1
           fi
           if [ "$HAS_FIREBASE" != true ] && [ -z "${FB_PROVIDER:-}" ] && [ "$HAS_PLAY" != true ]; then
@@ -143,18 +148,22 @@ jobs:
       - name: Distribute APK with Firebase App Distribution (keyless)
         if: inputs.mode == 'distribute' && env.FB_PROVIDER != ''
         run: |
-          set -o pipefail
+          set -euo pipefail
           NOTES="APE Italia build ${BUILD_NUMBER} ($(git rev-parse --short HEAD)) — prova interna, dati solo sintetici."
-          npx --yes firebase-tools@14 --non-interactive --project "$FB_PROJECT" appdistribution:distribute \
+          # Public repository: never emit CLI output, including invitation URLs, tokens or tester details.
+          if ! npx --yes firebase-tools@14 --non-interactive --project "$FB_PROJECT" appdistribution:distribute \
             apps/mobile/android/app/build/outputs/apk/release/app-release.apk --app "$FB_APP" --groups "$FB_GROUP" --release-notes "$NOTES" \
-            2>&1 | grep -v 'app-binary-downloads'   # public repo: do not log the signed 1-hour download link
+            >/dev/null 2>&1; then
+            echo "::error::Firebase distribution command failed; inspect the authorized Firebase console"
+            exit 1
+          fi
           echo "FIREBASE_APP_ID=$FB_APP" >> "$GITHUB_ENV"
           echo "HAS_FIREBASE=true" >> "$GITHUB_ENV"
       - name: Distribute APK with Firebase App Distribution (service account key)
         if: inputs.mode == 'distribute' && env.HAS_FIREBASE == 'true' && env.FB_PROVIDER == ''
         env:
           SA_JSON: ${{ secrets.FIREBASE_SERVICE_ACCOUNT_JSON }}
-          TESTERS: ${{ vars.FIREBASE_TESTERS }}
+          TESTERS: ${{ secrets.FIREBASE_TESTERS }}
         run: |
           set -euo pipefail
           printf '%s' "$SA_JSON" > "$RUNNER_TEMP/firebase-sa.json"
@@ -162,17 +171,22 @@ jobs:
           export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/firebase-sa.json"
           PROJECT=$(jq -r .project_id "$RUNNER_TEMP/firebase-sa.json")
           FB="npx --yes firebase-tools@14 --non-interactive --project $PROJECT"
-          # Register the Android app in the Firebase project on first use (idempotent).
-          APP_ID=$($FB apps:list ANDROID --json | jq -r '.result[]? | select(.packageName=="it.apeitalia.app") | .appId' | head -1)
-          if [ -z "$APP_ID" ]; then
-            APP_ID=$($FB apps:create ANDROID "APE Italia" --package-name it.apeitalia.app --json | jq -r '.result.appId')
-            echo "Registered Firebase Android app $APP_ID"
+          # Require an already registered test app; do not create external resources during release.
+          if ! APP_ID=$($FB apps:list ANDROID --json 2>/dev/null | jq -r '[.result[]? | select(.packageName=="it.apeitalia.app") | .appId] | if length == 1 then .[0] else empty end' 2>/dev/null); then
+            echo "::error::Firebase app lookup failed; inspect the authorized Firebase console"
+            exit 1
+          fi
+          if [ -z "$APP_ID" ] || [ -z "${TESTERS//[[:space:],]/}" ]; then
+            echo "::error::Existing Firebase test app and non-empty tester list are required"
+            exit 1
           fi
           NOTES="APE Italia build ${BUILD_NUMBER} ($(git rev-parse --short HEAD)) — prova interna, dati solo sintetici."
           ARGS=(appdistribution:distribute apps/mobile/android/app/build/outputs/apk/release/app-release.apk --app "$APP_ID" --release-notes "$NOTES")
-          if [ -n "${TESTERS:-}" ]; then ARGS+=(--testers "$TESTERS"); fi
-          set -o pipefail
-          $FB "${ARGS[@]}" 2>&1 | grep -v 'app-binary-downloads'
+          ARGS+=(--testers "$TESTERS")
+          if ! $FB "${ARGS[@]}" >/dev/null 2>&1; then
+            echo "::error::Firebase distribution command failed; inspect the authorized Firebase console"
+            exit 1
+          fi
           echo "FIREBASE_APP_ID=$APP_ID" >> "$GITHUB_ENV"
       - name: Remove Firebase credentials
         if: always()
@@ -201,8 +215,8 @@ jobs:
           {
             echo "### Android build ${BUILD_NUMBER}"
             if [ "$HAS_KEYSTORE" = true ]; then echo "- Firmato con la chiave di caricamento."; else echo "- Firmato con la chiave di debug del progetto (sufficiente per i tester Firebase, non per Google Play)."; fi
-            if [ "${{ inputs.mode }}" = build-only ]; then echo "- Modalità build-only: nessuna distribuzione Firebase o Play."; elif [ "$HAS_FIREBASE" = true ]; then echo "- APK distribuito con **Firebase App Distribution** (app \`${FIREBASE_APP_ID:-?}\`): i tester ricevono l'email di invito."; else echo "- Firebase saltato: manca il secret FIREBASE_SERVICE_ACCOUNT_JSON."; fi
-            if [ "$HAS_KEYSTORE" = true ] && [ "$HAS_PLAY" = true ]; then echo "- AAB caricato sul canale **internal** di Google Play."; fi
+            if [ "${{ inputs.mode }}" = build-only ]; then echo "- Modalità build-only: nessuna distribuzione Firebase o Play."; elif [ "$HAS_FIREBASE" = true ]; then echo "- APK distribuito con **Firebase App Distribution** (app \`${FIREBASE_APP_ID:-?}\`): comando di distribuzione riuscito; verificare release esatta, accesso tester e installazione nella console."; else echo "- Firebase saltato: manca il secret FIREBASE_SERVICE_ACCOUNT_JSON."; fi
+            if [ "$HAS_KEYSTORE" = true ] && [ "$HAS_PLAY" = true ]; then echo "- AAB caricato sul canale **internal** di Google Play (stato richiesto: ${{ inputs.play_status }}); disponibilità ai tester da verificare nella console."; fi
             if [ "${{ inputs.mode }}" = distribute ]; then echo "- Nessun APK/AAB di distribuzione pubblicato come artifact GitHub."; fi
           } >> "$GITHUB_STEP_SUMMARY"
 

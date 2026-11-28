@@ -3,7 +3,7 @@ name: Deploy staging server
 # Deploys main to the staging VM over SSH: pulls the repository, writes deploy/.env from a secret and
 # runs the docker-compose stack (Postgres, ClamAV, migrations, API, worker, web, Caddy TLS).
 # Staging environment secrets: DEPLOY_HOST, DEPLOY_USER, DEPLOY_SSH_KEY, DEPLOY_SSH_KNOWN_HOSTS, DEPLOY_ENV_FILE.
-# Required staging variable: STAGING_PUBLIC_API_URL (dedicated HTTPS staging origin).
+# Required staging variables: STAGING_PUBLIC_API_URL and STAGING_PUBLIC_WEB_URL (distinct dedicated HTTPS staging origins).
 # Optional variable: DEPLOY_PATH (default /opt/ape-italia-staging). See docs/DEPLOYMENT.md.
 on:
   workflow_dispatch:
@@ -47,6 +47,8 @@ jobs:
           USER: ${{ secrets.DEPLOY_USER }}
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/ape-italia-staging' }}
           EXPECTED_URL: ${{ vars.STAGING_PUBLIC_API_URL }}
+          EXPECTED_WEB_URL: ${{ vars.STAGING_PUBLIC_WEB_URL }}
+          EXPECTED_ISSUER: ${{ vars.STAGING_PUBLIC_OIDC_ISSUER }}
           ENV_FILE: ${{ secrets.DEPLOY_ENV_FILE }}
         run: node scripts/verify-staging-config.mjs
       - name: SSH key
@@ -69,12 +71,17 @@ jobs:
           DEPLOY_PATH: ${{ vars.DEPLOY_PATH || '/opt/ape-italia-staging' }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
+          EXPECTED_URL: ${{ vars.STAGING_PUBLIC_API_URL }}
+          EXPECTED_WEB_URL: ${{ vars.STAGING_PUBLIC_WEB_URL }}
+          EXPECTED_ISSUER: ${{ vars.STAGING_PUBLIC_OIDC_ISSUER }}
         run: |
           set -euo pipefail
           SSH=(ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o "UserKnownHostsFile=$HOME/.ssh/ape_staging_known_hosts" -o GlobalKnownHostsFile=/dev/null -- "$USER@$HOST")
           "${SSH[@]}" "set -e; if [ ! -d '$DEPLOY_PATH/.git' ]; then sudo mkdir -p '$DEPLOY_PATH' && sudo chown \$(id -u):\$(id -g) '$DEPLOY_PATH' && git clone https://github.com/$REPO '$DEPLOY_PATH'; fi; cd '$DEPLOY_PATH' && git fetch --quiet origin && git checkout --quiet --force '$SHA'"
           printf '%s\n' "$ENV_FILE" | "${SSH[@]}" "set -e; umask 077; tmp=\$(mktemp '$DEPLOY_PATH/deploy/.env.XXXXXX'); trap 'rm -f \"\$tmp\"' EXIT; cat > \"\$tmp\"; chmod 600 \"\$tmp\"; mv -f \"\$tmp\" '$DEPLOY_PATH/deploy/.env'"
-          "${SSH[@]}" "cd '$DEPLOY_PATH' && APE_BUILD_REVISION='$SHA' docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build --remove-orphans"
+          # Inspect the effective Compose model, not just the dotenv: shell variables and
+          # Compose interpolation may override settings. Never print the resolved model.
+          "${SSH[@]}" "set -e; cd '$DEPLOY_PATH'; export APE_BUILD_REVISION='$SHA'; cfg=\$(docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env config --format json 2>/dev/null) || { echo 'Staging Compose configuration failed'; exit 1; }; printf '%s' \"\$cfg\" | python3 scripts/verify-staging-runtime-config.py '$EXPECTED_URL' '$EXPECTED_WEB_URL' '$EXPECTED_ISSUER'; unset cfg; docker compose -f deploy/docker-compose.staging.yml --env-file deploy/.env up -d --build --remove-orphans"
       - name: Mandatory public HTTPS health and revision check
         env:
           URL: ${{ vars.STAGING_PUBLIC_API_URL }}
@@ -91,6 +98,24 @@ jobs:
             sleep 10
           done
           echo "::error::Staging API HTTPS health/revision check failed"; exit 1
+      - name: Mandatory public HTTPS web routing and revision check
+        env:
+          URL: ${{ vars.STAGING_PUBLIC_WEB_URL }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          body=$(mktemp)
+          trap 'rm -f "$body"' EXIT
+          for i in $(seq 1 30); do
+            if status=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --proto '=https' --connect-timeout 5 --max-time 10 --max-filesize 1048576 "$URL/") &&
+              [ "$status" = 200 ] && grep -Fq 'Portale web' "$body" &&
+              status=$(curl --silent --show-error --output "$body" --write-out '%{http_code}' --proto '=https' --connect-timeout 5 --max-time 10 --max-filesize 65536 "$URL/health") &&
+              [ "$status" = 200 ] && node scripts/verify-staging-health.mjs "$SHA" ape-italia-web < "$body"; then
+              echo "Staging web landing page reachable and expected revision served via HTTPS"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::Staging web HTTPS routing check failed"; exit 1
       - name: Cleanup
         if: always()
         run: rm -f ~/.ssh/id_deploy ~/.ssh/ape_staging_known_hosts

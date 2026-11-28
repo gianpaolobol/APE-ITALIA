@@ -17,3 +17,13 @@ test('rejects malformed JSON, other services and non-ok responses', () => {
   assert.equal(matchesStagingHealth(body, revision), false);
  }
 });
+
+test('web gate rejects stale revisions, API responses and unknown service labels', () => {
+ const web = { ...valid, service: 'ape-italia-web' };
+ assert.equal(matchesStagingHealth(JSON.stringify(web), revision, 'ape-italia-web'), true);
+ assert.equal(matchesStagingHealth(JSON.stringify(web), revision), false);
+ assert.equal(matchesStagingHealth(JSON.stringify(valid), revision, 'ape-italia-web'), false);
+ assert.equal(matchesStagingHealth(JSON.stringify({ ...web, revision: 'b'.repeat(40) }), revision, 'ape-italia-web'), false);
+ assert.equal(matchesStagingHealth(JSON.stringify(web), revision, 'other'), false);
+ assert.equal(matchesStagingHealth(JSON.stringify({ ...web, status: 'error' }), revision, 'ape-italia-web'), false);
+});
