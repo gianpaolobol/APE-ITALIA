@@ -12,5 +12,16 @@
     "web": "npm run dev -w @ape/web",
     "api": "npm run start:dev -w @ape/api",
     "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "overrides": {
+    "next@15.5.29": {
+      "postcss": "8.5.23"
+    },
+    "@expo/metro-config@54.0.17": {
+      "postcss": "8.5.23"
+    },
+    "@prisma/config@6.19.3": {
+      "effect": "3.22.1"
+    }
   }
 }
