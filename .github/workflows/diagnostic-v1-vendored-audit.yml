@@ -137,8 +137,15 @@ jobs:
             const p = JSON.parse(fs.readFileSync(file,'utf8'));
             if (!p.devDependencies?.vitest) throw Error('Expected Vitest dev dependency: '+file);
             p.devDependencies.vitest = '4.1.12';
+            if (file === 'apps/mobile/package.json') p.devDependencies['@types/node'] = '^22.0.0';
             fs.writeFileSync(file, JSON.stringify(p,null,2)+'\n');
           }
+          // Vitest 4 no longer brings the Node globals/types into the mobile test compilation implicitly.
+          const tsfile = 'apps/mobile/tsconfig.json';
+          const ts = JSON.parse(fs.readFileSync(tsfile,'utf8'));
+          if (!Array.isArray(ts.compilerOptions?.types)) throw Error('Unexpected mobile tsconfig');
+          if (!ts.compilerOptions.types.includes('node')) ts.compilerOptions.types.push('node');
+          fs.writeFileSync(tsfile, JSON.stringify(ts,null,2)+'\n');
           JS
           # npm 10.9.9 fails inside Arborist even with manifest-first root install.
           # Use a separately installed pinned npm 11; do not replace runner or app dependencies.
@@ -150,7 +157,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm ls vitest @vitest/mocker tinypool --all
           git diff --check
-          git diff --binary -- package.json package-lock.json apps/mobile/package.json apps/web/package.json services/api/package.json > /tmp/dev-remediation.patch
+          git diff --binary -- package.json package-lock.json apps/mobile/package.json apps/mobile/tsconfig.json apps/web/package.json services/api/package.json > /tmp/dev-remediation.patch
       - name: Audit both scopes (fail closed)
         run: |
           for scope in full production; do
