@@ -1,0 +1,51 @@
+name: Isolated npm remediation experiment
+on:
+  push:
+    branches: [diagnostics/npm-remediation-20261128]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  trial:
+    if: github.ref == 'refs/heads/diagnostics/npm-remediation-20261128'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Trial compatible npm remediation without lifecycle scripts or force
+        shell: bash
+        run: |
+          node --version
+          npm --version
+          npm audit --omit=dev --json > /tmp/ape-audit-before.json || test -s /tmp/ape-audit-before.json
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts --no-fund --json > /tmp/ape-audit-fix.json
+          result=$?
+          set -e
+          echo "npm audit fix exit: $result"
+          npm audit --omit=dev --json > /tmp/ape-audit-after.json || test -s /tmp/ape-audit-after.json
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          for (const phase of ['before','after']) {
+            const report = JSON.parse(fs.readFileSync('/tmp/ape-audit-'+phase+'.json','utf8'));
+            if (!report.metadata?.vulnerabilities || report.error) throw new Error('Audit unavailable: '+phase);
+            console.log(phase, JSON.stringify(report.metadata.vulnerabilities));
+            for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+              if (['high','critical','moderate'].includes(item.severity)) console.log(name, item.severity, item.range, JSON.stringify(item.fixAvailable));
+            }
+          }
+          const previous=JSON.parse(execFileSync('git',['show','HEAD:package-lock.json'],{encoding:'utf8',maxBuffer:20*1024*1024}));
+          const next=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
+          for (const name of new Set([...Object.keys(previous.packages),...Object.keys(next.packages)])) {
+            const a=previous.packages[name]?.version, b=next.packages[name]?.version;
+            if (a!==b) console.log('lock change',name,a??'-','=>',b??'-');
+          }
+          JS
+          git diff --stat -- package.json package-lock.json 'apps/*/package.json' 'services/*/package.json' 'packages/*/package.json'
+          # No commit, upload, signing, deployment or external credentials.
