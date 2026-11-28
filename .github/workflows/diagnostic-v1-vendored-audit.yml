@@ -140,7 +140,13 @@ jobs:
             fs.writeFileSync(file, JSON.stringify(p,null,2)+'\n');
           }
           JS
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          # npm 10.9.9 fails inside Arborist even with manifest-first root install.
+          # Use a separately installed pinned npm 11; do not replace runner or app dependencies.
+          (cd /tmp && npm install --global --prefix /tmp/ape-npm11 --ignore-scripts --no-audit --no-fund npm@11.6.2)
+          npm11=/tmp/ape-npm11/bin/npm
+          "$npm11" --version
+          "$npm11" install --package-lock-only --ignore-scripts --no-audit --no-fund
+          # Also require reproducibility using the existing CI npm version.
           npm ci --no-audit --no-fund
           npm ls vitest @vitest/mocker tinypool --all
           git diff --check
