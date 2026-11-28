@@ -1,4 +1,4 @@
-name: Isolated combined npm remediation and lock capture
+name: Isolated residual npm compatibility trials
 on:
   push:
     branches: [diagnostics/npm-remediation-20261128]
@@ -6,22 +6,27 @@ on:
 permissions:
   contents: read
 jobs:
-  combined:
+  trial:
     if: github.ref == 'refs/heads/diagnostics/npm-remediation-20261128'
     runs-on: ubuntu-latest
     timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [deepmerge-ts, image-size, glob-minimatch]
     env:
+      TARGET: ${{ matrix.target }}
       NEXT_TELEMETRY_DISABLED: '1'
       DATABASE_URL: postgresql://ape:ci_only_password@localhost:5432/ape_italia?schema=public
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: 26d8f68eff0dd0d01bc423d1ecf076e1e9d008f8
+          ref: 60ea4e1383614a00599e9a255b31ac162a47451b
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Reproduce both individually verified scoped overrides together
+      - name: Try smallest patched stable leaf major, isolated from release
         shell: bash
         run: |
           set -euo pipefail
@@ -29,42 +34,58 @@ jobs:
           npm audit --omit=dev --json > /tmp/ape-before.json || test -s /tmp/ape-before.json
           node --input-type=module <<'JS'
           import fs from 'node:fs';
+          import {execFileSync} from 'node:child_process';
+          const target=process.env.TARGET;
           const manifest=JSON.parse(fs.readFileSync('package.json','utf8'));
-          manifest.overrides ??= {};
-          for (const [parent,override] of Object.entries({
-            'next@15.5.29': {postcss:'8.5.23'},
-            '@expo/metro-config@54.0.17': {postcss:'8.5.23'},
-            '@prisma/config@6.19.3': {effect:'3.22.1'}
-          })) {
-            if (manifest.overrides[parent] !== undefined) throw new Error('Existing override '+parent);
-            manifest.overrides[parent]=override;
+          function version(name,range) {
+            const raw=JSON.parse(execFileSync('npm',['view',name+'@'+range,'version','--json'],{encoding:'utf8'}));
+            const stable=(Array.isArray(raw)?raw:[raw]).filter(x=>typeof x==='string' && /^\d+\.\d+\.\d+$/.test(x));
+            stable.sort((a,b)=>{const x=a.split('.').map(Number),y=b.split('.').map(Number);return x[0]-y[0]||x[1]-y[1]||x[2]-y[2]});
+            if(!stable.length) throw new Error('No stable patched leaf '+name);
+            return stable[0];
           }
+          function add(parent,leaf,value) {
+            manifest.overrides ??= {};
+            manifest.overrides[parent] ??= {};
+            if(manifest.overrides[parent][leaf]!==undefined) throw new Error('Existing scoped override '+parent+'/'+leaf);
+            manifest.overrides[parent][leaf]=value;
+            console.log('trial override',parent,leaf,value);
+          }
+          if(target==='deepmerge-ts') add('@prisma/config@6.19.3','deepmerge-ts',version('deepmerge-ts','>=8.0.0 <9'));
+          else if(target==='image-size') add('metro@0.83.3','image-size',version('image-size','>2.0.2 <3'));
+          else if(target==='glob-minimatch') {
+            const glob=version('glob','>14.0.1 <15');
+            const mm=version('minimatch','>=11.0.1 <12');
+            for(const p of ['@nestjs/cli@11.0.24','@expo/cli@54.0.28','@expo/config-plugins@54.0.6','@expo/config@12.0.14','@expo/fingerprint@0.15.5','@expo/metro-config@54.0.17']) add(p,'glob',glob);
+            for(const p of ['@expo/cli@54.0.28','@expo/fingerprint@0.15.5','glob@'+glob]) add(p,'minimatch',mm);
+          } else throw new Error('Unexpected target');
           fs.writeFileSync('package.json',JSON.stringify(manifest,null,2)+'\n');
           JS
-          npm update postcss effect --package-lock-only --ignore-scripts --no-audit --no-fund
+          case "$TARGET" in
+            deepmerge-ts|image-size) npm update "$TARGET" --package-lock-only --ignore-scripts --no-audit --no-fund ;;
+            glob-minimatch) npm update glob minimatch --package-lock-only --ignore-scripts --no-audit --no-fund ;;
+            *) exit 2 ;;
+          esac
           npm audit --omit=dev --json > /tmp/ape-after.json || test -s /tmp/ape-after.json
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           import {execFileSync} from 'node:child_process';
-          const before=JSON.parse(fs.readFileSync('/tmp/ape-before.json','utf8'));
-          const after=JSON.parse(fs.readFileSync('/tmp/ape-after.json','utf8'));
-          for (const [phase,report] of [['before',before],['after',after]]) {
-            if (!report.metadata?.vulnerabilities || report.error) throw new Error('Missing audit '+phase);
+          const before=JSON.parse(fs.readFileSync('/tmp/ape-before.json','utf8')),after=JSON.parse(fs.readFileSync('/tmp/ape-after.json','utf8'));
+          for(const [phase,report] of [['before',before],['after',after]]) {
+            if(!report.metadata?.vulnerabilities||report.error) throw new Error('Missing audit '+phase);
             console.log(phase,JSON.stringify(report.metadata.vulnerabilities));
           }
-          for (const [name,v] of Object.entries(after.vulnerabilities??{})) {
-            console.log('residual',name,JSON.stringify({severity:v.severity,range:v.range,nodes:v.nodes,via:v.via.map(x=>typeof x==='string'?x:{source:x.source,range:x.range,severity:x.severity,url:x.url}),fixAvailable:v.fixAvailable}));
-          }
-          for (const target of ['postcss','effect']) if(after.vulnerabilities?.[target]) throw new Error('Target remains flagged '+target);
-          if(Object.keys(after.vulnerabilities??{}).some(k=>!before.vulnerabilities?.[k])) throw new Error('New audit finding');
-          if(after.metadata.vulnerabilities.high>before.metadata.vulnerabilities.high || after.metadata.vulnerabilities.critical>before.metadata.vulnerabilities.critical) throw new Error('Severity increased');
+          for(const [name,v] of Object.entries(after.vulnerabilities??{})) console.log('residual',name,JSON.stringify({severity:v.severity,nodes:v.nodes,via:v.via.map(x=>typeof x==='string'?x:{source:x.source,range:x.range,url:x.url})}));
           const a=JSON.parse(execFileSync('git',['show','HEAD:package-lock.json'],{encoding:'utf8',maxBuffer:20*1024*1024})).packages;
           const b=JSON.parse(fs.readFileSync('package-lock.json','utf8')).packages;
           for(const k of new Set([...Object.keys(a),...Object.keys(b)])) if(a[k]?.version!==b[k]?.version) console.log('lock change',k,a[k]?.version??'-','=>',b[k]?.version??'-');
+          const targets=process.env.TARGET==='glob-minimatch'?['glob','minimatch']:[process.env.TARGET];
+          for(const t of targets) if(after.vulnerabilities?.[t]) throw new Error('Target remains flagged '+t);
+          if(Object.keys(after.vulnerabilities??{}).some(k=>!before.vulnerabilities?.[k])) throw new Error('New finding');
+          if(after.metadata.vulnerabilities.high>before.metadata.vulnerabilities.high||after.metadata.vulnerabilities.critical>before.metadata.vulnerabilities.critical) throw new Error('Severity increased');
           JS
           git diff --check
           git diff --stat -- package.json package-lock.json
-          # Both inputs are public repository source files. Emit only this bounded generated patch, no environment or credentials.
           git diff -- package.json package-lock.json > /tmp/ape-remediation.patch
           test "$(wc -c < /tmp/ape-remediation.patch)" -le 100000
           sha256sum package.json package-lock.json /tmp/ape-remediation.patch
@@ -72,18 +93,15 @@ jobs:
           base64 -w 100 /tmp/ape-remediation.patch
           echo APE_PATCH_END
           npm ci --ignore-scripts --no-audit --no-fund
-          for target in postcss effect glob minimatch image-size deepmerge-ts; do
-            npm ls "$target" --all || true
-          done
-      - name: Combined backend checks
+      - name: Backend compatibility (not database or E2E)
+        if: matrix.target != 'image-size'
         run: |
           npm exec --workspace @ape/api -- prisma validate
           npm run db:generate -w @ape/api
           npm run typecheck -w @ape/api
           npm run build -w @ape/api
-      - name: Combined web and mobile checks (not native builds)
+      - name: Mobile JS compatibility (not native)
+        if: matrix.target != 'deepmerge-ts'
         run: |
-          npm run test -w @ape/web
-          npm run build -w @ape/web
           npm run test -w @ape/mobile
           npm run bundle:check -w @ape/mobile
