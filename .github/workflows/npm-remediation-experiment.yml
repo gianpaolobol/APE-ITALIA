@@ -1,4 +1,4 @@
-name: Isolated npm scoped compatibility trials
+name: Isolated npm targeted lock refresh trials
 on:
   push:
     branches: [diagnostics/npm-remediation-20261128]
@@ -61,7 +61,10 @@ jobs:
           fs.writeFileSync('package.json',JSON.stringify(manifest,null,2)+'\n');
           console.log('Experimental override',target,version,parents);
           JS
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          # Initial install reused every locked version in the previous trial.
+          # Ask npm to update the named dependency explicitly, retaining the existing lock.
+          npm update "$TARGET" --package-lock-only --ignore-scripts --no-audit --no-fund
+          git diff --stat -- package.json package-lock.json
           npm audit --omit=dev --json > /tmp/ape-after.json || test -s /tmp/ape-after.json
           node --input-type=module <<'JS'
           import fs from 'node:fs';
@@ -72,11 +75,16 @@ jobs:
             if (!report.metadata?.vulnerabilities || report.error) throw new Error('Missing audit '+phase);
             console.log(phase,JSON.stringify(report.metadata.vulnerabilities));
             console.log('affected names',Object.keys(report.vulnerabilities??{}).sort().join(','));
+            const target=report.vulnerabilities?.[process.env.TARGET];
+            if (target) console.log('target advisory',JSON.stringify({range:target.range,nodes:target.nodes,via:target.via.map(x=>typeof x==='string'?x:{source:x.source,range:x.range,severity:x.severity})}));
           }
           const a=JSON.parse(execFileSync('git',['show','HEAD:package-lock.json'],{encoding:'utf8',maxBuffer:20*1024*1024})).packages;
           const b=JSON.parse(fs.readFileSync('package-lock.json','utf8')).packages;
           for (const k of new Set([...Object.keys(a),...Object.keys(b)])) {
             if(a[k]?.version!==b[k]?.version) console.log('lock change',k,a[k]?.version??'-','=>',b[k]?.version??'-');
+          }
+          for (const [path,pkg] of Object.entries(b)) {
+            if (path.endsWith('/node_modules/'+process.env.TARGET) || path==='node_modules/'+process.env.TARGET) console.log('target locked',path,pkg.version);
           }
           if (after.vulnerabilities?.[process.env.TARGET]) throw new Error('Target remains flagged; no compatibility claim');
           if (Object.keys(after.vulnerabilities??{}).some(k=>!before.vulnerabilities?.[k])) throw new Error('New audit findings');
