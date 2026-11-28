@@ -10,3 +10,14 @@
 		-Server
 	}
 }
+
+# Dedicated web origin: keep cookies and API traffic on separate hosts.
+# The compose default is a container-local HTTP listener for synthetic CI only.
+{$WEB_DOMAIN} {
+	encode gzip
+	reverse_proxy web:3000
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		-Server
+	}
+}

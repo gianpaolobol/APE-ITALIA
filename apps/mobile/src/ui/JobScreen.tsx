@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as Sharing from 'expo-sharing';
+import { LocalMediaPreview, shareSurveyPdf, type MediaReader } from './LocalMediaPreview';
 import { C, F, R, S } from './theme';
 import { Button, Card, Chips, ClassBadge, Field, IconCircle, Label, Pill, SectionTitle, ToggleRow, tap } from './kit';
 import { SlotPicker } from './SlotPicker';
@@ -23,9 +24,9 @@ export type JobOps = {
  verbale(v: Verbale): Promise<void>; deliver(code: string, cls: string, pdf: { uri: string; name: string; mimeType: string }): Promise<void>;
  videoUri?(uri: string): Promise<string>;
 };
-type Props = { draft: Draft; pro: ProRegistration; onBack: () => void; onUpdate: (fn: (d: Draft) => Draft) => void; ops?: JobOps; remote?: boolean; onLocalDeliver?: JobOps['deliver'] };
+type Props = { draft: Draft; pro: ProRegistration; onBack: () => void; onUpdate: (fn: (d: Draft) => Draft) => void; ops?: JobOps; remote?: boolean; onLocalDeliver?: JobOps['deliver']; onReadLocalMedia?: MediaReader };
 
-export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote, onLocalDeliver }: Props) {
+export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote, onLocalDeliver, onReadLocalMedia }: Props) {
  const insets = useSafeAreaInsets();
  const a = draft.answers;
  const job = draft.job;
@@ -42,6 +43,12 @@ export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote
  const typeLabel = (tq && tq.kind === 'choice' ? tq.options.find(o => o.value === a.propertyType)?.label : undefined) ?? 'Immobile';
  const [viewer, setViewer] = useState<PhotoRef | null>(null);
  const [player, setPlayer] = useState<PhotoRef | null>(null);
+ const [localPreview, setLocalPreview] = useState<{ qid: string; p: PhotoRef } | null>(null);
+ const openLocal = (m: { qid: string; p: PhotoRef }) => {
+  if (!onReadLocalMedia) { Alert.alert('Allegato non disponibile'); return; }
+  if (m.p.mimeType === 'application/pdf') void shareSurveyPdf(onReadLocalMedia, m.qid, m.p);
+  else setLocalPreview(m);
+ };
  const setJob = (fn: (j: Job) => Job) => onUpdate(d => ({ ...d, job: fn(d.job ?? { status: 'nuova', certifier: { name: `${pro.firstName} ${pro.lastName}`, sace: pro.saceNumber } }) }));
 
  const localOps: JobOps = {
@@ -122,7 +129,7 @@ export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote
 
      <SectionTitle>Video del cliente</SectionTitle>
      {videos.length ? videos.map((v, i) => (
-      <Card key={v.p.uri} onPress={() => setPlayer(v.p)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+      <Card key={v.p.uri} onPress={() => remote ? setPlayer(v.p) : openLocal(v)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
        <IconCircle name="play" />
        <Text style={[F.h3, { flex: 1, marginLeft: 12 }]}>Parte {i + 1}{v.p.durationSec ? ` · ${Math.floor(v.p.durationSec / 60)}:${String(v.p.durationSec % 60).padStart(2, '0')}` : ''}</Text>
        <Ionicons name="chevron-forward" size={18} color={C.muted} />
@@ -132,13 +139,13 @@ export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote
      <SectionTitle>Foto e documenti · {images.length + pdfs.length}</SectionTitle>
      <View style={st.grid}>
       {images.map(m => (
-       <Pressable key={m.p.uri} onPress={() => setViewer(m.p)} style={st.cell}>
-        <Image source={{ uri: m.p.uri }} style={st.img} />
+       <Pressable key={m.p.uri} onPress={() => remote ? setViewer(m.p) : openLocal(m)} style={st.cell}>
+        {remote ? <Image source={{ uri: m.p.uri }} style={st.img} /> : <View style={[st.img, { alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="image-outline" size={30} color={C.brand} /></View>}
         <Text style={st.cap} numberOfLines={1}>{caption(m.qid)}</Text>
        </Pressable>
       ))}
       {pdfs.map(m => (
-       <Pressable key={m.p.uri} onPress={() => Sharing.shareAsync(m.p.uri).catch(() => undefined)} style={st.cell}>
+       <Pressable key={m.p.uri} onPress={() => remote ? void Sharing.shareAsync(m.p.uri).catch(() => undefined) : openLocal(m)} style={st.cell}>
         <View style={[st.img, { alignItems: 'center', justifyContent: 'center' }]}><Ionicons name="document-text" size={30} color={C.brand} /></View>
         <Text style={st.cap} numberOfLines={1}>{caption(m.qid) || 'PDF'}</Text>
        </Pressable>
@@ -188,7 +195,8 @@ export function JobScreen({ draft, pro, onBack, onUpdate, ops: remoteOps, remote
    </ScrollView>
    </KeyboardAvoidingView>
 
-   <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
+   {localPreview && onReadLocalMedia && <LocalMediaPreview qid={localPreview.qid} photo={localPreview.p} read={onReadLocalMedia} onClose={() => setLocalPreview(null)} />}
+    <Modal visible={!!viewer} transparent animationType="fade" onRequestClose={() => setViewer(null)}>
     <Pressable style={st.modal} onPress={() => setViewer(null)}>
      {viewer ? <Image source={{ uri: viewer.uri }} style={{ width: '100%', height: '80%' }} resizeMode="contain" /> : null}
      <Text style={{ color: C.white, marginTop: 12 }}>Tocca per chiudere</Text>

@@ -17,6 +17,7 @@ vi.mock('expo-file-system', () => {
   uri: string;
   constructor(parent: string | { uri: string }, ...parts: string[]) { this.uri = [typeof parent === 'string' ? parent : parent.uri, ...parts].join('/'); }
   get exists() { return fs.files.has(this.uri); }
+  get size() { return fs.files.get(this.uri)?.length ?? 0; }
   create() { fs.files.set(this.uri, ''); }
   write(data: string) { fs.files.set(this.uri, data); }
   async text() { return this.textSync(); }
@@ -50,6 +51,8 @@ vi.mock('./snapshot-crypto', () => ({
  sealSnapshot: (text: string) => text,
 }));
 import { visiblePro, storePro, type ProProfile, canViewDraft, enqueueMediaCleanup, retryMediaCleanup, deleteMedia, deleteDraftPhotoFile, removeDraftPhoto, loadState, newDraft, newScopedDraft, saveStateNow, addDraftPhoto, deliverDraftApe, type AppState } from './drafts';
+
+import { captureEncryptedSurveyMedia, deliverEncryptedDemoApe, migrateLocalDemoApe, migrateLegacySurveyMedia, shareLocalApe } from './media-delivery';
 
 const primary = '/documents/ape/state.json';
 const backup = '/documents/ape/state.bak.json';
@@ -647,5 +650,217 @@ describe('durable offline demo APE delivery', () => {
   fs.failMoveTo = '';
   saveStateNow(pending!);
   expect((await loadState()).drafts[0].job?.status).toBe('consegnata');
+ });
+});
+
+describe('encrypted demo APE delivery transaction', () => {
+ const source = { uri: '/cache/ape.pdf', name: 'ape.pdf', mimeType: 'application/pdf' };
+ const ready = () => ({ ...newDraft(), job: {
+  status: 'accettata' as const, certifier: { name: 'Synthetic', sace: '00000' },
+  verbale: { date: '26/11/2026', start: '09:00', end: '10:00', attendees: 'Synthetic',
+   checks: ['misure','involucro','foto'], notes: '', ownerName: 'Synthetic',
+   ownerConfirmed: true, declaration: true, savedAt: '2026-11-26T09:00:00Z' },
+ } });
+ type Seal = NonNullable<Parameters<typeof deliverEncryptedDemoApe>[5]>;
+ it('reserves before writing and commits against the newest snapshot, preserving edits and other cleanup intents', async () => {
+  const d = ready(), other = newDraft();
+  let current: AppState = { ...state(d, other), pendingMediaCleanup: [{ draftId: 'old' }] };
+  fs.files.set(source.uri, 'source PDF');
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => {
+   await op.reserve();
+   expect(current.pendingMediaCleanup).toHaveLength(2);
+   expect(current.drafts[0].job?.ape).toBeUndefined();
+   current = { ...current, drafts: current.drafts.map(x => x.id === d.id ? { ...x, answers: { note: 'new edit' } } : x) };
+   op.guard();
+   fs.files.set(op.stage.uri, 'synthetic encrypted stage');
+  };
+  await deliverEncryptedDemoApe(access, d.id, '00000-000000-2026', 'A1', source, seal);
+  expect(current.drafts[0].job?.status).toBe('consegnata');
+  expect(current.drafts[0].answers.note).toBe('new edit');
+  expect(current.drafts[0].job?.ape?.pdf?.uri).toMatch(/\.apem$/);
+  expect(current.pendingMediaCleanup).toEqual([{ draftId: 'old' }]);
+  expect(await loadState()).toEqual(current);
+  expect(fs.files.get(source.uri)).toBe('source PDF');
+ });
+ it('does not commit after a job update while encryption is in flight; retains the cleanup reservation', async () => {
+  const d = ready(); let current = state(d);
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => {
+   await op.reserve();
+   current = { ...current, drafts: [{ ...d, job: { ...d.job, status: 'rifiutata' } }] };
+   fs.files.set(op.stage.uri, 'synthetic encrypted stage');
+  };
+  await expect(deliverEncryptedDemoApe(access, d.id, '00000-000000-2026', 'A1', source, seal)).rejects.toThrow('Incarico modificato');
+  expect(current.drafts[0].job?.status).toBe('rifiutata');
+  expect(current.pendingMediaCleanup).toHaveLength(1);
+ });
+ it('does not acknowledge a failed final snapshot commit or remove a possibly referenced encrypted stage', async () => {
+  const d = ready(); let current = state(d);
+  const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'synthetic encrypted stage'); fs.failMoveTo = backup; };
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return false; } };
+  await expect(deliverEncryptedDemoApe(access, d.id, '00000-000000-2026', 'A1', source, seal)).rejects.toThrow('Consegna non confermata');
+  const pdf = current.drafts[0].job?.ape?.pdf;
+  expect(pdf?.uri).toMatch(/\.apem$/);
+  expect(fs.files.get(pdf!.uri)).toBe('synthetic encrypted stage');
+ });
+ it('rejects an arbitrary or cross-draft legacy path instead of sending it to the share consumer', async () => {
+  const d = ready(); const uri = '/documents/ape/media/other/ape.pdf';
+  const delivered = { ...d, job: { ...d.job, status: 'consegnata' as const, ape: { code: 'SYNTH', energyClass: 'A1', deliveredAt: '2026-11-26', pdf: { uri, name: 'ape.pdf', mimeType: 'application/pdf', takenAt: '2026-11-26' } } } };
+  fs.files.set(uri, 'other draft');
+  const share = vi.fn(async (_uri: string) => {});
+  await expect(shareLocalApe({ latest: () => state(delivered), guard: () => {} }, d.id, uri, share)).rejects.toThrow();
+  expect(share).not.toHaveBeenCalled();
+ });
+});
+
+describe('on-demand legacy demo PDF migration', () => {
+ const setup = () => {
+  const d = newDraft();
+  const uri = '/documents/ape/media/' + d.id + '/old.pdf';
+  const delivered = { ...d, job: { status: 'consegnata' as const, certifier: { name: 'Synthetic', sace: '00000' }, ape: {
+   code: '00000-000000-2026', energyClass: 'A1', deliveredAt: '2026-11-26',
+   pdf: { uri, name: 'ape.pdf', mimeType: 'application/pdf', takenAt: '2026-11-26' },
+  } } };
+  let current = state(delivered);
+  fs.files.set(uri, 'legacy source');
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return true; } };
+  type Seal = NonNullable<Parameters<typeof migrateLocalDemoApe>[3]>;
+  const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'synthetic envelope'); };
+  return { d, uri, access, seal, get current() { return current; }, set current(s: AppState) { current = s; } };
+ };
+ it('commits verified replacement with old cleanup intent, then cleans only after checkpoint', async () => {
+  const s = setup();
+  const verify = vi.fn(async () => { expect(s.current.drafts[0].job?.ape?.pdf?.uri).toBe(s.uri); });
+  const encrypted = await migrateLocalDemoApe(s.access, s.d.id, s.uri, s.seal, verify);
+  expect(verify).toHaveBeenCalledOnce();
+  expect(encrypted).toMatch(/\.apem$/);
+  expect(s.current.drafts[0].job?.ape?.pdf?.uri).toBe(encrypted);
+  expect(s.current.drafts[0].job?.ape?.deliveredAt).toBe('2026-11-26');
+  expect(s.current.pendingMediaCleanup).toEqual([{ draftId: s.d.id, filename: 'old.pdf' }]);
+  expect(fs.files.get(s.uri)).toBe('legacy source');
+  expect(await loadState()).toEqual(s.current);
+  const cleaned = retryMediaCleanup(s.current);
+  expect(cleaned.pendingMediaCleanup).toBeUndefined();
+  expect(fs.files.has(s.uri)).toBe(false);
+  expect(fs.files.has(encrypted)).toBe(true);
+ });
+ it('keeps the legacy reference and original when authentication or comparison fails', async () => {
+  const s = setup();
+  await expect(migrateLocalDemoApe(s.access, s.d.id, s.uri, s.seal,
+   async () => { throw new Error('verification failed'); })).rejects.toThrow('verification failed');
+  expect(s.current.drafts[0].job?.ape?.pdf?.uri).toBe(s.uri);
+  expect(fs.files.has(s.uri)).toBe(true);
+  expect(s.current.pendingMediaCleanup).toHaveLength(1);
+  const recovered = retryMediaCleanup(s.current);
+  expect(recovered.pendingMediaCleanup).toBeUndefined();
+  expect(fs.files.has(s.uri)).toBe(true);
+ });
+ it('does not overwrite a concurrently removed draft or delete its source', async () => {
+  const s = setup();
+  await expect(migrateLocalDemoApe(s.access, s.d.id, s.uri, s.seal,
+   async () => { s.current = { ...s.current, drafts: [] }; })).rejects.toThrow('Attestato modificato');
+  expect(s.current.drafts).toEqual([]);
+  expect(fs.files.has(s.uri)).toBe(true);
+ });
+ it('does not send a legacy PDF directly to the sharing consumer', async () => {
+  const s = setup(), share = vi.fn(async (_uri: string) => {});
+  await expect(shareLocalApe(s.access, s.d.id, s.uri, share)).rejects.toThrow('Percorso attestato non valido');
+  expect(share).not.toHaveBeenCalled();
+ });
+});
+
+describe('encrypted survey capture transaction', () => {
+ const source = { uri: '/cache/photo.jpg', name: 'photo.jpg', mimeType: 'image/jpeg', width: 100, height: 200 };
+ type Seal = NonNullable<Parameters<typeof captureEncryptedSurveyMedia>[4]>;
+ it('journals before sealing and preserves newer answers and unrelated cleanup intents', async () => {
+  const d = newDraft(); let current: AppState = { ...state(d), pendingMediaCleanup: [{ draftId: 'old' }] };
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => { await op.reserve(); expect(current.pendingMediaCleanup).toHaveLength(2);
+   current = { ...current, drafts: [{ ...current.drafts[0], answers: { note: 'new edit' } }] };
+   op.guard(); fs.files.set(op.stage.uri, 'sealed'); };
+  fs.files.set(source.uri, 'original');
+  const ref = await captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal);
+  expect(ref.uri).toMatch(/\.apem$/); expect(ref.width).toBe(100);
+  expect(current.drafts[0].photos.previousApe).toEqual([ref]); expect(current.drafts[0].answers.note).toBe('new edit');
+  expect(current.pendingMediaCleanup).toEqual([{ draftId: 'old' }]); expect(await loadState()).toEqual(current);
+  expect(fs.files.get(source.uri)).toBe('original');
+ });
+ it('does not publish a file after the draft is deleted during sealing', async () => {
+  const d = newDraft(); let current = state(d);
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; } };
+  const seal: Seal = async op => { await op.reserve(); current = { ...current, drafts: [] }; fs.files.set(op.stage.uri, 'sealed'); };
+  fs.files.set(source.uri, 'original');
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Richiesta modificata');
+  expect(current.drafts).toEqual([]); expect(current.pendingMediaCleanup).toHaveLength(1);
+ });
+ it('rejects hidden evidence and incompatible MIME before reservation', async () => {
+  const d = newDraft(); const publish = vi.fn(); const seal = vi.fn();
+  const access = { latest: () => state(d), guard: () => {}, publish };
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'cadastralPlan', source, seal)).rejects.toThrow();
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', { ...source, mimeType: 'text/html' }, seal)).rejects.toThrow();
+  expect(seal).not.toHaveBeenCalled(); expect(publish).not.toHaveBeenCalled();
+ });
+ it('rejects missing or oversized actual source before reservation', async () => {
+  const d = newDraft(); const publish = vi.fn(); const seal = vi.fn();
+  const access = { latest: () => state(d), guard: () => {}, publish };
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Dimensione allegato');
+  fs.files.set(source.uri, 'x'.repeat(15 * 1024 * 1024 + 1));
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Dimensione allegato');
+  expect(seal).not.toHaveBeenCalled(); expect(publish).not.toHaveBeenCalled();
+ });
+ it('keeps possibly committed ciphertext when final checkpoint fails', async () => {
+  const d = newDraft(); let current = state(d);
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return false; } };
+  const seal: Seal = async op => { await op.reserve(); fs.files.set(op.stage.uri, 'sealed'); fs.failMoveTo = backup; };
+  fs.files.set(source.uri, 'original');
+  await expect(captureEncryptedSurveyMedia(access, d.id, 'previousApe', source, seal)).rejects.toThrow('Acquisizione non confermata');
+  const ref = current.drafts[0].photos.previousApe?.[0]; expect(ref?.uri).toMatch(/\.apem$/); expect(fs.files.get(ref!.uri)).toBe('sealed');
+ });
+});
+
+
+describe('legacy survey evidence migration', () => {
+ const setup = () => {
+  const d = newDraft(), uri = '/documents/ape/media/' + d.id + '/old.mp4';
+  const p = { uri, name: 'old.mp4', mimeType: 'video/mp4', takenAt: '2026-11-25', durationSec: 12 };
+  let current = state({ ...d, photos: { hidden: [p], walkthrough: [p] }, uploaded: [uri], videoUploads: { [uri]: 'upload-1' } });
+  fs.files.set(uri, 'legacy bytes');
+  const access = { latest: () => current, guard: () => {}, publish: (s: AppState) => { current = s; return true; } };
+  const seal: NonNullable<Parameters<typeof migrateLegacySurveyMedia>[2]> = async op => {
+   await op.reserve(); fs.files.set(op.stage.uri, 'sealed');
+  };
+  return { d, uri, p, access, seal, get current() { return current; }, set current(s: AppState) { current = s; } };
+ };
+ it('moves all same-draft references and retry checkpoints atomically, preserves metadata, then cleans', async () => {
+  const s = setup();
+  expect(await migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => {})).toBe(1);
+  const d = s.current.drafts[0], next = d.photos.hidden![0].uri;
+  expect(next).toMatch(/\.apem$/); expect(d.photos.walkthrough).toEqual([{ ...s.p, uri: next }]);
+  expect(d.uploaded).toEqual([next]); expect(d.videoUploads).toEqual({ [next]: 'upload-1' });
+  expect(await loadState()).toEqual(s.current); expect(fs.files.has(s.uri)).toBe(true);
+  retryMediaCleanup(s.current);
+  expect(fs.files.has(s.uri)).toBe(false); expect(fs.files.has(next)).toBe(true);
+  expect(await migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => {})).toBe(0);
+ });
+ it('keeps the original and checkpoint when verification fails', async () => {
+  const s = setup();
+  await expect(migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => { throw Error('verification failed'); })).rejects.toThrow('verification failed');
+  expect(s.current.drafts[0].uploaded).toEqual([s.uri]); expect(fs.files.has(s.uri)).toBe(true);
+  expect(s.current.pendingMediaCleanup).toHaveLength(1);
+ });
+ it('does not migrate a cross-draft reference', async () => {
+  const s = setup(), other = newDraft();
+  s.current = { ...s.current, drafts: [...s.current.drafts, { ...other, photos: { hidden: [s.p] } }] };
+  const seal = vi.fn();
+  await expect(migrateLegacySurveyMedia(s.access, s.d.id, seal, async () => {})).rejects.toThrow();
+  expect(seal).not.toHaveBeenCalled(); expect(fs.files.has(s.uri)).toBe(true);
+ });
+ it('refuses a concurrently removed attachment without deleting its source', async () => {
+  const s = setup();
+  await expect(migrateLegacySurveyMedia(s.access, s.d.id, s.seal, async () => {
+   s.current = { ...s.current, drafts: [{ ...s.current.drafts[0], photos: {} }] };
+  })).rejects.toThrow('Allegato modificato');
+  expect(fs.files.has(s.uri)).toBe(true);
  });
 });

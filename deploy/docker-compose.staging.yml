@@ -8,8 +8,9 @@ services:
     ports: ["80:80", "443:443"]
     environment:
       API_DOMAIN: ${API_DOMAIN:-localhost}
+      WEB_DOMAIN: ${WEB_DOMAIN:-http://localhost:8080}
     volumes: [./Caddyfile:/etc/caddy/Caddyfile:ro, caddy_data:/data]
-    depends_on: [api]
+    depends_on: [api, web]
     restart: unless-stopped
   postgres:
     image: postgres:16-alpine
@@ -28,14 +29,19 @@ services:
     build:
       context: ..
       dockerfile: services/api/Dockerfile
-      args:
-        APE_BUILD_REVISION: ${APE_BUILD_REVISION:-unknown}
-    image: ape-italia-api
-    command: ["npx", "prisma", "migrate", "deploy"]
+      target: migration
+    image: ape-italia-migrate
+    command: ["node", "/app/node_modules/prisma/build/index.js", "migrate", "deploy"]
     environment: &db { DATABASE_URL: "postgresql://ape:${POSTGRES_PASSWORD}@postgres:5432/ape_italia?schema=public" }
     depends_on: { postgres: { condition: service_healthy } }
     restart: "no"
   api:
+    build: &api_runtime_build
+      context: ..
+      dockerfile: services/api/Dockerfile
+      target: runtime
+      args:
+        APE_BUILD_REVISION: ${APE_BUILD_REVISION:-unknown}
     image: ape-italia-api
     environment:
       <<: *db
@@ -65,6 +71,7 @@ services:
     depends_on: { migrate: { condition: service_completed_successfully } }
     restart: unless-stopped
   worker:
+    build: *api_runtime_build
     image: ape-italia-api
     command: ["node", "dist/worker.js"]
     environment:
@@ -77,7 +84,11 @@ services:
     depends_on: { migrate: { condition: service_completed_successfully } }
     restart: unless-stopped
   web:
-    build: { context: .., dockerfile: apps/web/Dockerfile }
+    build:
+      context: ..
+      dockerfile: apps/web/Dockerfile
+      args:
+        APE_BUILD_REVISION: ${APE_BUILD_REVISION:-unknown}
     image: ape-italia-web
     environment:
       OIDC_ISSUER: ${OIDC_ISSUER:-}

@@ -104,3 +104,49 @@ test('live staging preflight requires verified TLS, HTTP 200 and the full expect
  assert.match(script, /node scripts\/verify-staging-health\.mjs "\$\{GITHUB_SHA:\?Missing expected build revision\}" < "\$body"/);
  assert.match(script, /trap 'rm -f "\$body"' EXIT/);
 });
+
+import { verifyTestFlightUpload } from './verify-testflight-upload.mjs';
+test('TestFlight verification only accepts exact successful signed iOS upload', () => {
+ const sha = 'a'.repeat(40);
+ const run = { head_sha: sha, head_branch: 'main', path: '.github/workflows/mobile-release.yml', event: 'workflow_dispatch', status: 'completed', conclusion: 'success', run_number: 15 };
+ const upload = { name: 'Export and upload to TestFlight', status: 'completed', conclusion: 'success' };
+ const ios = { name: 'ios', status: 'completed', conclusion: 'success', steps: [upload] };
+ const jobs = { jobs: [ios] };
+ assert.equal(verifyTestFlightUpload(run, jobs, sha), '15');
+ for (const patch of [{ head_sha: 'b'.repeat(40) }, { head_branch: 'feature' }, { event: 'push' }, { conclusion: 'failure' }, { path: 'other.yml' }, { run_number: 0 }]) {
+  assert.throws(() => verifyTestFlightUpload({ ...run, ...patch }, jobs, sha));
+ }
+ for (const list of [[], [{ ...ios, name: 'android' }], [{ ...ios, steps: [] }], [{ ...ios, steps: [{ ...upload, conclusion: 'skipped' }] }], [ios, ios]]) {
+  assert.throws(() => verifyTestFlightUpload(run, { jobs: list }, sha));
+ }
+});
+test('TestFlight verifier is explicit and read-only', () => {
+ const tf = readFileSync(new URL('../.github/workflows/testflight-testers.yml', import.meta.url), 'utf8');
+ const py = readFileSync(new URL('./release/testflight_internal.py', import.meta.url), 'utf8');
+ assert.match(tf, /workflow_dispatch:/);
+ assert.doesNotMatch(tf, /workflow_run:/);
+ assert.match(tf, /verify-testflight-upload\.mjs/);
+ assert.match(tf, /EXPECTED_BUILD_NUMBER=\$build/);
+ assert.match(py, /"filter\[version\]": expected/);
+ assert.match(py, /attrs\.get\("expired"\) is not False/);
+ assert.match(py, /attrs\.get\("usesNonExemptEncryption"\) is not False/);
+ assert.match(py, /method="GET"/);
+ assert.doesNotMatch(py, /["'](?:POST|PATCH|DELETE)["']/);
+});
+
+
+test('public Firebase release logs suppress all CLI output and fail closed', () => {
+ for (const name of ['Distribute APK with Firebase App Distribution (keyless)', 'Distribute APK with Firebase App Distribution (service account key)']) {
+  const body = step(name);
+  assert.ok(body.includes('>/dev/null 2>&1; then'));
+  assert.ok(body.includes('Firebase distribution command failed'));
+  assert.ok(body.includes('exit 1'));
+  assert.ok(!body.includes('grep -v'));
+ }
+ const fallback = step('Distribute APK with Firebase App Distribution (service account key)');
+ assert.ok(fallback.includes('TESTERS: $' + '{{ secrets.FIREBASE_TESTERS }}'));
+ assert.ok(!fallback.includes('apps:create'));
+ assert.ok(fallback.includes('Existing Firebase test app and non-empty tester list are required'));
+ assert.ok(step('Require Android test distribution configuration').includes('FIREBASE_TESTERS secret'));
+ assert.ok(!workflow.includes('vars.FIREBASE_TESTERS'));
+});
