@@ -1,4 +1,4 @@
-name: Isolated npm remediation experiment
+name: Isolated npm scoped compatibility trials
 on:
   push:
     branches: [diagnostics/npm-remediation-20261128]
@@ -9,43 +9,92 @@ jobs:
   trial:
     if: github.ref == 'refs/heads/diagnostics/npm-remediation-20261128'
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 18
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [postcss, effect]
+    env:
+      TARGET: ${{ matrix.target }}
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: postgresql://ape:ci_only_password@localhost:5432/ape_italia?schema=public
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: 26d8f68eff0dd0d01bc423d1ecf076e1e9d008f8
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Trial compatible npm remediation without lifecycle scripts or force
+      - name: Trial a patched same-major leaf only, scoped to affected parents
+        id: trial
         shell: bash
         run: |
-          node --version
-          npm --version
-          npm audit --omit=dev --json > /tmp/ape-audit-before.json || test -s /tmp/ape-audit-before.json
-          set +e
-          npm audit fix --package-lock-only --ignore-scripts --no-fund --json > /tmp/ape-audit-fix.json
-          result=$?
-          set -e
-          echo "npm audit fix exit: $result"
-          npm audit --omit=dev --json > /tmp/ape-audit-after.json || test -s /tmp/ape-audit-after.json
+          set -euo pipefail
+          git rev-parse HEAD
+          npm audit --omit=dev --json > /tmp/ape-before.json || test -s /tmp/ape-before.json
+          case "$TARGET" in
+            postcss) range='>8.5.22 <9' ;;
+            effect) range='>3.22.0 <4' ;;
+            *) exit 2 ;;
+          esac
+          npm view "$TARGET@$range" version --json > /tmp/ape-versions.json
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          const raw = JSON.parse(fs.readFileSync('/tmp/ape-versions.json', 'utf8'));
+          const candidates = (Array.isArray(raw) ? raw : [raw]).filter(v => typeof v === 'string' && /^\d+\.\d+\.\d+$/.test(v));
+          candidates.sort((a,b) => {
+            const x=a.split('.').map(Number), y=b.split('.').map(Number);
+            return x[0]-y[0] || x[1]-y[1] || x[2]-y[2];
+          });
+          if (!candidates.length) throw new Error('No stable same-major patched leaf found');
+          // Choose the smallest stable patched version; no global override.
+          const version = candidates[0];
+          const target=process.env.TARGET;
+          const manifest=JSON.parse(fs.readFileSync('package.json','utf8'));
+          const parents=target==='postcss' ? ['next@15.5.29','@expo/metro-config@54.0.17'] : ['@prisma/config@6.19.3'];
+          manifest.overrides ??= {};
+          for (const parent of parents) {
+            if (manifest.overrides[parent] !== undefined) throw new Error('Existing override: '+parent);
+            manifest.overrides[parent] = {[target]: version};
+          }
+          fs.writeFileSync('package.json',JSON.stringify(manifest,null,2)+'\n');
+          console.log('Experimental override',target,version,parents);
+          JS
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit --omit=dev --json > /tmp/ape-after.json || test -s /tmp/ape-after.json
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           import {execFileSync} from 'node:child_process';
-          for (const phase of ['before','after']) {
-            const report = JSON.parse(fs.readFileSync('/tmp/ape-audit-'+phase+'.json','utf8'));
-            if (!report.metadata?.vulnerabilities || report.error) throw new Error('Audit unavailable: '+phase);
-            console.log(phase, JSON.stringify(report.metadata.vulnerabilities));
-            for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
-              if (['high','critical','moderate'].includes(item.severity)) console.log(name, item.severity, item.range, JSON.stringify(item.fixAvailable));
-            }
+          const before=JSON.parse(fs.readFileSync('/tmp/ape-before.json','utf8'));
+          const after=JSON.parse(fs.readFileSync('/tmp/ape-after.json','utf8'));
+          for (const [phase,report] of [['before',before],['after',after]]) {
+            if (!report.metadata?.vulnerabilities || report.error) throw new Error('Missing audit '+phase);
+            console.log(phase,JSON.stringify(report.metadata.vulnerabilities));
+            console.log('affected names',Object.keys(report.vulnerabilities??{}).sort().join(','));
           }
-          const previous=JSON.parse(execFileSync('git',['show','HEAD:package-lock.json'],{encoding:'utf8',maxBuffer:20*1024*1024}));
-          const next=JSON.parse(fs.readFileSync('package-lock.json','utf8'));
-          for (const name of new Set([...Object.keys(previous.packages),...Object.keys(next.packages)])) {
-            const a=previous.packages[name]?.version, b=next.packages[name]?.version;
-            if (a!==b) console.log('lock change',name,a??'-','=>',b??'-');
+          const a=JSON.parse(execFileSync('git',['show','HEAD:package-lock.json'],{encoding:'utf8',maxBuffer:20*1024*1024})).packages;
+          const b=JSON.parse(fs.readFileSync('package-lock.json','utf8')).packages;
+          for (const k of new Set([...Object.keys(a),...Object.keys(b)])) {
+            if(a[k]?.version!==b[k]?.version) console.log('lock change',k,a[k]?.version??'-','=>',b[k]?.version??'-');
           }
+          if (after.vulnerabilities?.[process.env.TARGET]) throw new Error('Target remains flagged; no compatibility claim');
+          if (Object.keys(after.vulnerabilities??{}).some(k=>!before.vulnerabilities?.[k])) throw new Error('New audit findings');
           JS
-          git diff --stat -- package.json package-lock.json 'apps/*/package.json' 'services/*/package.json' 'packages/*/package.json'
-          # No commit, upload, signing, deployment or external credentials.
+          git diff --stat -- package.json package-lock.json
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm ls "$TARGET" --all
+      - name: Web and mobile focused compatibility checks (not native builds)
+        if: matrix.target == 'postcss'
+        run: |
+          npm run test -w @ape/web
+          npm run build -w @ape/web
+          npm run test -w @ape/mobile
+          npm run bundle:check -w @ape/mobile
+      - name: Prisma focused compatibility checks (not DB migration or E2E)
+        if: matrix.target == 'effect'
+        run: |
+          npm exec --workspace @ape/api -- prisma validate
+          npm run db:generate -w @ape/api
+          npm run typecheck -w @ape/api
+          npm run build -w @ape/api
