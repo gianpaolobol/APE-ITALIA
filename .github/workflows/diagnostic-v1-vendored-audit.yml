@@ -7,6 +7,7 @@ permissions:
   contents: read
 jobs:
   npm-inventory:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -59,6 +60,7 @@ jobs:
           console.log('Source manifest pins are evidence, not proof of exact bundled bytes.');
           JS
   standalone-inventory:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -126,7 +128,19 @@ jobs:
       - name: Generate candidate lockfile for fixed Vitest (all three workspaces)
         run: |
           npm view vitest@4.1.12 version engines dependencies --json
-          npm install --save-dev --save-exact vitest@4.1.12 -w @ape/mobile -w @ape/web -w @ape/api --package-lock-only --ignore-scripts --no-audit --no-fund
+          node --version
+          npm --version
+          # Avoid npm Arborist multi-workspace install edgesOut crash.
+          node --input-type=commonjs - <<'JS'
+          const fs = require('node:fs');
+          for (const file of ['apps/mobile/package.json','apps/web/package.json','services/api/package.json']) {
+            const p = JSON.parse(fs.readFileSync(file,'utf8'));
+            if (!p.devDependencies?.vitest) throw Error('Expected Vitest dev dependency: '+file);
+            p.devDependencies.vitest = '4.1.12';
+            fs.writeFileSync(file, JSON.stringify(p,null,2)+'\n');
+          }
+          JS
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm ci --no-audit --no-fund
           npm ls vitest @vitest/mocker tinypool --all
           git diff --check
