@@ -1,5 +1,10 @@
 # APE Italia
 
+<!-- inizio-riquadro-linee-guida -->
+> **Linee guida v1.1.0** — Questo progetto segue le linee guida comuni dei progetti di Gian Paolo Franceschini: leggi prima [`LINEE_GUIDA.md`](LINEE_GUIDA.md), poi [`AGENTS.md`](AGENTS.md) e [`STATO.md`](STATO.md).
+<!-- fine-riquadro-linee-guida -->
+
+
 Piattaforma Android, iOS e web per richieste di attestati di prestazione energetica assistite da AI.
 
 **Stato: prototipo funzionale non in produzione. Non emette APE ufficiali.** La piattaforma raccoglie richieste ed evidenze e coordina il certificatore abilitato, al quale competono sopralluogo, calcolo con software conforme, firma e deposito.
