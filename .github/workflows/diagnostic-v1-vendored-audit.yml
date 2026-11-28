@@ -112,3 +112,56 @@ jobs:
           for i in $(seq 1 30); do curl -fsS http://127.0.0.1:18080/ >/dev/null 2>&1 && break; sleep 2; done
           test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:18080/)" = 200
           test "$(curl -s -o /dev/null -w '%{http_code}' 'http://127.0.0.1:18080/_next/image?url=%2F&w=640&q=75')" = 404
+
+  dev-tool-remediation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Generate candidate lockfile for fixed Vitest (all three workspaces)
+        run: |
+          npm view vitest@4.1.12 version engines dependencies --json
+          npm install --save-dev --save-exact vitest@4.1.12 -w @ape/mobile -w @ape/web -w @ape/api --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --no-audit --no-fund
+          npm ls vitest @vitest/mocker tinypool --all
+          git diff --check
+          git diff --binary -- package.json package-lock.json apps/mobile/package.json apps/web/package.json services/api/package.json > /tmp/dev-remediation.patch
+      - name: Audit both scopes (fail closed)
+        run: |
+          for scope in full production; do
+            rc=0
+            if [ "$scope" = production ]; then
+              npm audit --omit=dev --json > "/tmp/dev-audit-$scope.json" || rc=$?
+            else
+              npm audit --json > "/tmp/dev-audit-$scope.json" || rc=$?
+            fi
+            node -e 'const a=require(process.argv[1]); if(a.error || !a.metadata?.vulnerabilities) process.exit(2); console.log(JSON.stringify(a.metadata.vulnerabilities)); if(a.metadata.vulnerabilities.total!==0) process.exit(1)' "/tmp/dev-audit-$scope.json"
+            test "$rc" = 0
+          done
+      - name: Mobile and web tests and typechecks
+        run: |
+          npm run test -w @ape/mobile
+          npm run test -w @ape/web
+          npm run typecheck -w @ape/mobile
+          npm run typecheck -w @ape/web
+          npm run build -w @ape/web
+      - name: Backend generation, typecheck and tests (no remote DB)
+        run: |
+          npm run db:generate -w @ape/api
+          npm run typecheck -w @ape/api
+          npm run build -w @ape/api
+          npm run test -w @ape/api
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: dev-remediation-diagnostic
+          path: |
+            /tmp/dev-remediation.patch
+            /tmp/dev-audit-*.json
+          if-no-files-found: warn
+          retention-days: 3
