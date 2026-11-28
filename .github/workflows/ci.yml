@@ -36,6 +36,8 @@ jobs:
       - run: node --test scripts/verify-release-ci.test.mjs scripts/verify-staging-config.test.mjs scripts/check-mobile-build-mode.test.mjs scripts/verify-staging-health.test.mjs
       - name: Dependency audit (critical threshold; residual findings require review)
         run: npm audit --omit=dev --audit-level=critical
+      - name: Full dependency audit including development tools (critical threshold)
+        run: npm audit --audit-level=critical
       - run: npm exec --workspace @ape/api -- prisma validate
       - run: npm run db:generate -w @ape/api
       - run: npm exec --workspace @ape/api -- prisma migrate deploy
